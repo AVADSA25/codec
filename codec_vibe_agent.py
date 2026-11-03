@@ -19,6 +19,9 @@ import logging
 import os
 import re
 import secrets
+import shlex
+import shutil
+import stat
 import threading
 import time
 from dataclasses import dataclass, field
@@ -48,6 +51,9 @@ MODEL_RESULT_CHARS = 6 * 1024   # a longer result reaches the model as its head 
 MODEL_HEAD_CHARS = 1536
 MODEL_TAIL_CHARS = 4 * 1024
 CUT_SLACK = 200             # how much earlier the tail may start, so that it starts at a line
+OUT_DIR = "out"             # .vibe/runs/<run>/out/<step>.txt: a command's output, copied by the engine (P-043)
+SPILL_RUN_BYTES = 8 * 1024 * 1024   # what one run keeps of such files; past it a long result stays in memory only
+READABLE = ("run_check", "search", "list_files", "ask")    # the results read_output gives back
 READ_LINES = 300
 LIST_ENTRIES = 200
 MAP_LINES = 60
@@ -230,6 +236,7 @@ class Result:
     summary: str                    # one line for the timeline and for old steps
     changed: tuple = ()             # paths whose content changed
     blocked: str = ""               # path | secret: a safety rule refused it
+    out: str = ""                   # run_check: the file the command's whole output was copied to (P-043)
 
 
 def _span(seconds: int) -> str:
@@ -244,11 +251,12 @@ def _fail(msg: str, blocked: str = "") -> Result:
     return Result(False, msg, msg.split("\n", 1)[0][:160], blocked=blocked)
 
 
-def _for_model(text: str) -> str:
+def _for_model(text: str, pointer: str = "") -> str:
     """What the model sees of one result: all of it up to MODEL_RESULT_CHARS, else its head and its tail.
 
     A failing test, an error and a summary come at the end of a command's output, so the last MODEL_TAIL_CHARS
-    are always kept whole. Both cuts move to a line end when one is close."""
+    are always kept whole. Both cuts move to a line end when one is close. `pointer` (P-043) is a line put just after
+    the cut marker, so the way to the left-out text sits where it is missing and the tail still ends the result."""
     if len(text) <= MODEL_RESULT_CHARS:
         return text
     head = text[:MODEL_HEAD_CHARS]
@@ -259,7 +267,85 @@ def _for_model(text: str) -> str:
     nl = text.rfind("\n", start - CUT_SLACK, start)
     if nl != -1:
         start = nl + 1
-    return f"{head}\n... ({start - len(head)} characters left out) ...\n{text[start:]}"
+    return f"{head}\n... ({start - len(head)} characters left out) ...{pointer}\n{text[start:]}"
+
+
+# ── kept results: read_output and the way back to an older result (P-043, docs/VIBE-AGENT-SPILL-DESIGN.md) ──
+
+def _lines_of(text: str) -> list:
+    lines = text.replace("\r\n", "\n").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _pointer(n: int, lines: int) -> str:
+    """The line at the cut of a result the model sees in part (see _for_model)."""
+    return f"\n(This result is shown in part. Its text is kept, {lines} lines: @@ read_output {n} FIRST-LAST shows any of them.)"
+
+
+def _spill_file(pid: str, run_id: str, n) -> "Path | None":
+    """Where the engine keeps step n's command output: .vibe/runs/<run>/out/<n>.txt. Only the engine writes there."""
+    if not RUN_ID_RE.match(str(run_id)) or not isinstance(n, int) or isinstance(n, bool) or n < 1:
+        return None
+    return vp.project_dir(pid) / vp.META_DIR / RUNS_DIR / run_id / OUT_DIR / f"{n}.txt"
+
+
+def _read_spill(path) -> "bytes | None":
+    """A kept output file, never through a link and never more than the cap. None when it is not there."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except (OSError, TypeError):
+        return None
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            return None
+        return f.read(cmdmod.SPILL_BYTES + 1)
+
+
+def _drop_spill(path) -> None:
+    """Delete a copy that is not needed, and its run's folders when they are left empty."""
+    if not path:
+        return
+    p = Path(path)
+    try:
+        p.unlink(missing_ok=True)
+        for d in (p.parent, p.parent.parent):       # out/, then the run's own folder; rmdir leaves a full one alone
+            d.rmdir()
+    except OSError:
+        pass
+
+
+def _kept_lines(pid: str, t) -> "list | None":
+    """The lines read_output gives back of one result: its kept file, else the result text the run holds."""
+    if t.saved:
+        data = _read_spill(_spill_file(pid, t.saved, t.n))
+        return None if data is None else _lines_of(cmdmod.clean(data))
+    return _lines_of(t.full) if t.full else None
+
+
+def _way_back(t) -> str:
+    """How the model gets an older, shortened result back, or "" when there is nothing to get back."""
+    if t.name == "read_file" and t.ok:
+        path = t.read_path or t.arg
+        rng = t.arg[len(path):] if t.arg.startswith(path) else ""
+        return f"@@ read_file {shlex.quote(path)}{rng} reads it again"
+    if t.name == "read_output" and t.ok:
+        return f"@@ read_output {t.arg} shows it again"
+    if t.name in READABLE and (t.full or t.saved):
+        return f"@@ read_output {t.n} shows it again"
+    return ""
+
+
+def _fitting(rows: list, room: int) -> int:
+    """How many whole rows fit in `room` characters (at least one)."""
+    keep = size = 0
+    for row in rows:
+        size += len(row) + 1
+        if size > room and keep:
+            break
+        keep += 1
+    return keep
 
 
 def _edit_key(path: str) -> str:
@@ -341,17 +427,43 @@ def _t_read_file(run: "Run", path: str, first: int, last) -> Result:
         return _fail(f"The file has only {total} lines.")
     end = min(last or total, total, first + READ_LINES - 1)
     rows = proto.numbered(lines[first - 1:end], first, width_to=total).split("\n")
-    room = MODEL_RESULT_CHARS - 2 * len(path) - 80      # whole lines that fit in what the model sees, beside the header
-    keep = size = 0
-    for row in rows:
-        size += len(row) + 1
-        if size > room and keep:
-            break
-        keep += 1
+    keep = _fitting(rows, MODEL_RESULT_CHARS - 2 * len(path) - 80)   # whole lines that fit in what the model sees, beside the header
     end = first + keep - 1
     head = f"{path}, lines {first}-{end} of {total}"
     more = f" (more lines follow: @@ read_file {path} {end + 1}-)" if end < total else ""
     return Result(True, head + more + "\n" + "\n".join(rows[:keep]), f"Read {head}")
+
+
+def _t_read_output(run: "Run", n: int, first: int, last) -> Result:
+    """Numbered lines of an earlier result of this run (P-043): its kept file, or the text the run holds.
+
+    A read or a change of a file is never given back from here: the model reads the file itself, as it is now."""
+    t = next((x for x in reversed(run.turns) if x.n == n), None)
+    if t is None:
+        return _fail(f"There is no result {n} to read. Use the number of a [RESULT n ...] line.")
+    if t.name == "read_file":
+        path = shlex.quote(t.read_path or t.arg.split(" ")[0])
+        return _fail(f"Result {n} is a read of a file. Read the file itself with @@ read_file {path}, so you get it as it is now.")
+    if t.name in ("edit_file", "write_file", "delete_file"):
+        return _fail(f"Result {n} changed a file. Read the file itself with read_file to see it as it is now.")
+    if t.name == "read_output":
+        return _fail(f"Result {n} is itself a read_output. Use @@ read_output {t.arg} again.")
+    lines = _kept_lines(run.pid, t) if t.name in READABLE else None
+    if lines is None:
+        return _fail(f"The text of result {n} is no longer kept." if t.saved else f"Result {n} has no text to read again.")
+    total = len(lines)
+    label = f"Result {n} ({(t.name + ' ' + t.arg).strip()})"
+    if total == 0:
+        return Result(True, f"{label} is empty.", f"Read result {n} (empty)")
+    if first > total:
+        return _fail(f"Result {n} has only {total} lines.")
+    end = min(last or total, total, first + READ_LINES - 1)
+    rows = proto.numbered(lines[first - 1:end], first, width_to=total).split("\n")
+    keep = _fitting(rows, MODEL_RESULT_CHARS - len(label) - 100)
+    end = first + keep - 1
+    head = f"{label}, lines {first}-{end} of {total}"
+    more = f" (more lines follow: @@ read_output {n} {end + 1}-)" if end < total else ""
+    return Result(True, head + more + "\n" + "\n".join(rows[:keep]), f"Read result {n}, lines {first}-{end} of {total}")
 
 
 def _search_texts(run: "Run", where: str, match):
@@ -522,6 +634,9 @@ class _Turn:
     read_path: str = ""
     stale: bool = False
     after: str = ""             # engine-written lines after the result's [END RESULT]: the owner's note (P-044)
+    full: str = ""              # the whole result text the run holds, for read_output (READABLE tools only, P-043)
+    saved: str = ""             # the run whose out/ folder keeps this step's command output, when it was kept
+    lines: int = 0              # that file's line count
 
 
 @dataclass
@@ -543,9 +658,9 @@ def _tool_arg(call: proto.Call) -> str:
     a = call.args
     if call.name == "list_files":
         return a.get("folder") or "."
-    if call.name == "read_file":
+    if call.name in ("read_file", "read_output"):
         rng = f" {a['first']}-{a['last'] or ''}" if (a["first"] != 1 or a["last"]) else ""
-        return a["path"] + rng
+        return (a["path"] if call.name == "read_file" else str(a["n"])) + rng
     if call.name == "search":
         flags = ("--regex " if a.get("regex") else "") + {"files": "--files ", "count": "--count "}.get(a.get("mode"), "")
         return flags + f'"{a["pattern"][:60]}"' + (f" in {a['path']}" if a["path"] else "")
@@ -591,6 +706,7 @@ class Run:
         self._cuts = 0
         self._model_fails = 0
         self._edit_fails: dict[str, int] = {}
+        self._spilled = 0           # bytes of command output this run keeps in its out/ folder (P-043)
         self._questions = 0
         self._answer: dict | None = None
         self._qid = ""
@@ -740,8 +856,42 @@ class Run:
             for p in files[KEEP_RUNS:]:
                 if p.stem not in live:
                     p.unlink()
+            for p in d.iterdir():                   # a run's kept output goes with its log (P-043); never a link
+                if (RUN_ID_RE.match(p.name) and p.name not in live and not p.is_symlink() and p.is_dir()
+                        and not (d / f"{p.name}.jsonl").exists()):
+                    shutil.rmtree(p, ignore_errors=True)
         except (OSError, VibeError):
             pass
+
+    def _out_path(self, n: int) -> "str | None":
+        """A fresh place for step n's command output, its folders made 0700. None when there is none."""
+        path = None
+        try:
+            path = _spill_file(self.pid, self.id, n)
+            if path is not None:
+                path.parent.parent.parent.mkdir(parents=True, exist_ok=True, mode=0o700)    # .vibe/runs, as the log
+                path.parent.parent.mkdir(exist_ok=True, mode=0o700)
+                path.parent.mkdir(exist_ok=True, mode=0o700)
+        except (OSError, VibeError):
+            return None
+        return str(path) if path is not None else None
+
+    def _keep(self, n: int, name: str, result: Result) -> tuple:
+        """(pointer line, run id of the kept file or "", its lines) for one result (P-043).
+
+        Only a result the model sees in part gets the pointer. A command's copied output is kept only then; any other
+        copy is deleted at once. Without a kept file, read_output gives back the text the run holds."""
+        long = name in READABLE and len(result.text) > MODEL_RESULT_CHARS
+        if result.out:
+            data = _read_spill(result.out) if long else None
+            if data is not None:
+                self._spilled += len(data)
+                lines = len(_lines_of(cmdmod.clean(data)))
+                return _pointer(n, lines), self.id, lines
+            _drop_spill(result.out)
+        if long:
+            return _pointer(n, len(_lines_of(result.text))), "", 0
+        return "", "", 0
 
     # the loop -----------------------------------------------------------
 
@@ -916,12 +1066,15 @@ class Run:
         elif result.ok and result.changed:
             for p in result.changed:
                 self._edit_fails.pop(p, None)
-        wrapped = proto.wrap_result(n, call.name, arg, _for_model(result.text) + advice + warn, result.ok)
-        self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(result.text + advice)[:DISPLAY_CHARS], tool=call.name)
+        pointer, saved, lines = self._keep(n, call.name, result)
+        wrapped = proto.wrap_result(n, call.name, arg, _for_model(result.text, pointer) + advice + warn, result.ok)
+        kept = {"out": {"lines": lines}} if saved else {}       # so a continued run finds the file (P-043)
+        self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(result.text + advice)[:DISPLAY_CHARS], tool=call.name, **kept)
         _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": call.name, "ok": result.ok, "ms": ms})
         short = text if len(text) <= 600 else (call.note[:300] + "\n" + f"@@ {call.name} {arg}\n(content left out)")
         self.turns.append(_Turn(n, call.name, arg, text[:8000], short, wrapped, result.summary, result.ok,
-                                read_path=call.args.get("path", "") if call.name == "read_file" else ""))
+                                read_path=call.args.get("path", "") if call.name == "read_file" else "",
+                                full=result.text if call.name in READABLE else "", saved=saved, lines=lines))
         if result.ok and result.changed:
             self._checkpoint(n, f"Agent: {call.name} {result.changed[0]}", result.changed)
         elif call.name == "run_check":
@@ -965,6 +1118,8 @@ class Run:
                 return _t_list_files(self, a["folder"])
             if call.name == "read_file":
                 return _t_read_file(self, a["path"], a["first"], a["last"])
+            if call.name == "read_output":
+                return _t_read_output(self, a["n"], a["first"], a["last"])
             if call.name == "search":
                 return _t_search(self, a["pattern"], a["path"], a.get("regex", False), a.get("mode", "lines"))
             if call.name == "edit_file":
@@ -1041,11 +1196,14 @@ class Run:
                     vp.allow_command(self.pid, command, network)
                 except VibeError:
                     pass
+        spill = self._out_path(n) if self._spilled < SPILL_RUN_BYTES else None     # the engine's copy of the output (P-043)
         t0 = _mono()
         try:
             res = _run_command(vp.project_dir(self.pid), vp.vibe_root(), command, network=network,
-                               timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())), stop_event=self.stop_event)
+                               timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())), stop_event=self.stop_event,
+                               spill=spill)
         except cmdmod.Refused as e:
+            _drop_spill(spill)
             return Result(False, str(e), "Command not run")
         self._command_audit(n, decision, command, network, res.exit_code, int((_mono() - t0) * 1000))
         if res.stopped:
@@ -1062,7 +1220,12 @@ class Run:
                       f"project, and has {'web access only' if network else 'no network'}.")
         ok = res.exit_code == 0
         state = "stopped" if res.stopped else "timed out" if res.timed_out else f"exit {res.exit_code}"
-        return Result(ok, head + "\n" + (res.output.strip("\n") or "(no output)") + extra, f"Ran {command[:50]}: {state} ({res.seconds} s)")
+        out = Result(ok, head + "\n" + (res.output.strip("\n") or "(no output)") + extra, f"Ran {command[:50]}: {state} ({res.seconds} s)")
+        if getattr(res, "spilled", False) and spill:
+            out.out = spill                             # _keep decides whether it stays
+        else:
+            _drop_spill(spill)
+        return out
 
     def _ask(self, n: int, call: proto.Call) -> "Result | None":
         """Wait for the owner. None when the run ended while waiting."""
@@ -1128,7 +1291,9 @@ class Run:
             return f"[RESULT {t.n} {t.name} {t.arg}] The file has changed since. Read it again if you need it."
         if mode == "full":
             return t.result
-        return f"[RESULT {t.n} {t.name} {t.arg}] {t.summary} (shortened to save space)" + ("" if t.ok else " (this step failed)")
+        back = _way_back(t)                     # an older result names its way back (P-043)
+        return (f"[RESULT {t.n} {t.name} {t.arg}] {t.summary} (shortened to save space" + (f"; {back})" if back else ")")
+                + ("" if t.ok else " (this step failed)"))
 
     @staticmethod
     def _estimate(msgs: list) -> int:
@@ -1150,7 +1315,8 @@ class Run:
                 body = self._result_text(t, modes[i])
                 if shrink and i == len(self.turns) - 1 and len(body) > shrink:
                     half = shrink // 2
-                    body = body[:half] + "\n... (cut to fit the context) ...\n" + body[-half:]
+                    back = f"; @@ read_output {t.n} shows all of it" if t.name in READABLE and (t.full or t.saved) else ""
+                    body = body[:half] + f"\n... (cut to fit the context{back}) ...\n" + body[-half:]
                 if t.after:                                     # after [END RESULT], never inside the data
                     body += "\n\n" + t.after
                 users.append(body)
@@ -1329,8 +1495,10 @@ def _replayed_reply(text: str, name: str, arg: str):
     return text, call, (call.note if call else scan.note)
 
 
-def _turn_from_log(n: int, tool, reply: str, ev: dict) -> _Turn:
-    """One step of an ended run, as the model saw it then: its reply, and its result in the wrapper."""
+def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str = "") -> _Turn:
+    """One step of an ended run, as the model saw it then: its reply, and its result in the wrapper.
+
+    `owner` is the run whose log this is: a command output it kept is read from its out/ folder (P-043)."""
     ok = ev.get("ok") is not False
     output = str(ev.get("output") or "")
     summary = str(ev.get("summary") or "")[:160]
@@ -1342,8 +1510,16 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict) -> _Turn:
     read_path = ""
     if name == "read_file":
         read_path = call.args.get("path", "") if call else arg.split(" ")[0]
+    full = output if name in READABLE else ""
+    saved, lines, kept = "", 0, ev.get("out")
+    if full and pid and isinstance(kept, dict) and isinstance(kept.get("lines"), int) and not isinstance(kept["lines"], bool):
+        f = _spill_file(pid, owner, n)
+        if f is not None and f.is_file() and not f.is_symlink():
+            saved, lines = owner, max(0, kept["lines"])
+    pointer = _pointer(n, lines if saved else len(_lines_of(output))) if full and len(output) > MODEL_RESULT_CHARS else ""
     return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
-                 proto.wrap_result(n, name, arg, _for_model(output), ok), summary, ok, read_path=read_path)
+                 proto.wrap_result(n, name, arg, _for_model(output, pointer), ok), summary, ok, read_path=read_path,
+                 full=full, saved=saved, lines=lines)
 
 
 def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
@@ -1366,7 +1542,7 @@ def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
                  proto.wrap_result(n, name, arg, msg, ok=False), "The run stopped during this step", False)
 
 
-def _rebuild_one(events: list, turns: list, by_n: dict, notes: list) -> int:
+def _rebuild_one(events: list, turns: list, by_n: dict, notes: list, pid: str = "", owner: str = "") -> int:
     """Append one run's turns from its log; the owner's notes are kept for later. Returns the last step number."""
     replies, tools, done, last = {}, {}, set(), 0
     for ev in events:
@@ -1377,7 +1553,7 @@ def _rebuild_one(events: list, turns: list, by_n: dict, notes: list) -> int:
             tools[n] = (str(ev.get("name") or ""), str(ev.get("arg") or ""))
             last = max(last, n)
         elif kind == "result" and n is not None:
-            t = _turn_from_log(n, tools.get(n), replies.get(n, ""), ev)
+            t = _turn_from_log(n, tools.get(n), replies.get(n, ""), ev, pid, owner)
             turns.append(t)
             by_n[n] = t
             done.add(n)
@@ -1400,7 +1576,7 @@ def _rebuild(pid: str, run_id: str, events: list):
     """(turns, last step, all turns count) of a run and of the runs it continued, oldest first."""
     chain, rid, evs = [], run_id, events
     while True:
-        chain.append(evs)
+        chain.append((rid, evs))                    # each log with its run id: kept outputs live in that run's folder
         start = next((e for e in evs if e.get("type") == "start"), {})
         rid = start.get("continues") if isinstance(start.get("continues"), str) else None
         if not rid or len(chain) > MAX_CHAIN:
@@ -1410,8 +1586,8 @@ def _rebuild(pid: str, run_id: str, events: list):
         except VibeError:
             break                                   # an older log was trimmed: start from what is left
     turns, by_n, notes, last = [], {}, [], 0
-    for evs in reversed(chain):
-        last = max(last, _rebuild_one(evs, turns, by_n, notes))
+    for rid, evs in reversed(chain):
+        last = max(last, _rebuild_one(evs, turns, by_n, notes, pid, rid))
     for ev in notes:
         t = by_n.get(_step_of(ev))
         if t is not None and isinstance(ev.get("text"), str) and ev["text"].strip():

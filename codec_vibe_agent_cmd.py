@@ -9,7 +9,8 @@ This module only runs it, and runs it with the least it needs:
   network  none; or, when the owner ticked it, web ports and name lookups only, never this Mac
   apps     no Apple Events, no clipboard, no keychain service, no screen, no camera, no microphone
   limits   a time limit (the whole process group is stopped), no input, a size limit on files it writes,
-           and the output kept as its first 4 KB and last 12 KB
+           and the output kept as its first 4 KB and last 12 KB; CODEC itself (never the command) may copy
+           the first 1 MB of it to a file of the run (P-043, docs/VIBE-AGENT-SPILL-DESIGN.md)
 
 The sandbox is `sandbox-exec` with a profile written for each command. Nothing runs outside it:
 where it is not available, `available()` is false and the agent is not offered `run_check`.
@@ -35,6 +36,8 @@ DEFAULT_TIMEOUT = 60
 MAX_TIMEOUT = 300
 HEAD_BYTES = 4 * 1024
 TAIL_BYTES = 12 * 1024
+SPILL_BYTES = 1024 * 1024       # the most one kept output file holds, its end line included (P-043)
+_SPILL_ROOM = 256               # left free at the end of a full file for that end line
 MAX_COMMAND_CHARS = 500
 STOP_GRACE_SECONDS = 2.0
 _EXTRA_PATH = ("/opt/homebrew/bin", "/usr/local/bin")
@@ -197,31 +200,93 @@ class Result:
     stopped: bool = False
     cut_bytes: int = 0          # how much of the output was left out
     denied: bool = False        # the sandbox said "not permitted" somewhere in the output
+    spilled: bool = False       # the spill file holds the output (its first SPILL_BYTES), complete and closed
+
+
+def clean(data: bytes) -> str:
+    """Output bytes as the model reads them: UTF-8, colour codes removed, Windows line ends made plain."""
+    return _ANSI.sub("", data.decode("utf-8", errors="replace")).replace("\r\n", "\n")
+
+
+def _open_spill(path):
+    """The engine's own file for the whole output (0600, never through a link), or None when there is none."""
+    if not path:
+        return None
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    except OSError:
+        return None
+    return os.fdopen(fd, "wb")
 
 
 class _Collector:
-    """Keeps the first HEAD_BYTES and the last TAIL_BYTES of what a process prints, and counts the rest."""
+    """Keeps the first HEAD_BYTES and the last TAIL_BYTES of what a process prints, and counts the rest.
 
-    def __init__(self):
+    With a spill file (P-043) it also copies what it reads into that file as it comes, up to SPILL_BYTES in all; past
+    that it only counts, and close_spill() ends the file with a line that says how much there was. A file that cannot
+    be written is given up, never the reading: the pipe must keep draining or the command would block."""
+
+    def __init__(self, spill=None):
         self.head = bytearray()
         self.tail = bytearray()
         self.total = 0
+        self._spill = spill
+        self._saved = 0
+        self._spill_ok = spill is not None
+        self._lock = threading.Lock()       # the reader thread adds while the runner closes and reads
 
     def add(self, chunk: bytes) -> None:
-        self.total += len(chunk)
-        room = HEAD_BYTES - len(self.head)
-        if room > 0:
-            self.head += chunk[:room]
-            chunk = chunk[room:]
-        if chunk:
-            self.tail += chunk
-            if len(self.tail) > TAIL_BYTES:
-                del self.tail[:len(self.tail) - TAIL_BYTES]
+        with self._lock:
+            self.total += len(chunk)
+            if self._spill is not None:
+                self._copy(chunk)
+            room = HEAD_BYTES - len(self.head)
+            if room > 0:
+                self.head += chunk[:room]
+                chunk = chunk[room:]
+            if chunk:
+                self.tail += chunk
+                if len(self.tail) > TAIL_BYTES:
+                    del self.tail[:len(self.tail) - TAIL_BYTES]
+
+    def _copy(self, chunk: bytes) -> None:
+        part = chunk[:max(0, SPILL_BYTES - _SPILL_ROOM - self._saved)]
+        if not part:
+            return
+        try:
+            self._spill.write(part)
+            self._saved += len(part)
+        except (OSError, ValueError):
+            self._give_up()
+
+    def _give_up(self) -> None:
+        self._spill_ok = False
+        try:
+            self._spill.close()
+        except (OSError, ValueError):
+            pass
+        self._spill = None
+
+    def close_spill(self) -> bool:
+        """Finish the spill file. True when it holds the output (up to the cap, then the end line). Safe to call twice."""
+        with self._lock:
+            if self._spill is None:
+                return self._spill_ok
+            try:
+                if self.total > self._saved:
+                    self._spill.write((f"\n... (the command printed {self.total} bytes in all; this file keeps the first "
+                                       f"{self._saved}, and the end of the output is in the result) ...\n").encode())
+                self._spill.close()
+            except (OSError, ValueError):
+                self._spill_ok = False
+            self._spill = None
+            return self._spill_ok
 
     def text(self) -> tuple[str, int]:
-        cut = max(0, self.total - len(self.head) - len(self.tail))
-        body = bytes(self.head) + (f"\n... ({cut} bytes left out) ...\n".encode() if cut else b"") + bytes(self.tail)
-        return _ANSI.sub("", body.decode("utf-8", errors="replace")).replace("\r\n", "\n"), cut
+        with self._lock:
+            cut = max(0, self.total - len(self.head) - len(self.tail))
+            body = bytes(self.head) + (f"\n... ({cut} bytes left out) ...\n".encode() if cut else b"") + bytes(self.tail)
+        return clean(body), cut
 
 
 def _stop_group(proc: subprocess.Popen) -> None:
@@ -238,8 +303,10 @@ def _stop_group(proc: subprocess.Popen) -> None:
 
 
 def run(project, vibe_root, command: str, *, network: bool = False, timeout: float = DEFAULT_TIMEOUT,
-        stop_event: threading.Event | None = None) -> Result:
-    """Run one command in the sandbox, in the project folder. Never raises for what the command does."""
+        stop_event: threading.Event | None = None, spill=None) -> Result:
+    """Run one command in the sandbox, in the project folder. Never raises for what the command does.
+
+    `spill` is a path CODEC chose for a copy of the output (P-043); this process writes it, never the command."""
     if not available():
         raise Refused("The sandbox is not available on this computer, so no command was run.")
     timeout = max(1.0, min(float(timeout), MAX_TIMEOUT))
@@ -248,6 +315,7 @@ def run(project, vibe_root, command: str, *, network: bool = False, timeout: flo
     home = os.path.realpath(os.path.expanduser("~"))
     temp = os.path.realpath(tempfile.mkdtemp(prefix="vibe-agent-"))
     prof_file = None
+    box = None
     t0 = time.monotonic()
     try:
         fd, prof_file = tempfile.mkstemp(prefix="vibe-agent-", suffix=".sb", dir=temp)
@@ -256,7 +324,7 @@ def run(project, vibe_root, command: str, *, network: bool = False, timeout: flo
         proc = subprocess.Popen(argv(prof_file, command, timeout), cwd=proj, env=command_env(temp),
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 start_new_session=True, preexec_fn=_limits)
-        box = _Collector()
+        box = _Collector(_open_spill(spill))
 
         def pump():
             try:
@@ -291,8 +359,11 @@ def run(project, vibe_root, command: str, *, network: bool = False, timeout: flo
             proc.stdout.close()
         except Exception:
             pass
+        spilled = box.close_spill()
         text, cut = box.text()
         return Result(None if (timed_out or stopped) else proc.returncode, text, round(time.monotonic() - t0, 1), timed_out, stopped, cut,
-                      bool(_DENIED_HINT.search(text)))
+                      bool(_DENIED_HINT.search(text)), spilled)
     finally:
+        if box is not None:
+            box.close_spill()
         shutil.rmtree(temp, ignore_errors=True)
