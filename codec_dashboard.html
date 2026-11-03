@@ -865,6 +865,10 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
         <h2 class="mcp-intro-title" id="connPermsH">macOS permissions</h2>
         <p class="mcp-intro-sub" id="connPermsNote"></p>
         <div id="connPerms" class="mcp-list"><div class="refreshing">Loading...</div></div>
+        <!-- Check my Mac (P-022; docs/DOCTOR-DESIGN.md): codec_doctor, read only -->
+        <div class="mcp-state conn-doctor-actions"><button type="button" class="mcp-btn mcp-btn-primary" id="connDoctorBtn">Check my Mac</button><a class="mcp-btn" id="connDoctorZip" href="/api/connections/doctor/report" download>Copy report</a></div>
+        <p class="mcp-intro-sub conn-doctor-sub">Check my Mac looks for old copies of keys, files and logs other accounts can read, services that need a restart or stopped reporting, the model server and these permissions. It only reads. Copy report saves the result as a zip for support: counts and setting names, no keys, no file contents, no home-folder path.</p>
+        <div id="connDoctor" class="mcp-list" aria-live="polite"></div>
       </section>
       <div class="mcp-intro">
         <div class="mcp-intro-title">External MCP connectors</div>
@@ -1675,6 +1679,9 @@ async function connBridgeTest(bridge, to, who) {
 async function loadConnPerms() {
   var box = document.getElementById('connPerms');
   if (!box) return;
+  // Wired first: Check my Mac still works when the permission list cannot load.
+  var btn = document.getElementById('connDoctorBtn');
+  if (btn && !btn.__wired) { btn.__wired = true; btn.addEventListener('click', connDoctorRun); }
   var d;
   try { d = await _connJSON('/api/connections/permissions'); }
   catch (e) { box.innerHTML = '<div class="mcp-empty">Could not check the permissions: ' + escHtml(e.message) + '</div>'; return; }
@@ -1685,8 +1692,38 @@ async function loadConnPerms() {
       : _connState(false, '', 'Checked when first used');
     var link = mac && /^x-apple\.systempreferences:/.test(p.url || '') ? '<div class="mcp-state"><a class="mcp-btn" href="' + escHtml(p.url) + '">Open System Settings</a></div>' : '';
     return '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">' + escHtml(p.name) + '</span>' + st + '</div>' +
-      '<div class="mcp-note">' + escHtml(p.where) + '</div>' + link + '</div></div>';
+      '<div class="mcp-note">' + escHtml(p.where) + '</div>' + (p.detail ? '<div class="mcp-note">' + escHtml(p.detail) + '</div>' : '') + link + '</div></div>';
   }).join('');
+}
+
+// Check my Mac (P-022; docs/DOCTOR-DESIGN.md): what to fix first, then one line of what is fine.
+// A plain function of the report, so Node tests it without a browser; every value goes through escHtml.
+function connDoctorHtml(d, mac) {
+  var rank = { FAIL: 0, WARN: 1 }, checks = (d && d.checks) || [], s = (d && d.summary) || {};
+  var bad = checks.filter(function (c) { return c.status === 'FAIL' || c.status === 'WARN'; })
+    .sort(function (a, b) { return rank[a.status] - rank[b.status]; });
+  var titles = function (sts) { return checks.filter(function (c) { return sts.indexOf(c.status) >= 0; }).map(function (c) { return c.title; }); };
+  var fine = titles(['OK']), unknown = titles(['INFO', 'N/A']);
+  var h = '<div class="mcp-note">' + escHtml((s.FAIL || 0) + ' to fix, ' + (s.WARN || 0) + ' to check, ' + (s.OK || 0) + ' fine.') + '</div>';
+  h += bad.map(function (c) {
+    var st = c.status === 'FAIL' ? '<span class="mcp-hint conn-bad">To fix</span>' : '<span class="mcp-hint">To check</span>';
+    var link = mac && /^x-apple\.systempreferences:/.test(c.url || '') ? '<div class="mcp-state"><a class="mcp-btn" href="' + escHtml(c.url) + '">Open System Settings</a></div>' : '';
+    return '<div class="mcp-card" data-doctor="' + escHtml(c.id) + '"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">' + escHtml(c.title) + '</span>' + st + '</div>' +
+      '<div class="mcp-note">' + escHtml(c.detail) + '</div>' + (c.fix ? '<div class="mcp-note">Fix: ' + escHtml(c.fix) + '</div>' : '') + link + '</div></div>';
+  }).join('');
+  if (fine.length) h += '<div class="mcp-note">Fine: ' + escHtml(fine.join(', ')) + '.</div>';
+  if (unknown.length) h += '<div class="mcp-note">Not known or not checked here: ' + escHtml(unknown.join(', ')) + '.</div>';
+  if (d && d.permissions_note) h += '<div class="mcp-note">' + escHtml(d.permissions_note) + '</div>';
+  return h;
+}
+async function connDoctorRun() {
+  var box = document.getElementById('connDoctor'), btn = document.getElementById('connDoctorBtn');
+  if (!box) return;
+  if (btn) btn.disabled = true;
+  box.innerHTML = '<div class="refreshing">Checking this Mac...</div>';
+  try { box.innerHTML = connDoctorHtml(await _connJSON('/api/connections/doctor'), _connOnMac()); }
+  catch (e) { box.innerHTML = '<div class="mcp-empty">The check did not run: ' + escHtml(e.message) + '</div>'; }
+  finally { if (btn) btn.disabled = false; }
 }
 
 // ── Connector (external MCP) tab ──

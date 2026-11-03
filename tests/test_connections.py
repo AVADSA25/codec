@@ -359,16 +359,133 @@ def test_imessage_handle_and_text_are_arguments_not_script(cn, monkeypatch):
 # ── macOS permissions ─────────────────────────────────────────────────────────
 
 def test_the_permission_list(cn, monkeypatch):
+    import codec_doctor
     import routes.skills_page as sp
     monkeypatch.setattr(sp, "screen_recording_ok", lambda: True)
     monkeypatch.setattr(sp, "accessibility_ok", lambda: False)
     monkeypatch.setattr(cn.c, "messages_db_readable", lambda: False)
+    monkeypatch.setattr(codec_doctor, "microphone_ok", lambda: None)
+    monkeypatch.setattr(codec_doctor, "automation_states", lambda: {"Messages": "not open", "Notes": "not asked"})
     d = cn.client.get("/api/connections/permissions").json()
     states = {i["key"]: i["state"] for i in d["items"]}
     assert states == {"screen": "ok", "accessibility": "missing", "full_disk": "missing",
                       "microphone": "unknown", "automation": "unknown"}
     assert all(i["url"].startswith("x-apple.systempreferences:com.apple.preference.security?Privacy_") for i in d["items"])
     assert d["items"][0]["where"] == "System Settings > Privacy & Security > Screen Recording" and "dashboard" in d["note"]
+    assert "cannot read their grants" in d["note"], "the bridge and voice grants are not the dashboard's (P-022)"
+
+
+def test_the_permission_list_reads_microphone_and_automation(cn, monkeypatch):
+    """P-022: no fixed 'unknown' for the two macOS can answer without a prompt."""
+    import codec_doctor
+    import routes.skills_page as sp
+    monkeypatch.setattr(sp, "screen_recording_ok", lambda: True)
+    monkeypatch.setattr(sp, "accessibility_ok", lambda: True)
+    monkeypatch.setattr(cn.c, "messages_db_readable", lambda: True)
+    monkeypatch.setattr(codec_doctor, "microphone_ok", lambda: False)
+    monkeypatch.setattr(codec_doctor, "automation_states",
+                        lambda: {"Messages": "denied", "Reminders": "allowed", "Notes": "not open"})
+    items = {i["key"]: i for i in cn.client.get("/api/connections/permissions").json()["items"]}
+    assert items["microphone"]["state"] == "missing" and items["automation"]["state"] == "missing"
+    assert items["automation"]["detail"] == "Not allowed: Messages. Allowed: Reminders. Checked when open: Notes."
+    monkeypatch.setattr(codec_doctor, "microphone_ok", lambda: True)
+    monkeypatch.setattr(codec_doctor, "automation_states", lambda: {"Messages": "allowed", "Notes": "not open"})
+    items = {i["key"]: i for i in cn.client.get("/api/connections/permissions").json()["items"]}
+    assert items["microphone"]["state"] == "ok" and items["automation"]["state"] == "ok"
+    src = (REPO / "routes" / "connections.py").read_text(encoding="utf-8")
+    assert '"microphone": None' not in src and '"automation": None' not in src
+
+
+# ── Check my Mac (P-022) ──────────────────────────────────────────────────────
+
+def test_the_doctor_routes_answer_json_and_a_zip(cn, monkeypatch):
+    import io
+    import zipfile
+
+    import codec_doctor as cd
+    home = cn.tmp / "home"
+    (home / ".codec").mkdir(parents=True)
+    (home / ".codec" / "config.json.bak-1").write_text(json.dumps({"llm_api_key": "sk-" + "ant-" + "Q7" * 20}))
+    p = cd.Paths(home=str(home), codec_dir=str(home / ".codec"), zshrc=str(home / ".zshrc"),
+                 pm2_home=str(home / ".pm2"), app_logs=str(home / "logs"), repo=str(cn.tmp),
+                 health_dir=str(home / "health"), messages_db=str(home / "chat.db"))
+    monkeypatch.setattr(cd, "default_paths", lambda repo=None: p)
+    monkeypatch.setattr(cd, "pm2_procs", lambda paths: None)
+    monkeypatch.setattr(cd, "listeners", lambda: [])
+    monkeypatch.setattr(cd, "model_answers", lambda base, timeout=3: "refused")
+    monkeypatch.setattr(cd, "_on_mac", lambda: False)
+    d = cn.client.get("/api/connections/doctor").json()
+    ids = {c["id"]: c for c in d["checks"]}
+    assert ids["config_backups"]["status"] == "FAIL" and ids["model_server"]["status"] == "FAIL"
+    assert d["summary"]["FAIL"] == 2 and "Q7Q7" not in json.dumps(d)
+    r = cn.client.get("/api/connections/doctor/report")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert r.headers["content-disposition"].startswith('attachment; filename="codec-doctor-')
+    assert r.headers["cache-control"] == "no-store"
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    assert sorted(z.namelist()) == ["codec-doctor.json", "codec-doctor.txt"]
+    body = b"".join(z.read(n) for n in z.namelist()).decode()
+    assert "Q7Q7" not in body and str(home) not in body and "llm_api_key" in body
+
+
+def test_the_doctor_buttons_sit_in_the_permissions_section():
+    sec = HOME[HOME.index('aria-labelledby="connPermsH"'):HOME.index('<div class="mcp-intro">', HOME.index('id="connPermsH"'))]
+    assert '<button type="button" class="mcp-btn mcp-btn-primary" id="connDoctorBtn">Check my Mac</button>' in sec
+    assert '<a class="mcp-btn" id="connDoctorZip" href="/api/connections/doctor/report" download>Copy report</a>' in sec
+    assert 'id="connDoctor"' in sec and "no keys, no file contents, no home-folder path" in sec
+    block = HOME[HOME.index("// ── Connections (P3.9"):HOME.index("// ── Connector (external MCP) tab ──")]
+    assert "_connJSON('/api/connections/doctor')" in block and "btn.addEventListener('click', connDoctorRun)" in block
+    perms = block[block.index("async function loadConnPerms("):block.index("function connDoctorHtml(")]
+    assert perms.index("addEventListener('click', connDoctorRun)") < perms.index("_connJSON('/api/connections/permissions')"), \
+        "the button is wired before the permission list loads, so it works when that list fails"
+
+
+_DOCTOR_CARD = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[1], 'utf8');
+const start = html.indexOf('function connDoctorHtml(');
+const src = html.slice(start, html.indexOf('\nasync function connDoctorRun(', start));
+const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const connDoctorHtml = new Function('escHtml', src + '\nreturn connDoctorHtml;')(escHtml);
+const report = JSON.parse(process.argv[2]);
+console.log(JSON.stringify({ mac: connDoctorHtml(report, true), phone: connDoctorHtml(report, false) }));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_the_doctor_card_lists_microphone_and_the_model_server_under_node():
+    """Microphone not allowed and the model server stopped: both listed, each with a one-line fix, and the
+    System Settings link in a Mac browser only (done-when 3)."""
+    report = {"summary": {"FAIL": 1, "WARN": 1, "OK": 2, "INFO": 1, "N/A": 1}, "permissions_note": "Their own <grants>.",
+              "checks": [
+                  {"id": "zshrc", "title": "~/.zshrc", "status": "OK", "detail": "Only you can read it.", "fix": ""},
+                  {"id": "perm_microphone", "title": "Microphone", "status": "WARN",
+                   "detail": "Not allowed, so voice commands, dictation and the wake word does not work.",
+                   "fix": "In System Settings > Privacy & Security > Microphone, turn it on for CODEC.",
+                   "url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"},
+                  {"id": "model_server", "title": "Model server", "status": "FAIL",
+                   "detail": "Nothing answers on port 8083: chat, voice and agents cannot reply. <b>x</b>",
+                   "fix": "pm2 restart qwen3.6 (loading the model takes a few minutes)"},
+                  {"id": "perm_screen", "title": "Screen Recording", "status": "OK", "detail": "Allowed.", "fix": "",
+                   "url": "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"},
+                  {"id": "health_beats", "title": "Service health beats", "status": "INFO", "detail": "None yet.", "fix": ""},
+                  {"id": "code_version", "title": "Services running the newest code", "status": "N/A", "detail": "", "fix": ""}]}
+    out = subprocess.run(["node", "-e", _DOCTOR_CARD, str(REPO / "codec_dashboard.html"), json.dumps(report)],
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    d = json.loads(out.stdout.strip().splitlines()[-1])
+    mac, phone = d["mac"], d["phone"]
+    assert mac.index('data-doctor="model_server"') < mac.index('data-doctor="perm_microphone"'), "what to fix first"
+    assert "1 to fix, 1 to check, 2 fine." in mac and '<span class="mcp-hint conn-bad">To fix</span>' in mac
+    assert "Fix: pm2 restart qwen3.6 (loading the model takes a few minutes)" in mac
+    assert "Fix: In System Settings &gt; Privacy &amp; Security &gt; Microphone, turn it on for CODEC." in mac
+    assert mac.count("Open System Settings") == 1, "a link only for a check that needs one"
+    assert 'href="x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"' in mac
+    assert "Open System Settings" not in phone and "Fix: pm2 restart qwen3.6" in phone
+    assert "Fine: ~/.zshrc, Screen Recording." in mac
+    assert "Not known or not checked here: Service health beats, Services running the newest code." in mac
+    assert "<b>x</b>" not in mac and "&lt;b&gt;x&lt;/b&gt;" in mac and "Their own &lt;grants&gt;." in mac
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS file permissions")

@@ -111,11 +111,13 @@ def _num(value: Any) -> Optional[float]:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
-def read_beats() -> dict:
-    """{name: beat} for every readable beat file. A missing folder gives {}."""
+def read_beats(folder: Optional[str] = None) -> dict:
+    """{name: beat} for every readable beat file in `folder` (default HEALTH_DIR; codec_doctor passes
+    its own). A missing folder gives {}."""
     out: dict = {}
+    folder = folder or HEALTH_DIR
     try:
-        names = sorted(os.listdir(HEALTH_DIR))
+        names = sorted(os.listdir(folder))
     except OSError:
         return out
     for fn in names:
@@ -123,7 +125,7 @@ def read_beats() -> dict:
         if not _NAME_RE.match(name):
             continue
         try:
-            with open(os.path.join(HEALTH_DIR, fn), encoding="utf-8") as f:
+            with open(os.path.join(folder, fn), encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, ValueError):
             continue
