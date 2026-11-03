@@ -61,8 +61,15 @@ continued run (P-044) is a new run with its own pair.
 ## Live effect
 
 The live `self_improve` plugin applies to all tools, so after a dashboard restart it sees `vibe:<tool>` results in
-`post_tool` and runs its throttled, draft-only `on_operation_end` after each Vibe run. A plugin can leave Vibe out
+`post_tool` and runs its throttled, draft-only `on_operation_end` after each Vibe run. Its gap finder
+(`codec_self_improve._find_gaps`, which the live plugin imports from the repo, so no plugin file or allowlist entry
+changes) skips `vibe:<tool>` names: they are not skills. Without that skip, any tool used twice in a run counted as a
+"missing tool", and the end of a run drafted up to three skill proposals (each tool name at most once in 30
+minutes) on the chat model (`llm_base_url`, up to 4000 tokens each), next to the agent's own use of the local model. A plugin can leave Vibe out
 with `if ctx.transport == "vibe": return`; `vibe_agent.hooks: false` turns all of it off for the agent.
+
+Order: when the run ends while a `run_check` waits for the owner (Stop, or no answer in time), `on_operation_end`
+fires inside that wait, and the step's `post_tool` (with the text above) comes after it.
 
 ## Tests
 

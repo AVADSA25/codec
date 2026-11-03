@@ -145,6 +145,8 @@ def _find_gaps(records: list[dict], existing: set[str]) -> list[dict]:
     for r in records:
         if r.get("event") == "chat_feedback":
             continue  # a rating is not a tool call
+        if str(r.get("tool") or "").startswith("vibe:"):
+            continue  # a Vibe agent tool (P-067): not a skill, so no skill proposal can stand in for it
         by_tool[r.get("tool", "unknown")].append(r)
 
     gaps = []
