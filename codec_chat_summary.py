@@ -66,7 +66,8 @@ _MERGE_RULES = (
     "Write only the notes.")
 _NOTES_INTRO = (
     NOTES_START + ". The chat is too long to send in full, so CODEC wrote these notes on its first {n} "
-    "messages. The messages after the notes are given word for word; where they differ from the notes, "
+    "messages, in the order of the chat; where a later note changes an earlier one, the later note is right. "
+    "The messages after the notes are given word for word; where they differ from the notes, "
     "the messages are right. When asked about the earlier part of the chat, answer from these notes; if "
     "a detail is not in them, say that part of the chat is no longer available to you rather than guess.)")
 
