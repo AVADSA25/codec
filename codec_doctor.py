@@ -48,6 +48,9 @@ PERMISSIONS_NOTE = ("These permissions are those of the process that ran this ch
 CODEC_PORTS = {8090: "dashboard", 8091: "MCP server", 8083: "model server", 8084: "speech to text",
                8085: "voice (TTS)"}
 VIBE_PORTS = range(5300, 5400)
+# PM2 apps that run an installed package from the checkout's folder, not the checkout's code, so a pull
+# does not change what they run (the model process, model_pm2_process in config.json, is the other one).
+PACKAGE_APPS = ("kokoro-82m",)  # python3 -m mlx_audio.server
 ALL_INTERFACES = {"*", "0.0.0.0", "[::]", "::", "[::0]"}
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -240,17 +243,25 @@ def _pm2_bin() -> Optional[str]:
     return None
 
 
+def _is_pm2_daemon(pid: int) -> bool:
+    """The process is PM2's own daemon ("PM2 vX: God Daemon (...)"), not another program that got the
+    pid of a daemon that died without removing its pid file."""
+    ps = "/bin/ps" if os.path.exists("/bin/ps") else shutil.which("ps")
+    out = _run([ps, "-p", str(pid), "-o", "command="], timeout=5) if ps else None
+    return bool(out) and "God Daemon" in out
+
+
 def pm2_procs(p: Paths) -> Optional[list]:
     """[{name, pid, status, started, cwd}] from `pm2 jlist`, or None when PM2 is not running here.
-    `pm2 jlist` starts a PM2 daemon when none runs, so it is called only when the pid file names a live
-    process. Only these five fields are kept: the list also carries each app's environment."""
+    `pm2 jlist` starts a PM2 daemon when none runs, so it is called only when the pid file names PM2's
+    live daemon. Only these five fields are kept: the list also carries each app's environment."""
     try:
         with open(os.path.join(p.pm2_home, "pm2.pid"), encoding="utf-8") as f:
             pid = int(f.read().strip())
     except (OSError, ValueError):
         return None
     pm2 = _pm2_bin()
-    if pid <= 0 or not _alive(pid) or not pm2:
+    if pid <= 0 or not _alive(pid) or not pm2 or not _is_pm2_daemon(pid):
         return None
     out = _run([pm2, "jlist"], timeout=20)
     try:
@@ -535,7 +546,7 @@ def head_moved(repo: str) -> Optional[tuple]:
 
 def check_code_version(p: Paths, procs: Optional[list], kind: str, cfg: Optional[dict] = None, **_) -> dict:
     title = "Services running the newest code"
-    model = str((cfg or {}).get("model_pm2_process") or "qwen3.6")  # runs its own package, not this code
+    skip = {str((cfg or {}).get("model_pm2_process") or "qwen3.6"), *PACKAGE_APPS}  # not this code
     if kind != "git":
         return _check("code_version", title, NA, "Not a git checkout: the app updates as a whole.")
     moved = head_moved(p.repo)
@@ -546,7 +557,7 @@ def check_code_version(p: Paths, procs: Optional[list], kind: str, cfg: Optional
         return _check("code_version", title, INFO, f"PM2 is not running, so the services could not be compared "
                       f"with the code ({sha}).", data={"head": sha})
     here = os.path.realpath(p.repo)
-    mine = [x for x in procs if x.get("status") == "online" and x.get("name") != model
+    mine = [x for x in procs if x.get("status") == "online" and x.get("name") not in skip
             and os.path.realpath(x.get("cwd") or "/") == here]
     old = sorted(x["name"] for x in mine if x.get("started") and x["started"] < ts - 1)
     data = {"head": sha, "services": len(mine), "started_before": old[:MAX_FIELDS]}
@@ -841,8 +852,9 @@ def run(paths: Optional[Paths] = None, now: Optional[float] = None) -> dict:
     now = time.time() if now is None else float(now)
     cfg = _read_json(os.path.join(p.codec_dir, "config.json"))
     cfg = cfg if isinstance(cfg, dict) else {}
-    procs = pm2_procs(p)
     kind = install_kind(p.repo)
+    # The app's services run under launchd: a PM2 the buyer uses for other work says nothing about them.
+    procs = pm2_procs(p) if kind != "app" else None
     checks = []
     for cid, title, fn in CHECKS:
         try:

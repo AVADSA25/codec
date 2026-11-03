@@ -210,11 +210,12 @@ def test_finds_services_started_before_the_code_changed(mac, monkeypatch):
              {"name": "open-codec", "pid": 2, "status": "online", "started": moved + 60, "cwd": str(mac.repo)},
              {"name": "codec-telegram", "pid": 3, "status": "stopped", "started": moved - 600, "cwd": str(mac.repo)},
              {"name": "other-app", "pid": 4, "status": "online", "started": moved - 600, "cwd": str(mac.tmp)},
-             {"name": "qwen3.6", "pid": 5, "status": "online", "started": moved - 600, "cwd": str(mac.repo)}]
+             {"name": "qwen3.6", "pid": 5, "status": "online", "started": moved - 600, "cwd": str(mac.repo)},
+             {"name": "kokoro-82m", "pid": 6, "status": "online", "started": moved - 600, "cwd": str(mac.repo)}]
     monkeypatch.setattr(cd, "pm2_procs", lambda paths: procs)
     c = _by_id(cd.run(mac.p, now=NOW))["code_version"]
     assert c["status"] == cd.WARN and c["data"] == {"head": "f00dbab", "services": 2, "started_before": ["codec-dashboard"]}
-    assert c["fix"] == "pm2 restart codec-dashboard"
+    assert c["fix"] == "pm2 restart codec-dashboard", "the model and kokoro-82m run installed packages, not this code"
     assert "someone@example.com" not in json.dumps(c) and "Some One" not in json.dumps(c)
     procs[0]["started"] = moved + 5
     assert _by_id(cd.run(mac.p, now=NOW))["code_version"]["status"] == cd.OK
@@ -307,8 +308,11 @@ def test_app_install_code_version_is_na_and_fixes_name_launchctl(mac, monkeypatc
     _write(mac.codec / "config.json", {"llm_base_url": "http://127.0.0.1:8083/v1"})
     _beat(Path(mac.p.health_dir), "codec-telegram", NOW - 3600, cadence=40)
     monkeypatch.setattr(cd, "model_answers", lambda base, timeout=3: "refused")
+    monkeypatch.setattr(cd, "pm2_procs", lambda paths: [{"name": "my-node-app", "pid": 1, "status": "online",
+                                                          "started": NOW - 9000, "cwd": "/x"}])
     r = cd.run(mac.p, now=NOW)
     ids = _by_id(r)
+    assert r["about"]["pm2"] is False, "the app's services run under launchd: a PM2 for other work is not asked"
     assert r["about"]["install"] == "app" and ids["code_version"]["status"] == cd.NA
     assert ids["health_beats"]["fix"].startswith("launchctl kickstart -k gui/$(id -u)/ai.avadigital.codec.codec-telegram")
     assert "launchctl kickstart -k gui/$(id -u)/ai.avadigital.codec.qwen3.6" in ids["model_server"]["fix"]
@@ -322,8 +326,14 @@ def test_pm2_list_only_from_a_live_daemon_and_without_env(tmp_path, monkeypatch)
     calls = []
     jlist = [{"name": "codec-dashboard", "pid": 77, "pm2_env": {"status": "online", "pm_uptime": 1_700_000_000_000,
               "pm_cwd": "/x/codec-repo", "TELEGRAM_BOT_TOKEN": TELEGRAM, "env": {"KEY": ANTHROPIC}}}]
+    title = {"now": "python3 -m pytest"}
+
+    def fake_run(cmd, timeout=15):
+        calls.append(cmd)
+        return title["now"] if "ps" in os.path.basename(cmd[0]) else json.dumps(jlist)
+
     monkeypatch.setattr(cd, "_pm2_bin", lambda: "/fake/pm2")
-    monkeypatch.setattr(cd, "_run", lambda cmd, timeout=15: calls.append(cmd) or json.dumps(jlist))
+    monkeypatch.setattr(cd, "_run", fake_run)
     p = cd.Paths(home="", codec_dir="", zshrc="", pm2_home=str(tmp_path), app_logs="", repo="", health_dir="",
                  messages_db="")
     assert cd.pm2_procs(p) is None and calls == [], "no pid file: PM2 is not asked (it would start a daemon)"
@@ -332,8 +342,12 @@ def test_pm2_list_only_from_a_live_daemon_and_without_env(tmp_path, monkeypatch)
     (tmp_path / "pm2.pid").write_text(str(dead.pid))
     assert cd.pm2_procs(p) is None and calls == [], "a dead daemon's pid"
     (tmp_path / "pm2.pid").write_text(str(os.getpid()))
+    assert cd.pm2_procs(p) is None and not any(c[0] == "/fake/pm2" for c in calls), \
+        "a live pid that another program got after PM2 died: PM2 is not asked"
+    calls.clear()
+    title["now"] = "PM2 v6.0.14: God Daemon (/x/.pm2)\n"
     procs = cd.pm2_procs(p)
-    assert calls == [["/fake/pm2", "jlist"]]
+    assert calls[-1] == ["/fake/pm2", "jlist"] and calls[0][1:] == ["-p", str(os.getpid()), "-o", "command="]
     assert procs == [{"name": "codec-dashboard", "pid": 77, "status": "online", "started": 1_700_000_000.0,
                       "cwd": "/x/codec-repo"}], "only five fields; the environment is dropped"
 

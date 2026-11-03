@@ -25,7 +25,7 @@ only; it never writes a file, starts or stops a process, or asks macOS for a per
 | `zshrc` | mode of `~/.zshrc`, number of lines that set a key or token | others can write it, or read it while it sets a key | |
 | `logs` | modes of `~/.pm2/logs/*` and `~/Library/Logs/CODEC/*` | | some can be read by other accounts (counts only) |
 | `listeners` | `lsof -nP -iTCP -sTCP:LISTEN` | | a CODEC port (dashboard 8090, MCP 8091, model, speech, voice, Vibe 5300-5399) listens on every interface; other programs are a count and ports |
-| `code_version` | git installs only: the newest HEAD reflog line (time and short id; never the name or email in it) against each PM2 app's start time whose folder is this checkout; N/A on the app | | a service started before the code last changed |
+| `code_version` | git installs only: the newest HEAD reflog line (time and short id; never the name or email in it) against each PM2 app's start time whose folder is this checkout, leaving out the apps that run an installed package (the model process, `kokoro-82m`); N/A on the app | | a service started before the code last changed |
 | `health_beats` | `codec_health.read_beats(folder)` with the heartbeat's PM2 rules (not online = stopped, 5-minute start grace, an old stop mark checked by age) | a beat is silent | a beat is failing |
 | `model_server` | `llm_base_url` from config.json, only when it is on this Mac (`localhost`, `127.0.0.1`, `::1`): GET `<base>/models`, 3 s, no proxy; never a cloud or LAN address | nothing answers | no answer in 3 s |
 | `perm_<key>` x5 | Screen Recording, Accessibility, Full Disk Access, Microphone, Automation | | not allowed (with the System Settings link) |
@@ -39,8 +39,10 @@ only; it never writes a file, starts or stops a process, or asks macOS for a per
 - The report says the permissions are those of the process that ran the check (the dashboard from
   Settings) and that the voice call, the wake word and the bridges have their own, which the dashboard
   cannot read.
-- `pm2 jlist` runs only when the PM2 daemon's pid file names a live process (so the check never starts
-  PM2); only name, pid, status, start time and folder are kept from it (it also carries environments).
+- `pm2 jlist` runs only when the PM2 daemon's pid file names a live process whose title is PM2's "God
+  Daemon" (so the check never starts PM2, even when another program got a dead daemon's pid), and never
+  on the app, whose services run under launchd; only name, pid, status, start time and folder are kept
+  from it (it also carries environments).
 - Every string of the report goes through `scrub()`: the home folder becomes `~` and token shapes
   (Anthropic, OpenAI, AWS, GitHub, Slack, Google, JWT, Bearer, CODEC OAuth, Telegram bot, long hex,
   private-key headers) become `<redacted>`. The checks themselves only report counts, modes, fixed paths
