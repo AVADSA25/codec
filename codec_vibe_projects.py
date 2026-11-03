@@ -46,7 +46,8 @@ _WRITE_BLOCKED_SEGMENTS = {META_DIR, ".git", "node_modules", ".ssh", ".gnupg", "
 _AGENT_BLOCKED_SEGMENTS = {".vscode", ".idea", ".husky", ".devcontainer", ".github", ".mcp.json", ".claude"}
 # Folders a scan skips (listing, checkpoints).
 _SCAN_IGNORED_DIRS = {META_DIR, ".git", "node_modules", "__pycache__", ".venv", "venv", ".next", ".cache",
-                      ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox"}      # what test runs leave behind
+                      ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",      # what test runs leave behind
+                      "dist", "build", "target", "coverage"}                      # what builds leave behind (P-077)
 _BLOCKED_NAME_PREFIXES = (".env", "credentials", ".netrc", ".npmrc", ".pypirc", "id_rsa", "id_ed25519", "id_dsa", ".htpasswd")
 _BLOCKED_EXTS = (".pem", ".key", ".p12", ".pfx", ".keystore")
 _TMP_SUFFIX = ".vibe-tmp"
