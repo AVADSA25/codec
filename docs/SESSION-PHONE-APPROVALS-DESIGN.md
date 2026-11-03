@@ -23,7 +23,7 @@ Audit findings BH-2 (confirmed, high) and GAP-511 (part).
 
 - `asked_from` gets the value `session` and `answered_via` the value `dialog` (written only by the session process; the HTTP endpoint still accepts only `pwa` and `voice`). Both are existing fields: the audit envelope and `pending_questions.json` keep their shape.
 - New event `session_approval_decision`, source `codec-session`: `decision` (`allowed`|`denied`), `decided_by` (`phone`|`mac`|`both`|`none`), `reason` (`allow`|`deny`|`reply`|`closed`|`timeout`), `phone` (`asked`|`disabled`|`error`), `dangerous`, `cmd_hash` (pairs with `command_flagged`), `pending_question_id`. Never the command text.
-- The question holds the command and its explanation, so the phone can judge it. It is stored where every ask_user question is: `pending_questions.json`, `notifications.json`, and its first 200 characters in `ask_user_question_emit` (secret-redacted). The push carries only the kind.
+- The question holds the command and its explanation, so the phone can judge it. It shows the command's first 300 characters; a longer command ends with "[... N more characters not shown]", so a hidden end is never cut silently. It is stored where every ask_user question is: `pending_questions.json`, `notifications.json`, and its first 200 characters in `ask_user_question_emit` (secret-redacted). The push carries only the kind.
 
 ## Files
 

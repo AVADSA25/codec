@@ -39,6 +39,7 @@ APPROVAL_ALLOW = "Allow"      # the only answer that approves: its button label 
 APPROVAL_DENY = "Deny"
 _APPROVAL_POLL_MS = 300       # the Mac dialog looks for the phone's answer this often
 _APPROVAL_GRACE_SEC = 3       # the dialog's own clock runs this much longer than the question
+_APPROVAL_CMD_MAX = 300       # command characters shown in the phone question; a longer one says so
 
 
 # ── Resource Limits ──────────────────────────────────────────────────────────
@@ -638,7 +639,11 @@ SAFETY RULES:
         explanation = self._explain_command(code)
         what = (f"a DANGEROUS {action} command that can delete data" if is_danger
                 else f"this {action} command")
-        question = f"Your CODEC session wants to run {what}:\n{code[:300]}\nThis will: {explanation}"
+        shown = code[:_APPROVAL_CMD_MAX]
+        if len(code) > _APPROVAL_CMD_MAX:
+            # Never cut a command silently on an approval card: the hidden end may be the risky part.
+            shown += f"\n[... {len(code) - _APPROVAL_CMD_MAX} more characters not shown]"
+        question = f"Your CODEC session wants to run {what}:\n{shown}\nThis will: {explanation}"
         return _PhoneApproval(question, dangerous=is_danger, cmd_hash=_cmd_hash(code)).start()
 
     # ── Command Execution ────────────────────────────────────────────────
