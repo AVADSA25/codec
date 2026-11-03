@@ -17,6 +17,10 @@ import pytest
 import requests
 
 import codec_alerts
+# At collection, like the other dashboard tests: some skills put ~/codec-repo
+# first on sys.path when they load, and an import inside the test then got the
+# main checkout's codec_dashboard instead of this one.
+import codec_dashboard
 import codec_heartbeat
 import codec_models
 
@@ -188,7 +192,6 @@ def test_the_heartbeat_daemon_waits_120s_before_its_first_tick(monkeypatch):
 
 
 def test_the_dashboard_heartbeat_waits_120s_before_its_first_tick(monkeypatch):
-    import codec_dashboard
     ticks, slept = [], []
     monkeypatch.setattr(codec_heartbeat, "heartbeat", lambda: ticks.append(1))
     monkeypatch.setitem(codec_dashboard._bg_status, "heartbeat",

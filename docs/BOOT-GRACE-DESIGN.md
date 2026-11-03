@@ -35,9 +35,11 @@ codec-dashboard. `codec_heartbeat.run_daemon` remains for a hand start (`python3
   `starting` in the log and logs no `service_down` event.
 - **First tick 120 s after start** (`codec_heartbeat.FIRST_TICK_DELAY_S`): in the dashboard's
   `_bg_heartbeat` and in `run_daemon`. `python3 codec_heartbeat.py once` still runs at once.
-- **Deleted:** the `pm2 show codec` exec-cwd block at the end of `check_services_and_alert`. There is no
-  PM2 app named `codec` (the main one is `open-codec`), so `check_output` always raised and the `except`
-  swallowed it: the check could never alert.
+- **Deleted:** the `pm2 show codec` exec-cwd block at the end of `check_services_and_alert`. On the
+  Studio there is no PM2 app named `codec` (the main one is `open-codec`), so `check_output` always raised
+  and the `except` swallowed it: the check could never alert there. Only an `install.sh` install, which
+  starts `ecosystem.config.js`, has an app named `codec`; there the check compared its folder with a fixed
+  `~/codec-repo`, so a clone anywhere else got a false warning.
 
 No audit event, config key, file or schema is added or changed.
 
@@ -61,8 +63,10 @@ same keys.
 
 ## Risks
 - A service that crashes again and again inside its first 5 minutes is not counted by this check while it
-  shows `online`. PM2 stops it as `errored` after its restart cap (`min_uptime` 60 s, `max_restarts`), which
-  the heartbeat then counts and alerts as before, and the restart-storm check alerts on 5 or more restarts
+  shows `online`. A crash inside 60 s counts toward PM2's restart cap (`min_uptime` 60 s, `max_restarts`):
+  PM2 then marks the app `errored`, which the heartbeat counts and alerts as before. A crash later than
+  that does not count toward the cap, but a loop short enough to stay inside the grace restarts at least 6
+  times in the dashboard's 30-minute interval, and the restart-storm check alerts on 5 or more restarts
   between two ticks.
 - The first tick after a dashboard restart comes 120 s later than before, so a server that is really dead
   at that moment is restarted 2 minutes later than today. Later ticks keep their interval.
