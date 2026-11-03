@@ -219,6 +219,8 @@ def test_rewrites_by_pre_tool_and_post_tool_are_ignored(scripted, plugins):
     res = next(e for e in view["events"] if e["type"] == "result" and e["tool"] == "edit_file")
     assert res["ok"] and "Everything is fine." not in res["output"]
     assert [e for e in view["events"] if e["type"] == "checkpoint"]
+    fired = [(a["extra"]["hook_name"], a["extra"]["mutated"]) for a in plugins.events("hook_fired")]
+    assert fired == [("pre_tool", True), ("post_tool", True)]                # both rewrites were made, and ignored
 
 
 def test_a_tool_error_fires_on_error_and_the_run_fails(scripted, plugins, monkeypatch):
@@ -242,11 +244,16 @@ def test_hooks_false_makes_no_hook_call(scripted, plugins, cfg, thread_count, mo
     cfg["vibe_agent"] = {"hooks": False}
     called = []
     for name in ("run_with_hooks", "emit_operation_start", "emit_operation_end"):
-        monkeypatch.setattr(codec_hooks, name, lambda *a, _n=name, **kw: called.append(_n))
+        real = getattr(codec_hooks, name)
+        monkeypatch.setattr(codec_hooks, name, lambda *a, _n=name, _real=real, **kw: called.append(_n) or _real(*a, **kw))
     pid = make_project()
     view, _ = run_script(pid, [READ, CSS_EDIT, FINISH], scripted)
     assert end_of(view)["status"] == "done" and read(pid, "style.css").endswith("h1 { color: blue; }\n")
     assert called == [] and thread_count == [] and plugins.lines() == [] and plugins.events("hook_fired") == []
+    cfg["vibe_agent"] = {}                                   # read when a run is created: the next run has hooks again
+    run_script(pid, [READ, FINISH], scripted)
+    assert called == ["emit_operation_start", "run_with_hooks", "emit_operation_end"] and thread_count
+    assert [x["hook"] for x in plugins.lines()] == ["on_operation_start", "pre_tool", "post_tool", "on_operation_end"]
 
 
 def test_a_plugin_that_sleeps_costs_a_step_at_most_the_timeout(scripted, plugins, audits, monkeypatch):
