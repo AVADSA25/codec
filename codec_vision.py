@@ -24,6 +24,18 @@ log = logging.getLogger("codec.vision")
 
 _GEMINI_MODEL = "gemini-2.0-flash"
 
+# Models CODEC ships or offers that read text only (packaging/macos/models.json,
+# kind "llm" without image input). A screenshot sent to one is not seen, so the
+# reply would be a guess: vision answers "" (the callers' failure path) instead.
+_TEXT_ONLY_MODELS = frozenset({"mlx-community/Qwen2.5-7B-Instruct-4bit"})
+
+
+def _sees_images(model: str) -> bool:
+    if model in _TEXT_ONLY_MODELS:
+        log.warning("Local vision skipped: %s reads text only and no vision_model is set", model)
+        return False
+    return True
+
 
 def _vision_config() -> Tuple[str, str, str, str]:
     """(provider, gemini_key, local_url, local_model) read live from config.
@@ -34,7 +46,11 @@ def _vision_config() -> Tuple[str, str, str, str]:
         # D-37: local unless the owner sets vision_provider; a Gemini key alone
         # no longer sends the screen or an image to Google.
         provider = cfg.get("vision_provider", "local")
-        return provider, gem, QWEN_VISION_URL, QWEN_VISION_MODEL
+        # P-013: with no vision_model, name the model the chat server holds when
+        # vision goes to that server (asking it for another one unloads it).
+        import codec_models
+        model = codec_models.vision_model(cfg, QWEN_VISION_URL, QWEN_VISION_MODEL)
+        return provider, gem, QWEN_VISION_URL, model
     except Exception as e:  # pragma: no cover — defensive
         log.warning("vision config unavailable: %s", e)
         return "local", "", "http://localhost:8083/v1", "qwen-vl"
@@ -100,6 +116,8 @@ def describe_sync(image_b64: str, prompt: str, *, mime: str = "image/png",
         except Exception as e:
             log.info("Gemini vision error (%s); falling back to local", e)
 
+    if not _sees_images(local_model):
+        return ""
     try:
         r = requests.post(local_url.rstrip("/") + "/chat/completions",
                           json=_local_payload(image_b64, prompt, mime, local_model, max_tokens),
@@ -135,6 +153,8 @@ async def describe_async(image_b64: str, prompt: str, *, mime: str = "image/jpeg
             except Exception as e:
                 log.info("Gemini vision error (%s); falling back to local", e)
 
+        if not _sees_images(local_model):
+            return ""
         try:
             r = await client.post(local_url.rstrip("/") + "/chat/completions",
                                   json=_local_payload(image_b64, prompt, mime, local_model, max_tokens),

@@ -214,7 +214,8 @@ def test_vision_stays_local_with_a_gemini_key_and_no_provider(monkeypatch):
 
     monkeypatch.setattr(requests, "post", lambda url, **k: posted.append(url) or _Resp(url))
     monkeypatch.setattr(codec_config, "get_gemini_api_key", lambda: "gemini-key")
-    monkeypatch.setattr(codec_config, "cfg", {})
+    # A model that sees images (the bundled 7B reads text only, so vision would answer "").
+    monkeypatch.setattr(codec_config, "cfg", {"llm_model": "mlx-community/Qwen3.6-35B-A3B-4bit"})
     assert vision.describe_sync("b64", "what is on my screen?") == "local"
     assert posted and not any("googleapis" in u for u in posted), "a Gemini key alone sends nothing to Google"
     monkeypatch.setattr(codec_config, "cfg", {"vision_provider": "gemini"})

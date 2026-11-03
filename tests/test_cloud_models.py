@@ -356,7 +356,8 @@ def test_voice_follows_the_switch_only_to_a_cloud_model(env, monkeypatch):
     import codec_voice
     monkeypatch.setattr(codec_voice, "_CONFIG_PATH", str(env[0]))
     base, model, cloud = codec_voice._resolve_voice_llm()
-    assert (base, model, cloud) == (LOCAL_URL, codec_voice.VOICE_LLM_MODEL, False)
+    # P-013: voice names the model the local server holds (the env's llm_model).
+    assert (base, model, cloud) == (LOCAL_URL, "mlx-community/A", False)
     c = _cfg(env)
     c.update(llm_base_url=CLOUD_URL, llm_model="cloud-pro",
              llm_local_restore={"llm_base_url": LOCAL_URL, "llm_model": "mlx-community/A"})

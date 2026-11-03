@@ -152,6 +152,13 @@ One event name, emitted by `codec_cloud_models.record()` when a reply pushes a r
 |---|---|---|---|
 | `cloud_spend_cap_reached` | `codec-cloud-models` | warning | `model`, `month` (`YYYY-MM`), `spent_usd`, `cap_usd` |
 
+### Model swap events (2026-11, P-013)
+Emitted by `codec_models.note_swap` (outcome and level `warning`, existing envelope) at the start of a voice call that names another model than the local server reports in `GET /health`; the server is about to unload the model it holds. Design: `docs/VOICE-VISION-LOADED-MODEL-DESIGN.md`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `model_swap` | `codec-models` | warning | `caller` (`voice`), `requested` (the id sent, from config), `loaded` (the `/health` value, only when it is a plain hub id), `correlation_id` (the voice session) |
+
 ### Create image events (2026-09)
 One event name, emitted by `codec_image` when an image job ends. Metadata only: the prompt text is never recorded. Design: `docs/CHAT-CREATE-IMAGE-DESIGN.md`.
 

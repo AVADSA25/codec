@@ -191,9 +191,10 @@ WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 QWEN_BASE_URL = "http://localhost:8083/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
 QWEN_URL      = "http://localhost:8083/v1/chat/completions"
 QWEN_MODEL    = "mlx-community/Qwen3.6-35B-A3B-4bit"
-# Voice pins its OWN LLM, independent of the chat/telegram picker
-# (config:llm_model). Default = local 35B. Override via config:voice_model.
-VOICE_LLM_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
+# Voice names the model the local server holds (config:llm_model, the hub id the
+# launcher preloads), so a call never makes it load another one; config:voice_model
+# pins a different one on purpose (P-013). With no config: the bundled model.
+from codec_models import DEFAULT_MODEL as VOICE_LLM_MODEL  # noqa: E402
 LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
@@ -213,7 +214,6 @@ try:
     QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
     QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
-    VOICE_LLM_MODEL = _cfg.get("voice_model", VOICE_LLM_MODEL)
     LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
     KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
     KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
@@ -221,6 +221,11 @@ try:
     KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
+    # The fallback _resolve_voice_llm uses on a config error, marked local: never
+    # a cloud model id (llm_model while chat is on the cloud), so the local model
+    # the server holds. Last, so nothing it raised could skip the settings above.
+    from codec_models import local_server_model as _local_server_model
+    VOICE_LLM_MODEL = _cfg.get("voice_model") or _local_server_model(_cfg)[1]
 except Exception as _e:
     log.warning(f"Config load warning: {_e} — using defaults")
 
@@ -228,24 +233,38 @@ except Exception as _e:
 def _resolve_voice_llm() -> tuple:
     """(base_url, model, is_cloud) for one voice session, read when it starts.
 
-    Voice keeps its own pinned local model (config:voice_model) and ignores the
-    chat picker, except when the picker is on a registered cloud model
-    (codec_cloud_models). That switch exists for when the local server is down,
-    and then the pinned local model is down too. Reading config per session,
-    not at import, lets a switch reach the next call without a restart.
+    Voice names the model the local server holds (codec_models.local_server_model:
+    config:llm_model, sent byte for byte, never a /health value), unless
+    config:voice_model pins another one (P-013). When the picker is on a
+    registered cloud model (codec_cloud_models) voice follows it: that switch
+    exists for when the local server is down. Reading config per session, not at
+    import, lets a switch reach the next call without a restart.
     """
     try:
         with open(_CONFIG_PATH) as f:
             cfg = json.load(f)
         import codec_cloud_models
+        import codec_models
         entry = codec_cloud_models.active_entry(cfg)
         if entry is not None:
             return entry["base_url"].strip().rstrip("/"), entry["id"], True
-        base, _ = codec_cloud_models.local_only(
-            (cfg.get("llm_base_url") or QWEN_BASE_URL).rstrip("/"), "", cfg)
-        return base, cfg.get("voice_model") or VOICE_LLM_MODEL, False
+        base, loaded = codec_models.local_server_model(cfg)
+        pinned = cfg.get("voice_model")
+        return base, (pinned if isinstance(pinned, str) and pinned else loaded), False
     except Exception:
         return QWEN_BASE_URL, VOICE_LLM_MODEL, False
+
+
+def _warm_voice_llm(model: str, base_url: str, image_busy: bool,
+                    correlation_id: Optional[str] = None) -> None:
+    """Session start, off the event loop, local models only: one model_swap
+    warning line when the server holds another model than this call names
+    (P-013), then the 1-token request that loads it, skipped while a
+    Create-image job runs (a 35B load next to it overflows memory)."""
+    import codec_models
+    codec_models.note_swap(model, base_url, caller="voice", correlation_id=correlation_id)
+    if not image_busy:
+        codec_models.probe(model, 300.0, base_url)
 
 
 # ── Vision config ────────────────────────────────────────────────────────
@@ -715,10 +734,10 @@ class VoicePipeline:
         self._stream_error = False
         await llm_queue.acquire(Priority.CRITICAL)
         try:
-            # Voice always runs VOICE_LLM_MODEL (35B by default), regardless of
-            # the chat/telegram picker (config:llm_model), unless the picker is
-            # on a cloud model (_resolve_voice_llm). Pre-warmed at session
-            # start; the shared :8083 server loads it on first request otherwise.
+            # The session's model (_resolve_voice_llm): the one the local server
+            # holds, a pinned config:voice_model, or the picker's cloud model.
+            # Pre-warmed at session start; the shared :8083 server loads it on
+            # first request otherwise.
             _model = getattr(self, "_llm_model", VOICE_LLM_MODEL)
             async for token in codec_llm.astream(
                 messages, base_url=getattr(self, "_llm_base", QWEN_BASE_URL), model=_model,
@@ -1871,24 +1890,25 @@ class VoicePipeline:
         # to PWA-only.
         _touch_voice_session_marker(self.session_id)
         # Pre-warm the voice LLM so the first turn isn't blocked on a cold load.
-        # probe() forces the shared :8083 server to load VOICE_LLM_MODEL (35B)
-        # in-place; it does NOT rewrite config:llm_model, so chat/telegram keep
-        # their own picker model. No-op cost when 35B is already resident.
+        # probe() makes the shared :8083 server load the session's model; it
+        # does NOT rewrite config:llm_model. No-op cost when that model is
+        # already resident (the default: voice names the loaded model, P-013);
+        # a pinned voice_model that is not loaded writes one model_swap line.
         # A cloud model has nothing to load, and a probe would be a paid call.
         async def _warm_voice_model():
             try:
-                from codec_models import probe as _probe
-                await asyncio.to_thread(_probe, self._llm_model, 300.0, self._llm_base)
+                await asyncio.to_thread(_warm_voice_llm, self._llm_model, self._llm_base,
+                                        bool(_image_busy), cid)
             except Exception:
                 log.debug("voice: model pre-warm failed", exc_info=True)
-        # Nor while a Create-image job runs: the warm-up could load a 35B
+        # No load while a Create-image job runs: the warm-up could load a 35B
         # model next to it and overflow memory (codec_image.busy_message).
         try:
             import codec_image
             _image_busy = codec_image.busy_message()
         except Exception:
             _image_busy = None
-        if not self._llm_cloud and not _image_busy:
+        if not self._llm_cloud:
             asyncio.create_task(_warm_voice_model())
 
         # Voice 02: make sure the TTS server holds the clone model before the greeting (it may have restarted since the

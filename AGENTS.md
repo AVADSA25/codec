@@ -378,6 +378,9 @@ Redaction runs **BEFORE** truncation: a secret near the 500-char `message` cap i
 ### Health beats (P-017)
 codec-imessage, codec-telegram and codec-autopilot call `codec_health.beat(name, cadence_s=, error=)` once a loop round and `codec_health.stopped(name)` in their shutdown cleanup; it writes `~/.codec/health/<name>.json` (`CODEC_HEALTH_DIR` overrides; names, times, counts and an exception class name only) and never raises. The observer has no call: its beat is its newest `observation_tick` audit line. The heartbeat (`check_health_beats`, inside codec-dashboard) alerts once when a beat is older than 3x its cadence (at least 15 min) or 20 rounds in a row failed. `codec_agent_runner.py` has no beat (section 10). Design: docs/HEALTH-BEATS-DESIGN.md.
 
+### Model swap warning (P-013)
+One local model server holds one model. Voice names the one config says it holds (`codec_models.local_server_model`: `llm_model`, the launcher's hub id, sent byte for byte) unless `config.json:voice_model` pins another; vision with no `vision_model` does the same on that server, and the dashboard's vision warm-up sends nothing when its model differs from the chat model on the same server. A voice call that names another model than `GET /health` reports writes one `model_swap` warning line (source `codec-models`; extra `caller`, `requested`, `loaded`). The `/health` value is only compared, never sent, and only when it is a plain hub id. Design: docs/VOICE-VISION-LOADED-MODEL-DESIGN.md.
+
 ### log_event (`codec_audit.log_event`)
 Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
 
