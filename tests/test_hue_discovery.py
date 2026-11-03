@@ -109,3 +109,48 @@ def test_rediscover_returns_none_and_leaves_config_untouched(tmp_path):
     disc = lambda expected_id=None: None
     assert hd.rediscover_and_update_config(str(cfg), _discover=disc) is None
     assert json.loads(cfg.read_text())["hue_bridge_ip"] == "192.168.1.81"
+
+
+# ── P-097: the write re-reads config.json under the config lock ─────────────
+def test_rediscover_keeps_a_setting_saved_during_discovery(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    import codec_jsonstore
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"hue_bridge_ip": "192.168.1.81", "hue_bridge_id": "MINE"}))
+    real_lock, held = codec_jsonstore.file_lock, []
+
+    @contextmanager
+    def spy_lock(path):
+        with real_lock(path):
+            held.append((str(path), json.loads(cfg.read_text())))
+            yield
+
+    monkeypatch.setattr(codec_jsonstore, "file_lock", spy_lock)
+
+    def disc(expected_id=None):
+        # Another writer (a Settings save) changes config.json while the scan runs.
+        data = json.loads(cfg.read_text())
+        data["tts_voice"] = "bf_emma"
+        cfg.write_text(json.dumps(data))
+        return {"ip": "192.168.1.99", "id": "MINE"}
+
+    assert hd.rediscover_and_update_config(str(cfg), _discover=disc) == "192.168.1.99"
+    saved = json.loads(cfg.read_text())
+    assert saved == {"hue_bridge_ip": "192.168.1.99", "hue_bridge_id": "MINE", "tts_voice": "bf_emma"}
+    assert len(held) == 1 and held[0][0] == str(cfg), "one write, under the config.json lock"
+    assert held[0][1]["tts_voice"] == "bf_emma", "the file is read again under the lock"
+    assert oct(cfg.stat().st_mode & 0o777) == "0o600"
+    assert not (tmp_path / "config.json.tmp").exists()
+
+
+def test_rediscover_leaves_a_file_broken_meanwhile_untouched(tmp_path):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"hue_bridge_ip": "192.168.1.81", "hue_bridge_id": "MINE"}))
+
+    def disc(expected_id=None):
+        cfg.write_text('{"half written')
+        return {"ip": "192.168.1.99", "id": "MINE"}
+
+    assert hd.rediscover_and_update_config(str(cfg), _discover=disc) == "192.168.1.99"
+    assert cfg.read_text() == '{"half written'
