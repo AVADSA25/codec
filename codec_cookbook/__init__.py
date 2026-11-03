@@ -20,4 +20,4 @@ HARD SAFETY CONTRACT (enforced in serve.py):
     never restarts a running service.
 """
 
-__all__ = ["catalog", "probe", "fit", "serve", "download"]
+__all__ = ["catalog", "probe", "fit", "serve", "download", "offer"]
