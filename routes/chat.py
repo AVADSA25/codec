@@ -1010,9 +1010,10 @@ _EXCERPT_STEP = 1200             # windows overlap: a sentence on a boundary is 
 _EXCERPT_GAP = "\n[...]\n"
 _INTERNAL_CONTEXT_START = "(INTERNAL CONTEXT"   # the message _enrich_messages adds this turn
 # The blocks codec_chat.html puts in a user message for an attached file or image.
+# A file name may hold "]" ("Invoice [2026].pdf"): the name runs to the first "]" + newline.
 _ATTACHMENT_RE = re.compile(
-    r"\[DOCUMENT: ([^\]\n]*)\]\n(.*?)\n\[END DOCUMENT\]"
-    r"|\[IMAGE ANALYSIS of ([^\]\n]*)\]\n(.*?)\n\[END IMAGE\]", re.DOTALL)
+    r"\[DOCUMENT: ([^\n]*?)\]\n(.*?)\n\[END DOCUMENT\]"
+    r"|\[IMAGE ANALYSIS of ([^\n]*?)\]\n(.*?)\n\[END IMAGE\]", re.DOTALL)
 _EXCERPT_STOP_WORDS = frozenset((
     "the and for are was were with that this these those from what which who whom whose "
     "when where why how does did done has have had into onto about there their they them "

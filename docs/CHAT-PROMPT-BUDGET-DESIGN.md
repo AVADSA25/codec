@@ -58,7 +58,8 @@ under the budget too.
    at most a third of the budget and never more than the room left after step 2.
    It tells the model these are only parts of the file and to say so rather than
    guess when the answer is not in them. With no room at all it is one line per
-   file saying the file was not sent this turn.
+   file saying the file was not sent this turn. A file name may contain `]`
+   ("Invoice [2026].pdf"): the name runs to the first `]` at the end of its line.
 4. Older turns (a user message and the replies after it) are added back newest
    first while the total stays under the budget; the oldest are left out first,
    and a gap is never skipped over.

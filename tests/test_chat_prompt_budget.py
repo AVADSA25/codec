@@ -223,6 +223,22 @@ def test_an_image_description_is_kept_the_same_way_and_nothing_is_changed_in_pla
     assert chat._fit_prompt_budget(hist, 0) == (hist, None)
 
 
+def test_a_file_name_with_brackets_is_still_an_attachment():
+    doc = report()
+    sys_msg = {"role": "system", "content": "You are CODEC."}
+    later = [sys_msg, {"role": "user", "content": attach("Summarise.", doc, name="Invoice [2026].pdf")},
+             {"role": "assistant", "content": "Done."}, {"role": "user", "content": QUESTION}]
+    sent, trim = chat._fit_prompt_budget(later, BUDGET)
+    assert trim["excerpts"] == ["Invoice [2026].pdf"] and PLANTED in sent[-2]["content"]
+    first = [sys_msg] + [m for turn in range(9) for m in (
+        {"role": "user", "content": f"Turn {turn}: the orchard?"},
+        {"role": "assistant", "content": "Walnut and hazel trees. " * 300})]
+    first.append({"role": "user", "content": attach("Summarise.", doc, name="a [b].pdf")})
+    sent, trim = chat._fit_prompt_budget(first, BUDGET)
+    without_file = chat.estimate_prompt_tokens(sent) - math.ceil(len(doc) / 3.5)
+    assert without_file <= BUDGET and len(sent) > 2, "the new file is not counted, history stays"
+
+
 def test_the_page_says_when_a_reply_was_shortened():
     assert PAGE.count("if(j.trim){_lastTrim=j.trim}") == 2, "send and regenerate"
     assert "if(md&&_lastTrim)renderTrimUsed(md,_lastTrim);_lastTrim=null;" in PAGE
