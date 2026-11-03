@@ -64,15 +64,15 @@ def test_vendored_monaco_and_its_icon_font_are_served_without_login(pin_login_re
     assert css.status_code == 200 and "url(codicon.ttf)" in css.text and "data:font" not in css.text
 
 
-def test_csp_drops_google_fonts_but_keeps_cdnjs(pin_login_required):
+def test_csp_drops_google_fonts_and_keeps_cdnjs_on_vibe_only():
     # PR-C self-hosts IBM Plex (static/codec.css), so the CSP no longer needs
-    # the Google Fonts origins. cdnjs.cloudflare.com stays: Monaco is served from
-    # static/vendor (D-24), but AI-written Vibe preview pages load libraries from it.
-    r = pin_login_required.get("/")
-    csp = r.headers["content-security-policy"]
+    # the Google Fonts origins. Monaco is served from static/vendor (D-24); only
+    # /vibe keeps cdnjs.cloudflare.com, for AI-written preview pages (P-089).
+    csp = codec_dashboard.CSPMiddleware.for_request("/", "127.0.0.1:8090")
     assert "fonts.googleapis.com" not in csp
     assert "fonts.gstatic.com" not in csp
-    assert "cdnjs.cloudflare.com" in csp
+    assert "cdnjs.cloudflare.com" not in csp
+    assert "cdnjs.cloudflare.com" in codec_dashboard.CSPMiddleware.for_request("/vibe", "127.0.0.1:8090")
 
 
 def test_the_login_still_guards_everything_else(pin_login_required):

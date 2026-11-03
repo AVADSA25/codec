@@ -484,7 +484,7 @@ def test_audit_events_carry_ids_ports_and_lengths_never_the_command(monkeypatch)
 
 def test_csp_lets_the_page_frame_127_0_0_1_and_nothing_else_new():
     from codec_dashboard import CSPMiddleware
-    csp = CSPMiddleware.CSP
+    csp = CSPMiddleware.CSP_VIBE  # /vibe's policy; the other pages frame only 'self' (P-089)
     frame = [d.strip() for d in csp.split(";") if d.strip().startswith("frame-src")]
     assert frame == ["frame-src 'self' http://127.0.0.1:*"]
     assert "frame-ancestors 'self' https://avadigital.ai" in csp and "unsafe-eval" not in csp

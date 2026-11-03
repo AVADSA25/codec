@@ -187,14 +187,12 @@ class TestCSPHeaders:
         assert hasattr(codec_dashboard, "CSPMiddleware"), "CSPMiddleware class missing"
 
     def test_csp_header_content(self):
-        """CSP header must include essential directives."""
+        """CSP header must include essential directives (P-089: stage 0 adds the last three)."""
         import codec_dashboard
-        source = inspect.getsource(codec_dashboard.CSPMiddleware)
-        assert "default-src" in source, "Missing default-src directive"
-        assert "script-src" in source, "Missing script-src directive"
-        assert "style-src" in source, "Missing style-src directive"
-        assert "font-src" in source or "fonts.gstatic.com" in source, "Missing font-src"
-        assert "img-src" in source, "Missing img-src directive"
+        for csp in (codec_dashboard.CSPMiddleware.CSP, codec_dashboard.CSPMiddleware.CSP_VIBE):
+            for directive in ("default-src 'self'", "script-src", "style-src", "font-src", "img-src",
+                              "object-src 'none'", "base-uri 'none'", "form-action 'self'"):
+                assert directive in csp, f"Missing {directive}"
 
     def test_csp_only_on_html(self):
         """CSP middleware must check content-type before adding header."""

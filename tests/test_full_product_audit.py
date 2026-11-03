@@ -132,6 +132,13 @@ class TestDashboardPages:
             csp = r.headers.get("content-security-policy", "")
             assert "unsafe-eval" not in csp, f"unsafe-eval in preview CSP: {csp}"
 
+    def test_csp_has_no_outside_connect_sources(self):
+        """P-089: connect-src is this origin and its own ws/wss host only."""
+        for path in ["/", "/chat", "/vibe", "/voice", "/tasks"]:
+            csp = api_get(path).headers.get("content-security-policy", "")
+            connect = [d.split()[1:] for d in csp.split(";") if d.strip().startswith("connect-src")][0]
+            assert not {"ws:", "wss:", "http://localhost:*", "http://127.0.0.1:*"} & set(connect), connect
+
 
 @requires_dashboard
 class TestDashboardStatusAPI:
