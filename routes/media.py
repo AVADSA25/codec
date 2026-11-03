@@ -154,8 +154,10 @@ async def set_clipboard(request: Request):
     body = await request.json()
     text = body.get("text", "")
     try:
-        p = await asyncio.to_thread(subprocess.Popen, ["pbcopy"], stdin=subprocess.PIPE)
-        await asyncio.to_thread(p.communicate, text.encode())
+        def _copy():  # one worker call: a cancel between the two lines would leave pbcopy half-fed
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(text.encode())
+        await asyncio.to_thread(_copy)
         return {"status": "copied"}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
