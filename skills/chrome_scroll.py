@@ -16,10 +16,14 @@ def run(task: str, context: str = "") -> str:
         # Fallback: AppleScript scroll
         import subprocess
         direction = "down" if "down" in task.lower() or "bottom" in task.lower() else "up"
-        subprocess.run(["osascript", "-e", 'tell application "Google Chrome" to activate'],
-                      capture_output=True)
-        subprocess.run(["osascript", "-e", f'tell application "System Events" to key code {121 if direction == "down" else 116}'],
-                      capture_output=True)
+        try:  # P-087: an unanswered macOS prompt must not hold the caller
+            subprocess.run(["osascript", "-e", 'tell application "Google Chrome" to activate'],
+                          capture_output=True, timeout=10)
+            subprocess.run(["osascript", "-e", f'tell application "System Events" to key code {121 if direction == "down" else 116}'],
+                          capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            return ("Could not scroll: macOS did not answer within 10 seconds. "
+                    "If a permission prompt is open, answer it and try again.")
         return f"Scrolled {direction} (AppleScript fallback)"
 
     task_lower = task.lower()

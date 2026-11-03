@@ -35,8 +35,12 @@ def run(task: str, context: str = "") -> str:
         label = "research"
     elif "close" in task_lower or "focus" in task_lower:
         # Close all tabs via AppleScript
-        subprocess.run(["osascript", "-e", 'tell application "Google Chrome" to close every tab of every window'],
-                      capture_output=True)
+        try:  # P-087: an unanswered macOS prompt must not hold the caller
+            subprocess.run(["osascript", "-e", 'tell application "Google Chrome" to close every tab of every window'],
+                          capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            return ("Could not close the tabs: macOS did not answer within 10 seconds. "
+                    "If a permission prompt is open, answer it and try again.")
         return "Closed all Chrome tabs"
     else:
         return "Try: 'morning tabs', 'work mode', 'research mode', or 'close everything'"
@@ -44,13 +48,17 @@ def run(task: str, context: str = "") -> str:
     # Open tabs via AppleScript (doesn't require CDP)
     import codec_applescript
     import codec_browser_policy  # P-101
-    for url in urls:
+    for n, url in enumerate(urls):
         ok, refusal = codec_browser_policy.check_url(url, "chrome_automate")
         if not ok:
             return refusal
-        subprocess.run(
-            ["osascript", "-e", f'tell application "Google Chrome" to open location "{codec_applescript.escape(url)}"'],
-            capture_output=True
-        )
+        try:  # P-087: an unanswered macOS prompt must not hold the caller
+            subprocess.run(
+                ["osascript", "-e", f'tell application "Google Chrome" to open location "{codec_applescript.escape(url)}"'],
+                capture_output=True, timeout=10
+            )
+        except subprocess.TimeoutExpired:
+            return (f"Stopped after {n} of {len(urls)} tabs: macOS did not answer within 10 seconds. "
+                    "If a permission prompt is open, answer it and try again.")
 
     return f"Opened {len(urls)} {label} tabs: {', '.join(u.split('/')[2] for u in urls)}"
