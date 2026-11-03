@@ -21,6 +21,14 @@ except ImportError:
                     "chmod 777", "| bash", "| sh", "curl | bash", "wget | sh"]
         return any(b in cmd.lower() for b in BLOCKED)
 
+# The command gets this process's environment minus secret-looking variables
+# (API keys, tokens, passwords), so `env` cannot print them (P-084). Without
+# the filter nothing runs: never the full environment.
+try:
+    from codec_envscrub import scrub as _scrub_env
+except ImportError:
+    _scrub_env = None
+
 def run(task, app="", ctx=""):
     t = task.lower()
     for w in ["run command", "run", "terminal", "execute", "shell", "bash command", "bash"]:
@@ -29,8 +37,11 @@ def run(task, app="", ctx=""):
         return "What command should I run?"
     if is_dangerous(t):
         return f"Blocked for safety: {t[:50]}"
+    if _scrub_env is None:
+        return "Blocked: the environment filter (codec_envscrub) is not available, so nothing was run"
     try:
-        r = subprocess.run(["bash", "-c", t], capture_output=True, text=True, timeout=15)
+        r = subprocess.run(["bash", "-c", t], capture_output=True, text=True, timeout=15,
+                           env=_scrub_env(os.environ))
         out = r.stdout.strip() or r.stderr.strip() or "Done (no output)"
         return out[:500]
     except subprocess.TimeoutExpired:

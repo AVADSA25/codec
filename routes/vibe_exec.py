@@ -15,13 +15,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 import signal
 import tempfile
 import time as _time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+
+import codec_envscrub
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -47,13 +48,10 @@ _RUNCODE_RLIMIT_AS_BYTES = 2 * 1024 ** 3    # 2 GB address space — stops bombs
 _RUNCODE_RLIMIT_NOFILE = 256                # compilers open many files
 _RUNCODE_RLIMIT_FSIZE_BYTES = 64 * 1024 ** 2  # 64 MB max single output file — stops disk-fill
 
-# Env var NAMES that look secret-bearing get dropped before the child runs.
-_SENSITIVE_ENV_RE = re.compile(
-    r"(?i)(secret|password|passwd|token|credential|api[_-]?key|access[_-]?key|"
-    r"private[_-]?key|bearer|session[_-]?token|auth[_-]?token|_key$|^key$)"
-)
-# Matches the pattern but is functionally needed → keep.
-_ENV_KEEP = {"SSH_AUTH_SOCK"}
+# Env var NAMES that look secret-bearing get dropped before the child runs;
+# the rule is codec_envscrub's (P-084), shared with every other caller.
+# Functionally needed even if the rule ever matches it → keep.
+_ENV_KEEP = ("SSH_AUTH_SOCK",)
 
 
 def _preexec_set_rlimits():  # pragma: no cover - runs in forked child, before exec
@@ -81,8 +79,7 @@ def _hardened_run_env() -> dict:
     tool config (GOPATH, GOCACHE, npm_config_*, …) are preserved so every
     interpreter + compiler still resolves — only API keys / tokens / secrets
     are dropped so executed code can't exfiltrate them via os.environ."""
-    env = {k: v for k, v in os.environ.items()
-           if k in _ENV_KEEP or not _SENSITIVE_ENV_RE.search(k)}
+    env = codec_envscrub.scrub(os.environ, keep=_ENV_KEEP)
     env.setdefault("LC_ALL", "C.UTF-8")
     return env
 
