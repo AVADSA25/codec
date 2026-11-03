@@ -214,7 +214,6 @@ try:
     QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
     QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
-    VOICE_LLM_MODEL = _cfg.get("voice_model") or _cfg.get("llm_model") or VOICE_LLM_MODEL
     LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
     KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
     KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
@@ -222,6 +221,11 @@ try:
     KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
+    # The fallback _resolve_voice_llm uses on a config error, marked local: never
+    # a cloud model id (llm_model while chat is on the cloud), so the local model
+    # the server holds. Last, so nothing it raised could skip the settings above.
+    from codec_models import local_server_model as _local_server_model
+    VOICE_LLM_MODEL = _cfg.get("voice_model") or _local_server_model(_cfg)[1]
 except Exception as _e:
     log.warning(f"Config load warning: {_e} — using defaults")
 
