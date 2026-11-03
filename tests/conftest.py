@@ -357,6 +357,39 @@ def _isolate_notifications() -> None:
 _isolate_notifications()
 
 
+def _isolate_heartbeat_guard():
+    """Keep the heartbeat's lock, last-run stamp and memory reading off ~/.codec (P-083).
+
+    `heartbeat()` takes ~/.codec/heartbeat.lock, writes ~/.codec/heartbeat_last.json and
+    runs `memory_check`, which writes ~/.codec/memory_check.json. Pointed at one temp
+    folder at conftest import time, like `_isolate_audit_log`; `_heartbeat_runs_again`
+    clears the stamp and the reading before each test, so one test's heartbeat never
+    skips the next one's and no high-tick count carries over. Tests that assert on
+    these files point them at their own tmp paths. Returns the two cleared paths."""
+    try:
+        import codec_heartbeat
+    except Exception:
+        return ()
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-heartbeat-"))
+    codec_heartbeat.HEARTBEAT_LOCK_PATH = str(tmp / "heartbeat.lock")
+    codec_heartbeat.HEARTBEAT_STAMP_PATH = str(tmp / "heartbeat_last.json")
+    codec_heartbeat.MEMORY_STATE_PATH = str(tmp / "memory_check.json")
+    return (codec_heartbeat.HEARTBEAT_STAMP_PATH, codec_heartbeat.MEMORY_STATE_PATH)
+
+
+_HEARTBEAT_TEMP_FILES = _isolate_heartbeat_guard()
+
+
+@pytest.fixture(autouse=True)
+def _heartbeat_runs_again():
+    for path in _HEARTBEAT_TEMP_FILES:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _live_state_untouched():
     """Fail the test during (or just before) which the P-009 guard refused something."""

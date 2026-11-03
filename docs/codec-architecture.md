@@ -336,6 +336,8 @@ One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_he
 
 No audit event for health beats (P-017, docs/HEALTH-BEATS-DESIGN.md): codec-imessage, codec-telegram and codec-autopilot write `~/.codec/health/<name>.json` once a round through `codec_health.beat` (0600; ts, ok, error count, exception class name, cadence, stopped); the observer's beat is its newest `observation_tick` audit line. `codec_heartbeat.check_health_beats` alerts (`alert_once` keys `silent:<name>`, `failing:<name>`) when a beat is older than 3x its cadence (at least 15 min) or 20 rounds in a row failed.
 
+No audit event for the heartbeat guard or the memory check (P-083, docs/LOOP-OWNER-DESIGN.md): a heartbeat skipped because another one holds `~/.codec/heartbeat.lock` or started under 15 min ago logs one line; `codec_heartbeat.memory_check` writes swap, free percentage and the model server's footprint to `~/.codec/memory_check.json` (0600) and alerts (`alert_once` key `mem_pressure`) after two ticks in a row with swap above 80% or the footprint above 1.5x the model (`config.json:memory_alert`).
+
 ### Bridge events (2026-10, iMessage and Telegram)
 `codec_imessage.audit` and `codec_telegram.audit` emit through `codec_audit.log_event` (JSON, HMAC, redaction). Before 7 Oct 2026 they appended plain-text lines with the first 100 characters of each message, which `verify_audit_log()` counted as broken. Never the message text.
 

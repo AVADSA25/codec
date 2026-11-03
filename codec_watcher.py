@@ -34,6 +34,43 @@ try:
 except ImportError:
     _codec_tts = None
 TASK_FILE      = os.path.expanduser("~/.codec/draft_task.json")
+_CLAIM_READ_TRIES = 20  # x 0.1 s: codec.py writes the file in place, so a fresh claim may still be filling
+
+
+def claim_draft():
+    """Take the pending draft task: its dict, or None when there is none (P-083).
+
+    Two watchers poll TASK_FILE (the dashboard's and PM2 codec-hotkey's). The file is
+    renamed to a name only this caller knows before it is read; os.rename is atomic
+    on one volume, so exactly one watcher gets the task and the other finds nothing.
+    The claimed copy is read (again for up to 2 s while the writer's open handle
+    still fills it) and then deleted."""
+    claimed = f"{TASK_FILE}.claimed-{os.getpid()}-{os.urandom(4).hex()}"
+    try:
+        os.rename(TASK_FILE, claimed)
+    except OSError:
+        return None  # nothing pending, or the other watcher took it
+    data = None
+    try:
+        for _ in range(_CLAIM_READ_TRIES):
+            try:
+                with open(claimed) as f:
+                    data = json.load(f)
+                break
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                time.sleep(0.1)
+    except OSError as e:
+        print(f"[Watcher] Draft task unreadable: {type(e).__name__}")
+    finally:
+        try:
+            os.unlink(claimed)
+        except OSError:
+            pass
+    if not isinstance(data, dict) or not data.get("task"):
+        if data is None:
+            print("[Watcher] Draft task dropped: not valid JSON after 2 s")
+        return None
+    return data
 
 def _load_watcher_config():
     """Load user_name and assistant_name from config."""
@@ -240,10 +277,9 @@ if __name__ == "__main__":
     while True:
         if os.path.exists(TASK_FILE):
             try:
-                with open(TASK_FILE) as f:
-                    data = json.load(f)
-                os.unlink(TASK_FILE)
-                handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
+                data = claim_draft()  # P-083: the dashboard's watcher polls the same file
+                if data:
+                    handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
             except Exception as e:
                 print(f"[Watcher] Error: {e}")
                 import traceback; traceback.print_exc()

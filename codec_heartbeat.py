@@ -1,4 +1,7 @@
 """CODEC Heartbeat — periodic check of logs, memory, and pending tasks"""
+import copy
+import fcntl
+import re
 import time
 import sqlite3
 import os
@@ -564,12 +567,19 @@ def check_alerts():
     alerts = cfg.get("heartbeat_alerts", [])
     if not alerts:
         return
-    alert_state_path = os.path.expanduser("~/.codec/alert_state.json")
+    try:  # P-083: the very file (and lock) codec_alerts writes, so the two merge, never race
+        import codec_alerts
+        alert_state_path = codec_alerts.ALERT_STATE_PATH
+    except ImportError:
+        alert_state_path = os.path.expanduser("~/.codec/alert_state.json")
     try:
         with open(alert_state_path) as f:
             state = json.load(f)
     except Exception:
         state = {}
+    if not isinstance(state, dict):
+        state = {}
+    base = copy.deepcopy(state)  # P-083: what this run loaded, for the merge at the end
     triggered = []
     for alert in alerts:
         # Skip disabled alerts
@@ -647,11 +657,12 @@ def check_alerts():
             except Exception as e:
                 log.warning(f"  Alert '{name}' failed: {e}")
 
-    # Save state
+    # Save state. P-083: under the file's lock, and only the keys this run changed, so the
+    # consecutive-failure counters codec_alerts wrote meanwhile are kept.
     try:
-        os.makedirs(os.path.dirname(alert_state_path), exist_ok=True)
-        with open(alert_state_path, "w") as f:
-            json.dump(state, f)
+        import codec_jsonstore
+        codec_jsonstore.read_modify_write(
+            alert_state_path, lambda current: codec_jsonstore.merge_changes(current, base, state))
     except Exception:
         pass
     # Send triggered alerts: save to notifications.json + macOS notification
@@ -759,14 +770,198 @@ def trim_overlay_events(path=None, now_ts=None) -> int:
                 pass
 
 
-def heartbeat():
-    """Run one heartbeat cycle."""
+# ── Memory pressure (P-083, docs/LOOP-OWNER-DESIGN.md) ───────────────────────
+# The model server's memory is GPU-backed: PM2's RSS shows ~60 MB while it holds 20 GB, and it grows
+# when it is not restarted. `footprint` (phys_footprint) is the honest figure; swap is the Mac's.
+MEMORY_STATE_PATH = os.path.expanduser("~/.codec/memory_check.json")
+MEM_SWAP_PCT = 80.0          # swap used, percent of the swap total (config memory_alert.swap_pct)
+MEM_FOOTPRINT_RATIO = 1.5    # model server footprint / model size (config memory_alert.footprint_ratio)
+MEM_HIGH_TICKS = 2           # high ticks in a row before mem_pressure alerts
+_MEM_CMD_TIMEOUT_S = 10
+_SYSCTL, _MEMORY_PRESSURE, _FOOTPRINT = "/usr/sbin/sysctl", "/usr/bin/memory_pressure", "/usr/bin/footprint"
+_UNIT = {"": 1, "B": 1, "K": 1024, "KB": 1024, "M": 1024 ** 2, "MB": 1024 ** 2,
+         "G": 1024 ** 3, "GB": 1024 ** 3, "T": 1024 ** 4, "TB": 1024 ** 4}
+
+
+def _mem_cmd(args) -> "str | None":
+    """stdout of a read-only memory tool, or None (missing tool, error exit, timeout)."""
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=_MEM_CMD_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def parse_swapusage(text) -> "tuple | None":
+    """(used_mb, total_mb) from `sysctl vm.swapusage`, or None."""
+    m = re.search(r"total\s*=\s*([\d.]+)\s*([KMGT]?)\b.*?used\s*=\s*([\d.]+)\s*([KMGT]?)\b", text or "")
+    if not m:
+        return None
+    mb = _UNIT["M"]
+    try:
+        return float(m.group(3)) * _UNIT[m.group(4)] / mb, float(m.group(1)) * _UNIT[m.group(2)] / mb
+    except ValueError:
+        return None
+
+
+def parse_memory_pressure(text) -> "int | None":
+    """System-wide free percentage from `memory_pressure -Q`, or None."""
+    m = re.search(r"free percentage:\s*(\d+)\s*%", text or "")
+    return int(m.group(1)) if m else None
+
+
+def parse_footprint(text) -> "int | None":
+    """phys_footprint in bytes from `footprint -p <pid>` (bytes or formatted units), or None."""
+    m = re.search(r"phys_footprint:\s*([\d.]+)\s*([KMGT]?B)\b", text or "")
+    if not m:
+        return None
+    try:
+        return int(float(m.group(1)) * _UNIT[m.group(2)])
+    except ValueError:
+        return None
+
+
+def _model_server_pid(procs, cfg) -> "int | None":
+    """pid of the online PM2 model server app (config model_pm2_process, default qwen3.6)."""
+    try:
+        import codec_models
+        app = _pm2_app(procs, codec_models._pm2_process_name(cfg)) or {}
+    except Exception:
+        return None
+    pid = app.get("pid")
+    if (app.get("pm2_env") or {}).get("status") != "online" or not isinstance(pid, int) or pid <= 0:
+        return None
+    return pid
+
+
+def _model_bytes(cfg) -> "int | None":
+    """Size of the model the local server holds: extra_models size_gb, else its weights on disk."""
+    try:
+        import codec_models
+        model = codec_models.local_server_model(cfg)[1]
+        for em in cfg.get("extra_models") or []:
+            if isinstance(em, dict) and em.get("id") == model and isinstance(em.get("size_gb"), (int, float)):
+                return int(em["size_gb"] * 1e9) or None
+        if os.path.isabs(model):
+            total = sum(os.path.getsize(os.path.join(model, f)) for f in os.listdir(model)
+                        if f.endswith(".safetensors"))
+        else:
+            total = codec_models._snapshot_bytes(
+                os.path.join(codec_models.HF_CACHE, "models--" + model.replace("/", "--")))
+        return int(total) or None
+    except Exception:
+        return None
+
+
+def _memory_limits(cfg) -> tuple:
+    raw = cfg.get("memory_alert") if isinstance(cfg.get("memory_alert"), dict) else {}
+
+    def num(key, default, lo, hi):
+        v = raw.get(key, default)
+        return min(max(float(v), lo), hi) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+    return num("swap_pct", MEM_SWAP_PCT, 50.0, 100.0), num("footprint_ratio", MEM_FOOTPRINT_RATIO, 1.1, 5.0)
+
+
+def memory_check(procs=None, now_ts=None) -> dict:
+    """Read swap, memory pressure and the model server's footprint; alert `mem_pressure` once after
+    MEM_HIGH_TICKS ticks in a row with swap above 80% or the footprint above 1.5x the model, and one
+    recovery message when a tick is fine again. A figure that cannot be read is 'unknown' and never
+    alerts. The reading goes to MEMORY_STATE_PATH, which GET /api/status shows."""
+    import codec_jsonstore
+    from codec_alerts import alert_once, alert_resolved
+    now_ts = time.time() if now_ts is None else now_ts
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+        cfg = cfg if isinstance(cfg, dict) else {}
+    except Exception:
+        cfg = {}
+    if procs is None:
+        procs = _pm2_jlist()
+    swap_limit, ratio_limit = _memory_limits(cfg)
+    reading = {"checked_at": datetime.fromtimestamp(now_ts).isoformat(timespec="seconds"),
+               "swap": "unknown", "swap_pct": None, "swap_used_mb": None, "swap_total_mb": None,
+               "free_pct": parse_memory_pressure(_mem_cmd([_MEMORY_PRESSURE, "-Q"])),
+               "model_footprint": "unknown", "model_footprint_gb": None, "model_gb": None,
+               "footprint_ratio": None}
+    swap = parse_swapusage(_mem_cmd([_SYSCTL, "vm.swapusage"]))
+    if swap is not None:
+        used, total = swap
+        pct = round(used * 100.0 / total, 1) if total > 0 else 0.0
+        reading.update(swap="high" if pct > swap_limit else "ok", swap_pct=pct,
+                       swap_used_mb=round(used, 1), swap_total_mb=round(total, 1))
+    pid = _model_server_pid(procs, cfg)
+    used_bytes = parse_footprint(_mem_cmd([_FOOTPRINT, "-p", str(pid), "-f", "bytes", "--noCategories"])) \
+        if pid else None
+    size = _model_bytes(cfg) if used_bytes else None
+    if used_bytes:
+        reading["model_footprint_gb"] = round(used_bytes / 1e9, 1)
+    if used_bytes and size:
+        ratio = round(used_bytes / size, 2)
+        reading.update(model_footprint="high" if ratio > ratio_limit else "ok", footprint_ratio=ratio,
+                       model_gb=round(size / 1e9, 1))
+    figures = (reading["swap"], reading["model_footprint"])
+    reading["level"] = "high" if "high" in figures else "ok" if "ok" in figures else "unknown"
+
+    def _mutate(state):
+        state = state if isinstance(state, dict) else {}
+        ticks = state.get("high_ticks")
+        ticks = ticks if isinstance(ticks, int) and not isinstance(ticks, bool) and ticks > 0 else 0
+        if reading["level"] == "high":
+            ticks += 1
+        elif reading["level"] == "ok":
+            ticks = 0
+        return dict(reading, high_ticks=ticks)
+
+    try:
+        reading = codec_jsonstore.read_modify_write(MEMORY_STATE_PATH, _mutate)
+    except Exception as e:
+        log.warning(f"Memory check state not saved: {type(e).__name__}")
+        reading = _mutate({})
+    parts = []
+    if reading["swap"] == "high":
+        parts.append(f"swap {reading['swap_pct']:.0f}% used ({reading['swap_used_mb'] / 1024:.1f} of "
+                     f"{reading['swap_total_mb'] / 1024:.1f} GB)")
+    if reading["model_footprint"] == "high":
+        parts.append(f"the model server holds {reading['model_footprint_gb']:.1f} GB, "
+                     f"{reading['footprint_ratio']:.1f}x its {reading['model_gb']:.1f} GB model")
+    log.info(f"Memory: level {reading['level']}, swap {reading['swap_pct']}%, "
+             f"model footprint {reading['model_footprint_gb']} GB, free {reading['free_pct']}%")
+    if reading["level"] == "high" and reading["high_ticks"] >= MEM_HIGH_TICKS:
+        try:
+            import codec_models
+            app = codec_models._pm2_process_name(cfg)
+        except Exception:
+            app = "qwen3.6"
+        alert_once("mem_pressure", "warning",
+                   f"CODEC ALERT: memory is tight on this Mac: {' and '.join(parts)}. Chat may slow down. "
+                   f"Restarting the model server (pm2 restart {app}) gives its memory back.")
+    elif reading["level"] == "ok":
+        alert_resolved("mem_pressure", "CODEC RECOVERED: memory is back to normal.")
+    return reading
+
+
+def memory_status() -> dict:
+    """The last memory_check reading for GET /api/status; level unknown before the first one."""
+    try:
+        with open(MEMORY_STATE_PATH) as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data.get("level"):
+            return data
+    except Exception:
+        pass
+    return {"level": "unknown", "checked_at": None}
+
+
+def _heartbeat_cycle():
+    """Run one heartbeat cycle (heartbeat() decides whether this process may)."""
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     procs = _pm2_jlist()  # one `pm2 jlist` for the PM2 checks and the start grace (P-059)
     check_system_health(procs)
     check_pm2_restart_storms(procs)
     for check in (lambda: check_errored_codec_apps(procs), lambda: check_health_beats(procs),  # P-017
+                  lambda: memory_check(procs),  # P-083
                   lambda: maybe_send_daily_status(procs=procs)):
         try:
             check()
@@ -815,6 +1010,64 @@ def heartbeat():
               extra={"tasks_run": len(tasks) if hasattr(tasks, '__len__') else None})
     return tasks
 
+
+# ── One heartbeat at a time on this Mac (P-083, docs/LOOP-OWNER-DESIGN.md) ────
+# codec-dashboard runs the heartbeat every 30 min (the owner). A hand-added PM2 app codec-heartbeat
+# ran it again every 20 min, so probes, restarts, the mail check and the alert counters ran twice.
+HEARTBEAT_LOCK_PATH = os.path.expanduser("~/.codec/heartbeat.lock")
+HEARTBEAT_STAMP_PATH = os.path.expanduser("~/.codec/heartbeat_last.json")
+HEARTBEAT_INTERVAL_S = 30 * 60  # codec-dashboard's loop; a run within half of it is skipped
+
+
+def _stamp_age(now_ts) -> "float | None":
+    """Seconds since the last heartbeat started, or None (no stamp, a broken one, or one in the future)."""
+    try:
+        with open(HEARTBEAT_STAMP_PATH) as f:
+            started = float(json.load(f)["started_at"])
+    except Exception:
+        return None
+    age = now_ts - started
+    return age if age >= 0 else None
+
+
+def heartbeat(*, min_gap_s=None):
+    """Run one heartbeat cycle, unless another one runs now (HEARTBEAT_LOCK_PATH is held, by any
+    process or thread) or one started less than `min_gap_s` ago (default half HEARTBEAT_INTERVAL_S,
+    by HEARTBEAT_STAMP_PATH). A skipped call returns None at once; a run returns the cycle's tasks.
+    If the lock file cannot be opened the cycle runs anyway: a heartbeat is never lost to it."""
+    gap = HEARTBEAT_INTERVAL_S / 2 if min_gap_s is None else min_gap_s
+    fd = None
+    try:
+        os.makedirs(os.path.dirname(HEARTBEAT_LOCK_PATH) or ".", exist_ok=True)
+        fd = os.open(HEARTBEAT_LOCK_PATH, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as e:
+        log.warning(f"Heartbeat lock unavailable ({type(e).__name__}); running without it")
+    try:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                log.info("Heartbeat skipped: another heartbeat is running on this Mac")
+                return None
+            except OSError as e:  # a folder that cannot lock: run, as before this guard
+                log.warning(f"Heartbeat lock not taken ({type(e).__name__}); running without it")
+        now_ts = time.time()
+        age = _stamp_age(now_ts)
+        if gap > 0 and age is not None and age < gap:
+            log.info(f"Heartbeat skipped: the last one started {int(age // 60)} min ago")
+            return None
+        try:
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(HEARTBEAT_STAMP_PATH,
+                                              {"started_at": now_ts, "pid": os.getpid()})
+        except Exception as e:
+            log.warning(f"Heartbeat stamp not written: {type(e).__name__}")
+        return _heartbeat_cycle()
+    finally:
+        if fd is not None:
+            os.close(fd)  # closing the descriptor releases the lock
+
+
 # P-059: after a boot or deploy the first check waits this long, so services
 # that start with the Mac are not probed (and restarted) while they load.
 # Used by this daemon and by codec-dashboard's _bg_heartbeat.
@@ -832,6 +1085,6 @@ def run_daemon(interval_minutes=20):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "once":
-        heartbeat()
+        heartbeat(min_gap_s=0)  # by hand: still never next to a running one
     else:
         run_daemon(20)

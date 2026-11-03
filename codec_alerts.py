@@ -28,6 +28,7 @@ the bot's `telegram.allowed_chat_ids` stays empty, so it accepts no commands.
 every 6 h, and send one message when it clears. Messages carry service names
 and states only, never user data.
 """
+import copy
 import json
 import logging
 import os
@@ -68,11 +69,18 @@ def _load_state() -> dict:
         return {}
 
 
-def _save_state(state: dict):
+def _save_state(state: dict, base: Optional[dict] = None):
     # Fix #9 Phase 1: atomic write (tmp+fsync+replace) so a crash mid-write
     # can't truncate the alert state.
+    # P-083: under the file's lock (read_modify_write). With `base`, the state
+    # this run loaded, only what this run changed is written over the file as it
+    # is now, so codec_heartbeat.check_alerts' keys written meanwhile survive.
     import codec_jsonstore
-    codec_jsonstore.atomic_write_json(ALERT_STATE_PATH, state)
+
+    def _mutate(current):
+        return state if base is None else codec_jsonstore.merge_changes(current, base, state)
+
+    codec_jsonstore.read_modify_write(ALERT_STATE_PATH, _mutate)
 
 
 # ── Alert Channels ──────────────────────────────────────────────────────
@@ -357,6 +365,7 @@ def check_services_and_alert(procs=None, now_ts: Optional[float] = None):
     """
     cfg = _load_config()
     state = _load_state()
+    base = copy.deepcopy(state)  # P-083: what this run loaded, for _save_state's merge
     now_ts = time.time() if now_ts is None else now_ts
     now = datetime.fromtimestamp(now_ts).isoformat()
 
@@ -505,4 +514,4 @@ def check_services_and_alert(procs=None, now_ts: Optional[float] = None):
 
     state["consecutive_failures"] = failures
     state["last_check"] = now
-    _save_state(state)
+    _save_state(state, base=base)

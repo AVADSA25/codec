@@ -1096,15 +1096,14 @@ async def _bg_watcher():
     overlay closing 0.5-1s after a paste is indistinguishable from instant
     to the operator).
     """
-    from codec_watcher import TASK_FILE, handle_draft
+    from codec_watcher import TASK_FILE, claim_draft, handle_draft
     _bg_status["watcher"]["running"] = True
     log.info("[WATCHER] Background service started")
     while True:
         try:
-            if os.path.exists(TASK_FILE):
-                with open(TASK_FILE) as f:
-                    data = json.load(f)
-                os.unlink(TASK_FILE)
+            # P-083: claimed by rename, so PM2 codec-hotkey (codec_watcher.py) cannot run it too
+            data = await asyncio.to_thread(claim_draft) if os.path.exists(TASK_FILE) else None
+            if data:
                 await asyncio.to_thread(
                     handle_draft, data["task"], data.get("ctx", ""), data.get("app", "")
                 )

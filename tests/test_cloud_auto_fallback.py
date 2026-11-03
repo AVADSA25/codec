@@ -150,7 +150,7 @@ def test_heartbeat_keeps_probing_the_local_model_on_an_automatic_fallback(monkey
     probed = []
     monkeypatch.setattr(codec_alerts, "_load_config", lambda: cfg)
     monkeypatch.setattr(codec_alerts, "_load_state", lambda: {})
-    monkeypatch.setattr(codec_alerts, "_save_state", lambda s: None)
+    monkeypatch.setattr(codec_alerts, "_save_state", lambda s, base=None: None)
     monkeypatch.setattr(codec_alerts, "send_alert", lambda *a, **k: None)
     monkeypatch.setattr(codec_alerts, "_try_restart", lambda name: True)
     monkeypatch.setattr(codec_alerts.time, "sleep", lambda s: None)
