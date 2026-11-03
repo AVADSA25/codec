@@ -19,7 +19,7 @@
   <a href="https://github.com/AVADSA25/codec/actions/workflows/ci.yml"><img src="https://github.com/AVADSA25/codec/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="https://github.com/AVADSA25/codec/discussions"><img src="https://img.shields.io/badge/community-Discussions-7057ff?style=flat-square&logo=github" alt="GitHub Discussions"/></a>
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-370-blue?style=flat-square" alt="370 Features"/></a>
-  <img src="https://img.shields.io/badge/skills-89-orange?style=flat-square" alt="89 Skills"/>
+  <img src="https://img.shields.io/badge/skills-91-orange?style=flat-square" alt="91 Skills"/>
   <img src="https://img.shields.io/badge/tests-2000+-green?style=flat-square" alt="2,000+ Tests"/>
   <img src="https://img.shields.io/badge/lines-52K+-purple?style=flat-square" alt="52K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
@@ -55,7 +55,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 CODEC's moat is the *combination* — local-first **and** voice **and** MCP-as-a-server **and** self-writing skills **and** a zero-dependency agent runtime. No single competitor has all five.
 
 - **Open Interpreter / Aider write code in a terminal. CODEC controls the whole Mac by voice** — including your IDE, your browser, your apps. The terminal is one surface; CODEC drives all of them.
-- **Cursor and Claude Desktop talk to LLMs. CODEC turns your Mac into a tool the LLM can use** — over MCP. Claude (or Cursor, or VS Code) gets your screen, your apps, your 76 skills, and your memory. CODEC is both an MCP *client* and an MCP *server*, so two CODECs can even peer — agent-to-agent — on the open protocol Anthropic standardized.
+- **Cursor and Claude Desktop talk to LLMs. CODEC turns your Mac into a tool the LLM can use** — over MCP. Claude (or Cursor, or VS Code) gets your screen, your apps, your 91 skills, and your memory. CODEC is both an MCP *client* and an MCP *server*, so two CODECs can even peer — agent-to-agent — on the open protocol Anthropic standardized.
 - **CrewAI / LangChain orchestrate. CODEC orchestrates _and_ executes on your hardware** — with a ~795-line multi-agent runtime that has zero dependency on either framework.
 
 And all of it runs on *your* machine: no data leaves unless you ask for something that needs the network, such as a cloud model or a web search ([`PRIVACY.md`](PRIVACY.md) lists every request, including the update check).
@@ -66,7 +66,7 @@ And all of it runs on *your* machine: no data leaves unless you ask for somethin
 
 | # | Product | What It Does |
 |:-:|---|---|
-| 1 | **CODEC Core** | Voice command layer + vision mouse control — 89 skills, screen clicks by voice |
+| 1 | **CODEC Core** | Voice command layer + vision mouse control — 91 skills, screen clicks by voice |
 | 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
@@ -80,7 +80,7 @@ And all of it runs on *your* machine: no data leaves unless you ask for somethin
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-89 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
+91 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
 **Vision Mouse Control — See & Click**
 
@@ -282,7 +282,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>89 skills loaded at startup</em>
+  <em>91 skills loaded at startup</em>
 </p>
 <p align="center">
   <img src="docs/screenshots/cortex.png" alt="Cortex Neural Map" width="720"/><br/>
@@ -484,7 +484,7 @@ Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything C
 
 - **Your Mac, your apps** — native macOS control: mouse/keyboard via vision model, screenshot text extraction, app switching, clipboard, brightness/volume, Philips Hue, Spotify, Apple Notes, Reminders, Clock timers, music. No browser sandbox.
 - **Your memory** — FTS5-searchable history of every CODEC conversation. Claude can recall what *you* said weeks ago, not just this chat.
-- **Your skills, not Anthropic's** — 76 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
+- **Your skills, not Anthropic's** — 91 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
 - **Your LLM, your choice** — same skill catalog works whether the brain is local Qwen (offline, private) or cloud Claude. The toolkit outlives the model.
 - **Your voice pipeline** — Whisper STT, Kokoro TTS, wake-word — all reachable from the chat loop if you want voice output of a Claude answer.
 
@@ -492,7 +492,7 @@ One install. Claude stops being a chat window and becomes a driver for the machi
 
 ### Bidirectional MCP — agent-to-agent on the open protocol
 
-CODEC is **both an MCP client and an MCP server.** As a *client* it consumes tools from any MCP host; as an MCP server it exposes its 76 skills, searchable memory, and voice pipeline to any MCP client — Claude, Cursor, VS&nbsp;Code, or **another CODEC.** Point two Macs at each other and they peer directly: **agent-to-agent** collaboration over the same protocol Anthropic standardized — no middleman cloud, each side keeping its own data local.
+CODEC is **both an MCP client and an MCP server.** As a *client* it consumes tools from any MCP host; as an MCP server it exposes its 91 skills, searchable memory, and voice pipeline to any MCP client — Claude, Cursor, VS&nbsp;Code, or **another CODEC.** Point two Macs at each other and they peer directly: **agent-to-agent** collaboration over the same protocol Anthropic standardized — no middleman cloud, each side keeping its own data local.
 
 ---
 
@@ -704,7 +704,7 @@ codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — Native macOS status bar app (NSPanel, event JSONL poller)
-skills/               — 76 built-in skills (incl. vision mouse control)
+skills/               — 91 built-in skills (incl. vision mouse control)
 tests/                — 1,386 test functions across 99 files (1,685 collected via pytest --collect-only)
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
@@ -777,7 +777,7 @@ python3 setup_codec.py
 
 ## Contributing
 
-All skill contributions welcome. 76 built-in skills, 1,300+ tests, marketplace growing.
+All skill contributions welcome. 91 built-in skills, 1,300+ tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git

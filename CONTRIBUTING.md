@@ -39,7 +39,7 @@ The full test suite must pass before any PR. Current baseline: **1,300+ pytest t
 
 ## How to add a skill
 
-A skill is a single Python file that does one thing well. CODEC currently has 76 built-in skills.
+A skill is a single Python file that does one thing well. CODEC currently has 91 built-in skills.
 
 ### Step 1: Copy the template
 
@@ -309,7 +309,7 @@ codec_hooks           — Plugin lifecycle hooks (pre/post tool, on_error, etc.)
 codec_textassist      — Right-click text services
 codec_dictate         — F5 live-dictation + draft refinement
 pilot/                — Browser automation runtime (vendored module)
-skills/               — 76 built-in skill plugins (hash-pinned in .manifest.json)
+skills/               — 91 built-in skill plugins (hash-pinned in .manifest.json)
 routes/               — HTTP endpoint groups extracted from codec_dashboard.py
 tests/                — 156 test files, 1,300+ tests
 ```
