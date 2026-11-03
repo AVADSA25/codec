@@ -172,7 +172,8 @@ class _Ws:
 
 # ── The swap line ────────────────────────────────────────────────────────────
 
-def test_a_pinned_model_that_is_not_loaded_writes_one_model_swap_line(server, audit_log):
+def test_a_pinned_model_that_is_not_loaded_writes_one_model_swap_line(cfg, server, audit_log):
+    # `cfg`: probe() reads config (a cloud entry check); keep it off the owner's file.
     import codec_voice
     codec_voice._warm_voice_llm(BIG, server.base, False, "abc123")
     rows = audit_log()
