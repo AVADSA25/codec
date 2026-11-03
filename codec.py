@@ -372,12 +372,15 @@ def _build_voice_system_prompt(task):
         log.warning("Memory context retrieval failed: %s", e)
 
     # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
+    # From the runtime function Deep Chat reads them from (P-026); unfiltered here until P-037.
     try:
-        from codec_memory_upgrade import load_identity, query_valid_facts, compress_rule_based
-        identity = load_identity()
+        import codec_runtime_context
+        from codec_memory_upgrade import compress_rule_based
+        _who = codec_runtime_context.gather(machine=False)
+        identity = _who["about_me"]
         if identity:
             boot_ctx = f"\n\n[IDENTITY — BOOT PAYLOAD]\n{identity}\n[END IDENTITY]"
-        facts = query_valid_facts(limit=20)
+        facts = _who["facts"]
         if facts:
             lines = ["[ACTIVE FACTS]"]
             for f in facts:

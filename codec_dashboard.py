@@ -937,11 +937,10 @@ When you can act (run a command, check something, control a device), do it rathe
 - Do not echo raw [MEMORY] or [RECENT MEMORY] block markers in your reply.
 
 ## User-specific context
-Any personal context (the user's name, location, language preferences,
-custom rules) is added by the user through the settings panel — it
-arrives as additional system messages, not as part of this base prompt.
-Use it when present; never assume facts about the user that haven't been
-provided."""
+Any personal context (what the user wrote in About me, the facts saved
+about them, their standing rules) is added below this prompt at runtime,
+with the hardware of the Mac you run on. Use it when present; never
+assume facts about the user that haven't been provided."""
 
 CHAT_SYSTEM_PROMPT = _BASE_CHAT_PROMPT + _DASHBOARD_ADDON
 

@@ -819,6 +819,24 @@ _REASON_SCAFFOLD = (
 )
 
 
+def _identity_block(meta: dict | None, temporary: bool) -> str:
+    """P-026: this Mac's hardware, the skill count, About me and the saved facts, from the one
+    runtime function voice and the wake word read About me and facts from
+    (codec_runtime_context.gather). Deep Chat leaves out facts whose source is mcp, untrusted or
+    daybreak; a temporary chat gets no facts (memory recall, P2.11). "" when there is nothing."""
+    try:
+        import codec_runtime_context as crc
+        ctx = crc.gather(facts=not temporary, exclude_sources=crc.CHAT_EXCLUDED_SOURCES)
+        text, n_facts = crc.chat_block(ctx)
+    except Exception as e:
+        log.debug("runtime identity unavailable: %s", e)
+        return ""
+    if ctx.get("about_me"):
+        _note_memory(meta, "about", "me", 1)
+    _note_memory(meta, "facts", "saved", n_facts)
+    return "\n\n" + text if text else ""
+
+
 def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
                               last_user_text: str, meta: dict | None = None,
                               temporary: bool = False) -> str:
@@ -858,7 +876,10 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
         # the turn, so it answered about the request instead of the paper.
         sys_prompt = _persona.replace("{date}", _dt.now().strftime("%A, %B %d, %Y"))
     else:
-        sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+        # P-026: .replace like the persona branch: a Settings prompt may hold braces (a JSON
+        # example, code), and .format turned a single "{" into a failed chat.
+        sys_prompt = _chat_prompt.replace("{date}", _dt.now().strftime("%A, %B %d, %Y"))
+        sys_prompt += _identity_block(meta, temporary)
     # Standing rules the user actually saved (codec_standing_rules). Appended,
     # never replacing — a user rule must not silently discard CODEC's identity
     # or safety framing. This is what makes "saved" an honest answer.
