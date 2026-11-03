@@ -214,7 +214,7 @@ Implementation: `codec_agent_plan.py` (~640 LOC), `routes/agents.py` (~250 LOC o
 - `run_daemon()` — production entry point (PM2 `codec-agent-runner`)
 - `permission_gate(action, agent_grants, global_grants)` — synchronous gate check
 - Dataclasses: `Action`, `ConsentResult`
-- Exceptions: `PermissionViolation`, `DestructiveOpRejected`, `StepBudgetExhausted`, `QwenUnavailableError`
+- Exceptions: `PermissionViolation`, `DestructiveOpRejected`, `StepBudgetExhausted`, `QwenUnavailableError`, `StopRequested`
 
 **PWA endpoints (`routes/agents.py` Step 9 additions):** `POST /api/agents/{id}/abort`, `/pause`, `/resume`, `/grant` (body: `kind`, `value` — adds to per-agent grants, unblocks if `blocked_on_permission`).
 
@@ -226,6 +226,8 @@ Implementation: `codec_agent_plan.py` (~640 LOC), `routes/agents.py` (~250 LOC o
 - `AGENT_RUNNER_ENABLED=false` — daemon idles (still scans, never spawns threads)
 - Per-agent: `POST /api/agents/{id}/abort` (atomic state write)
 - Per-agent: `POST /api/agents/{id}/pause` / `/resume`
+
+**Stop at step boundaries (P-010, docs/AGENT-STOP-DESIGN.md):** the routes only write the status; the runner thread re-reads its manifest before and after every model call, after every skill call and after a destructive confirmation, and `paused` or `aborted` raises `StopRequested`. The running skill finishes, nothing new starts, the checkpoint cursor does not move (progress stays in `cp_history`) and no completion is posted. An abort posts one `agent_aborted` message titled `Interrupted`; a pause exits the thread, and `/resume` re-enters through the daemon's crash-resume branch from the saved step. Keep these checks in any change to the step loop.
 
 **Reuses (no new infrastructure):** Step 1 audit envelope · Step 2 plugin lifecycle hooks (every `run_skill` wrapped automatically) · Step 3 `ask_user` (outside-manifest pause) · Step 3 §1.7 strict-consent (universal floor for destructive ops) · Step 5 observer (passively records agent activity) · Step 7 shift_report (agent activity surfaces in daily summary).
 
