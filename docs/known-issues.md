@@ -525,3 +525,16 @@ either. Out of P-020's scope ("only the auto-trigger changes"). Fix (own PR,
 needs the owner's word on the default): run the skill on a trigger phrase or a
 model tag only when the toggle is on (or drop the question-phrase triggers),
 cap its query like `_derive_search_query`, and refuse it when `web` is false.
+
+## The runner daemon can start a paused Project agent again (2026-11-03)
+
+In `codec_agent_runner._daemon_one_tick`, the crash-resume branch (status
+`running` with no live thread) and the `blocked_on_qwen` branch start
+`_run_agent` even when their own status change (`crashed_resumed`, or
+`running`) did not apply. If the owner presses Pause inside one daemon tick,
+between the tick's scan and that status change, the change is refused
+(`paused -> crashed_resumed` is not allowed), the thread starts anyway, and
+`_run_agent` moves `paused -> running` (allowed), so the agent runs on and the
+pause is lost. Found while building P-010 (docs/AGENT-STOP-DESIGN.md, Known
+limits). Fix (own small PR, section 10 file): skip the spawn when
+`_atomic_set_status` returns False. Revisit: the next change to the daemon loop.
