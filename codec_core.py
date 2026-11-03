@@ -212,7 +212,8 @@ def _swift_text_input(timeout=120):
         except OSError:
             pass
     try:
-        with open(events, "a") as f:
+        # P-082: the events file is created owner-only (0600).
+        with os.fdopen(os.open(events, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
             f.write(_json.dumps({"type": "input_request", "id": rid,
                                  "prompt": "What can I do for you?"}) + "\n")
     except Exception:

@@ -18,7 +18,7 @@
 
 | File | Writer(s) | RMW? | Policy | Status |
 |---|---|---|---|---|
-| `notifications.json` | `routes/_shared._save_notification`, `_write_notifications`; `codec_ask_user` (question + mark-read); `codec_agent_messaging.post_message` | yes | **SAFE** | `_write_notifications` atomic (C-3); RMW under `file_lock` — `_save_notification` (Fix #9 P2), ask_user (Fix #5), messaging (B-11) |
+| `notifications.json` | `routes/_shared._save_notification`, `_write_notifications`; `codec_ask_user` (question + mark-read); `codec_agent_messaging.post_message`; `skills/shift_report._post_notification` | yes | **SAFE** | `_write_notifications` atomic (C-3); RMW under `file_lock` — `_save_notification` (Fix #9 P2), ask_user (Fix #5), messaging (B-11), shift report `read_modify_write` (P-082) |
 | `pending_questions.json` | `codec_ask_user._save_pending_questions` | yes | OWN-ATOMIC (+`file_lock`) | RMW already under `file_lock` (C-4). Helper `_atomic_write_text` → converge in Phase 3. **Don't-touch zone.** |
 | `agents/<id>/grants.json` | `codec_agent_plan.save_grants` (+ `grants_lock`) | yes | OWN-ATOMIC (+`file_lock`) | RMW under `grants_lock` (Fix #5). Helper `_atomic_write_json` → Phase 3. **Tamper-hashed.** |
 | `agents/<id>/{plan,state,manifest}.json` | `codec_agent_plan.save_*` (manifest CAS under `_status_lock`) | manifest yes | OWN-ATOMIC | `_atomic_write_json` (0600/0700). Phase 3 convergence. **Don't-touch after approval.** |
@@ -31,11 +31,14 @@
 | `triggers.json` / `triggers_killed.json` | `codec_triggers` | yes | review | Phase 2 |
 | `schedules.json` | `codec_scheduler`, `codec_dashboard` | yes | AD-HOC | Phase 1/2 |
 | `voice_session.json` | `codec_voice` | no | AD-HOC | Phase 1 |
-| `<google token>.json` | `codec_google_auth` | no | AD-HOC | **Phase 4** (don't-touch: OAuth token). |
+| `<google token>.json` | `codec_google_auth._save_token` | no | **SAFE** | `atomic_write_json`, same JSON (P-082, owner's plan approval). |
+| `.license_state.json` | `codec_license._write_grace` | no | **SAFE** | `atomic_write_json` (P-082). |
+| `prompt_overrides.json` | `routes/prompts._save_prompt_overrides` | no | **SAFE** | `atomic_write_json` (P-082). |
+| `overlay_events.jsonl` | `codec_overlays._emit`, `codec_core._swift_text_input`, `codec_dispatch` (`skill_fired`) | append | n/a (append) | created 0600; `codec_heartbeat.trim_overlay_events` keeps the last 100 lines after 60 s quiet, by atomic replace (P-082) |
 | `.marketplace.json` | `codec_marketplace` | yes | AD-HOC | Phase 1 |
 | daemon state (`codec_alerts`, `codec_heartbeat`, `codec_imessage`, `codec_proactive`, `codec_agent_messaging`) | respective module | mixed | AD-HOC | Phase 1 |
 | `pomodoro` state | `skills/pomodoro` | no | AD-HOC | Phase 1 |
-| E2E keys / auth sessions (`routes/_shared`) | `_save_e2e_keys`, `_save_sessions` | no | AD-HOC (0600) | Phase 1 (sensitive — review) |
+| E2E keys / auth sessions (`routes/_shared`) | `_save_e2e_keys`, `_save_sessions` | no | **SAFE** | `atomic_write_json(indent=None)`: same bytes as before, so nobody is logged out (P-082) |
 
 ## Migration backlog (Fix #9 follow-on)
 

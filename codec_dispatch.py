@@ -258,7 +258,9 @@ def run_skill(skill, task, app="", consent=None):
             try:
                 import os as _os
                 _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
-                with open(_events_path, "a") as _f:
+                # P-082: the events file is created owner-only (0600).
+                with _os.fdopen(_os.open(_events_path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT,
+                                         0o600), "a") as _f:
                     _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
             except Exception as e:
                 log.debug("Overlay event write failed: %s", e)

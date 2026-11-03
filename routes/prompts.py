@@ -34,9 +34,10 @@ def _load_prompt_overrides():
 
 
 def _save_prompt_overrides(data):
-    os.makedirs(os.path.dirname(PROMPTS_FILE), exist_ok=True)
-    with open(PROMPTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    import codec_jsonstore
+    # P-082: atomic replace (0600), so a failed save keeps the previous overrides.
+    os.makedirs(os.path.dirname(PROMPTS_FILE), mode=0o700, exist_ok=True)
+    codec_jsonstore.atomic_write_json(PROMPTS_FILE, data)
 
 
 def _get_all_prompts():

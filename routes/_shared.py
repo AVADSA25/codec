@@ -211,17 +211,17 @@ def _load_e2e_keys():
 
 
 def _save_e2e_keys():
-    """Persist E2E keys to disk. Only keep keys for active sessions."""
+    """Persist E2E keys to disk. Only keep keys for active sessions.
+    P-082: atomic replace, 0600 from creation, same bytes as before."""
     try:
         import base64
-        os.makedirs(os.path.dirname(_E2E_KEYS_FILE), exist_ok=True)
+        import codec_jsonstore
+        os.makedirs(os.path.dirname(_E2E_KEYS_FILE), mode=0o700, exist_ok=True)
         raw = {}
         for tok, key_bytes in _e2e_keys.items():
             if tok in _auth_sessions:
                 raw[tok] = base64.b64encode(key_bytes).decode()
-        with open(_E2E_KEYS_FILE, "w") as f:
-            json.dump(raw, f)
-        os.chmod(_E2E_KEYS_FILE, 0o600)
+        codec_jsonstore.atomic_write_json(_E2E_KEYS_FILE, raw, indent=None)
     except Exception as e:
         log.warning("Could not save E2E keys: %s", e)
 
@@ -248,9 +248,11 @@ def _load_sessions():
 
 
 def _save_sessions():
-    """Persist current sessions to disk. Caller must hold _auth_lock."""
+    """Persist current sessions to disk. Caller must hold _auth_lock.
+    P-082: atomic replace, 0600 from creation, same bytes as before."""
     try:
-        os.makedirs(os.path.dirname(_SESSION_FILE), exist_ok=True)
+        import codec_jsonstore
+        os.makedirs(os.path.dirname(_SESSION_FILE), mode=0o700, exist_ok=True)
         raw = {}
         for tok, data in _auth_sessions.items():
             raw[tok] = {
@@ -258,9 +260,7 @@ def _save_sessions():
                 "ip": data.get("ip", "unknown"),
                 "method": data.get("method", "unknown"),
             }
-        with open(_SESSION_FILE, "w") as f:
-            json.dump(raw, f)
-        os.chmod(_SESSION_FILE, 0o600)
+        codec_jsonstore.atomic_write_json(_SESSION_FILE, raw, indent=None)
     except Exception as e:
         log.warning("Could not save auth sessions: %s", e)
 

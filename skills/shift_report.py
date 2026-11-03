@@ -457,15 +457,13 @@ def _assemble_shift_report(trigger_kind: str = "manual") -> Dict[str, Any]:
 
 def _post_notification(report: Dict[str, Any]) -> Optional[str]:
     """Append a type='shift_report' entry to ~/.codec/notifications.json
-    and return the notification id."""
+    and return the notification id.
+
+    P-082: the read, insert and write run under the notifications file lock that
+    every other writer holds (routes/_shared._save_notification, agent messages,
+    heartbeat alerts), so an entry written at the same moment is never lost."""
     try:
-        try:
-            with open(_NOTIFS_PATH) as f:
-                notifs = json.load(f)
-            if not isinstance(notifs, list):
-                notifs = []
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            notifs = []
+        import codec_jsonstore
         nid = f"notif_{secrets.token_hex(5)}"
         entry = {
             "id": nid,
@@ -480,11 +478,15 @@ def _post_notification(report: Dict[str, Any]) -> Optional[str]:
             "trigger_kind": report["trigger_kind"],
             "word_count": report["word_count"],
         }
-        notifs.insert(0, entry)
-        _NOTIFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _NOTIFS_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(notifs, indent=2, default=str))
-        os.replace(tmp, _NOTIFS_PATH)
+
+        def _add(notifs):
+            notifs = notifs if isinstance(notifs, list) else []
+            notifs.insert(0, entry)
+            return notifs
+
+        _NOTIFS_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        codec_jsonstore.read_modify_write(_NOTIFS_PATH, _add, default_factory=list,
+                                          default=str)
         return nid
     except Exception as e:
         _log.warning("shift_report notification post failed: %s", e)

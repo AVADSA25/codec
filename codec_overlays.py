@@ -32,8 +32,9 @@ def _ensure_mark():
 def _emit(event):
     """Append one overlay event for the Swift renderer. Never raises."""
     try:
-        os.makedirs(os.path.dirname(_EVENTS), exist_ok=True)
-        with open(_EVENTS, "a") as f:
+        # P-082: owner-only from creation (0600 file, 0700 for a folder made here).
+        os.makedirs(os.path.dirname(_EVENTS), mode=0o700, exist_ok=True)
+        with os.fdopen(os.open(_EVENTS, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
             f.write(json.dumps(event) + "\n")
         return True
     except Exception:
