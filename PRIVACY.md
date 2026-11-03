@@ -73,7 +73,7 @@ These two are the only requests that go out without you asking for something or 
 
 | Feature | What is sent | To | When |
 |---|---|---|---|
-| **Web search in chat** | The first line of your message, links and a lead-in such as "search the web for" removed, at most 12 words. Pasted text below the first line stays on the Mac. | DuckDuckGo (`api.duckduckgo.com`, `html.duckduckgo.com`), or Serper (`google.serper.dev`) when a Serper key is set | Only when the "Search the web" toggle is on; the reply then shows "Searched the web". Temporary chats follow the same rule; Vibe never searches. |
+| **Web search in chat** | The first line of your message, links and a lead-in such as "search the web for" removed, at most 12 words. Pasted text below the first line stays on the Mac. | DuckDuckGo (`api.duckduckgo.com`, `html.duckduckgo.com`), or Serper (`google.serper.dev`) when a Serper key is set; if Serper fails or answers with an error (429 = out of credit), the same query goes to DuckDuckGo instead | Only when the "Search the web" toggle is on; the reply then shows "Searched the web". Temporary chats follow the same rule; Vibe never searches. |
 | **The `web_search` skill** | The words of your request | The same providers | When you say a phrase such as "search for", "look up" or "who is", or when the model calls the skill |
 | **A link in a chat message** | A request for that page | The site in the link (public addresses only) | When your message contains a link (not in Vibe) |
 | **Screen and image questions** | The screenshot or image | The local vision model by default. **Google Gemini** (`generativelanguage.googleapis.com`) only when `config.json` has `"vision_provider": "gemini"` and a Gemini key. | Per question |

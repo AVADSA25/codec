@@ -2,7 +2,8 @@
 
 Owner's go, 3 Nov 2026: "go go build i trust ur judgment here" (the 25 Oct audit plan, item P-097,
 own findings GP13-6 and GP13-8). Status: built in the PR that carries this file; live after the owner
-restarts `codec-dashboard` (and `open-codec` for the wake-word path of the `system` skill).
+restarts `codec-dashboard`, `open-codec` (the wake-word path) and `codec-mcp-http` (`system`,
+`web_search` and `philips_hue` are MCP tools, so claude.ai runs them in that process).
 
 ## 1. Claim check: a skill that did not run does not back a claim
 **Why.** Both chat paths (`stream:true` in `_stream_gen`, `stream:false` in `chat_completion`) added the
@@ -36,10 +37,12 @@ to your Desktop", and the correction note never came. `email_triage` (it only re
 when the request raised, or `[]` when Serper answered 429 (out of credit). DuckDuckGo was never tried
 when a Serper key was set.
 
-**Change.** `_serper_results` raises on any error or a status other than 200; `search_serper` keeps its
-old shape (error row) for any outside caller. `search` falls back to DuckDuckGo when Serper raises or
-answers non-200, and caches only a non-empty list without an error row. One warning line names the
-HTTP status or the error type, never the query.
+**Change.** `search_serper(..., raise_errors=True)` raises on any error or a status other than 200
+(`SerperStatusError`); without the flag it keeps its old shape (error row) for any outside caller.
+`search` calls it with the flag, falls back to DuckDuckGo when Serper raises or answers non-200, and
+caches only a non-empty list without an error row. One warning line names the HTTP status or the error
+type, never the query. With a Serper key set, a failed Serper search therefore sends the same short
+query to DuckDuckGo; PRIVACY.md says so.
 
 ## 3. `system` skill: the real disk and a real memory line
 **Why.** It ran `df -h /`, the sealed system snapshot (about 2% used on every Mac), and printed the
@@ -66,7 +69,8 @@ still returned, so the skill can retry the command. `_atomic_write` is removed.
 ## Data, API, migration
 No schema change, no new config key, no new audit event. `_post_reply_checks` takes pairs instead of
 names (two callers, both in `routes/chat.py`). New helpers: `codec_claim_check.result_backs_claim`,
-`codec_claim_check.backed_actions`, `codec_search._serper_results`.
+`codec_claim_check.backed_actions`, `codec_search.SerperStatusError`; `codec_search.search_serper` gains
+a keyword-only `raise_errors` flag (default off).
 
 ## Test plan
 All fakes or `tmp_path`; no network, no Hue bridge, no real disk or memory read in new tests.
@@ -83,4 +87,4 @@ All fakes or `tmp_path`; no network, no Hue bridge, no real disk or memory read 
   path and the file is read under it; an unreadable file at write time is left byte for byte.
 
 ## Rollback
-Revert the PR and restart `codec-dashboard` (and `open-codec`). Nothing on disk to undo.
+Revert the PR and restart `codec-dashboard`, `open-codec` and `codec-mcp-http`. Nothing on disk to undo.
