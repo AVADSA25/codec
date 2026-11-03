@@ -166,20 +166,15 @@ def discover_bridge(expected_id=None, *, methods=None, _get=None):
 
 
 # ── self-heal: persist the recovered IP ─────────────────────────────────────
-def _atomic_write(path, cfg):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(cfg, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
-
-
 def rediscover_and_update_config(path=CONFIG_PATH, *, _discover=None):
     """Re-find the bridge (matching the stored hue_bridge_id when present) and persist the
     new hue_bridge_ip. Backfills hue_bridge_id if it was missing. Returns the new IP, or
-    None if no bridge was found (config left untouched)."""
+    None if no bridge was found (config left untouched).
+
+    P-097: discovery can take seconds, so the write goes through codec_config.update_config:
+    under the config.json lock the file is read again and only the two Hue keys change, so
+    a setting saved meanwhile survives. If the file cannot be read at that point, nothing
+    is written and the found IP is still returned (the bridge answered; the skill can retry)."""
     discover = _discover or discover_bridge
     try:
         with open(path) as f:
@@ -189,8 +184,15 @@ def rediscover_and_update_config(path=CONFIG_PATH, *, _discover=None):
     found = discover(cfg.get("hue_bridge_id"))
     if not found:
         return None
-    cfg["hue_bridge_ip"] = found["ip"]
-    if not cfg.get("hue_bridge_id") and found.get("id"):
-        cfg["hue_bridge_id"] = found["id"]
-    _atomic_write(path, cfg)
+
+    def _apply(fresh):
+        fresh["hue_bridge_ip"] = found["ip"]
+        if not fresh.get("hue_bridge_id") and found.get("id"):
+            fresh["hue_bridge_id"] = found["id"]
+
+    import codec_config
+    try:
+        codec_config.update_config(_apply, path=path)
+    except codec_config.ConfigUnreadable:
+        pass
     return found["ip"]

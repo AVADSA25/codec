@@ -1282,15 +1282,16 @@ def _maybe_escalate_suggestion(user_text: str, session_id: str):
         return None
 
 
-def _post_reply_checks(reply: str, actions: set, last_user_text: str, messages: list,
+def _post_reply_checks(reply: str, actions: list, last_user_text: str, messages: list,
                        session_id: str, stream: bool) -> tuple:
     """The checks every finished chat reply goes through, stream:true and stream:false
     alike (P-099, docs/CHAT-REPLY-PARITY-DESIGN.md): the Project suggestion (Step 10
     Q11), the claim-to-artifact check and the premise check. A new rule for finished
     replies goes here, not in one path.
 
-    `reply` is the text the user sees, `actions` the skills that ran this turn.
-    Returns (suggestion dict or None, [notes to append, in order]). Never raises: a
+    `reply` is the text the user sees, `actions` the (skill name, result) pairs of the
+    skill tags resolved this turn; only a result that shows the skill acted backs a
+    claim (P-097: a declined consent or an empty result backs nothing). Returns (suggestion dict or None, [notes to append, in order]). Never raises: a
     check that fails is logged and skipped. Blocking (the suggestion may ask the local
     model), so an async caller runs it in a worker thread."""
     where = " (stream)" if stream else ""
@@ -1304,7 +1305,8 @@ def _post_reply_checks(reply: str, actions: set, last_user_text: str, messages: 
     try:
         import codec_claim_check
         unbacked = codec_claim_check.find_unbacked_claims(
-            reply, actions_taken=actions, user_request=last_user_text)
+            reply, actions_taken=codec_claim_check.backed_actions(actions),
+            user_request=last_user_text)
         if unbacked:
             notes.append(codec_claim_check.correction_note(unbacked))
             extra = {"kinds": [c.kind for c in unbacked], "needs": [c.needs for c in unbacked]}
@@ -1740,7 +1742,7 @@ async def chat_completion(request: Request):
                 # half the product, and Deep Chat (where the incident happened)
                 # is the streaming half.
                 _visible: list[str] = []
-                _stream_actions: set[str] = set()
+                _stream_actions: list[tuple] = []   # (skill, result) pairs
                 if _mem_items:  # before any token, so the page can show "Memory used" on the reply
                     yield f"data: {json.dumps({'memory': _mem_items})}\n\n"
                 if _web_used:  # D-37: "Searched the web" under the reply
@@ -1780,7 +1782,7 @@ async def chat_completion(request: Request):
                         return raw_tag.replace(m.group(0), "")
                     try:
                         _, s_result = _try_skill_by_name(s_name, s_query, _temporary)
-                        _stream_actions.add(s_name)   # backs any claim about it
+                        _stream_actions.append((s_name, s_result))   # backs a claim if it acted
                         if s_result:
                             return raw_tag.replace(m.group(0), f"**{s_result}**")
                         log.info(f"[Chat] Skill {s_name!r} returned None for {s_query[:60]!r} — dropping tag")
@@ -1936,7 +1938,7 @@ async def chat_completion(request: Request):
         import re
         # Skills that actually executed this turn. A claim of action with an
         # empty set is unbacked — see codec_claim_check.
-        _turn_actions: set[str] = set()
+        _turn_actions: list[tuple] = []   # (skill, result) pairs
         answer = await asyncio.to_thread(codec_llm.call, _llm_messages, **_common, raise_on_error=True)
         import codec_usage
         codec_usage.record_reply(model, base_url)  # UI P3.11: Settings > Usage counts this reply
@@ -1962,7 +1964,7 @@ async def chat_completion(request: Request):
             elif s_name in CHAT_SKILL_ALLOWLIST:
                 try:
                     _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)
-                    _turn_actions.add(s_name)   # backs any claim about this action
+                    _turn_actions.append((s_name, s_result))   # backs a claim if it acted
                     if s_result:
                         answer = answer.replace(skill_tag.group(0), f"**{s_result}**")
                 except Exception as e:

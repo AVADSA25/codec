@@ -33,6 +33,7 @@ REPLY = f"It is {TAG} now, and I have saved the summary to your Desktop."
 SUGGESTION = {"estimated_checkpoints": 4, "reason": "several steps"}
 LOOP = "Films to watch tonight:\n" + "- The Long Night Train\n" * 120
 SESSION = "sess-p099"
+REAL_TRY_SKILL_BY_NAME = chat._try_skill_by_name   # before any fixture replaces it
 
 
 @pytest.fixture
@@ -190,3 +191,33 @@ def test_the_cut_finds_the_first_loop_and_leaves_ordinary_text():
     assert chat._cut_repetition(LOOP) == (LOOP[:900], True)
     tail = LOOP + "A different ending."
     assert chat._cut_repetition(tail)[1], "a loop in the middle is still cut"
+
+
+# P-097: both paths record each tag's result, and _post_reply_checks counts only a
+# skill that acted. A declined consent used to back "I've saved it" all the same.
+SAVE_TAG = "[SKILL:file_ops:write summary.md]"
+SAVE_REPLY = f"{SAVE_TAG} I have saved the summary to your Desktop."
+SAVE_ASK = [{"role": "user", "content": "put the summary in a file on my desktop"}]
+
+
+def test_a_declined_skill_does_not_back_the_claim_on_both_paths(env, monkeypatch):
+    import codec_consent
+    monkeypatch.setattr(chat, "_try_skill_by_name", REAL_TRY_SKILL_BY_NAME)
+    monkeypatch.setattr(codec_consent, "chat_consent_ok", lambda name, query: False)
+    env.state.reply = SAVE_REPLY
+    sse, js = env.post(True, SAVE_ASK), env.post(False, SAVE_ASK)
+    for out in (sse, js):
+        assert "wasn't confirmed" in out.text and SAVE_TAG not in out.text
+        assert "Correction" in out.text and "writing a file" in out.text
+        assert "unbacked_claim_corrected" in [a[0] for a in out.audits]
+    assert js.text == sse.text
+
+
+def test_a_skill_that_acted_backs_the_claim_on_both_paths(env, monkeypatch):
+    monkeypatch.setattr(chat, "_try_skill_by_name",
+                        lambda name, query, temporary=False: (name, "Wrote ~/Desktop/summary.md"))
+    env.state.reply = SAVE_REPLY
+    for out in (env.post(True, SAVE_ASK), env.post(False, SAVE_ASK)):
+        assert "**Wrote ~/Desktop/summary.md**" in out.text
+        assert "Correction" not in out.text
+        assert "unbacked_claim_corrected" not in [a[0] for a in out.audits]

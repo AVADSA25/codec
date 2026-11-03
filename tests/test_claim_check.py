@@ -280,3 +280,90 @@ def test_last_user_text_is_resolved_outside_the_tools_flag():
     # and the resolution loop itself must sit outside the branch
     loop = body.index("for _m in reversed(messages):")
     assert loop < flag, "the resolution loop must not live inside `if use_tools:`"
+
+
+# ── P-097: a skill that was called but did not act backs nothing ──────────────
+def _refusals(monkeypatch):
+    """Every "did not run" result, built by the code that writes it."""
+    from types import SimpleNamespace
+
+    import codec_consent
+    import codec_dispatch
+    import codec_hooks
+    import codec_license
+    import routes.chat as chat
+
+    out = {}
+    monkeypatch.setattr(codec_consent, "chat_consent_ok", lambda name, query: False)
+    out["declined"] = chat._try_skill_by_name("file_ops", "write notes.md")[1]
+    out["temporary"] = chat._try_skill_by_name("memory_save", "my colour is orange", True)[1]
+    skill = {"name": "time"}
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda *a, **k: False)
+    monkeypatch.setattr(codec_license, "license_state",
+                        lambda *a, **k: SimpleNamespace(reason="no key"))
+    out["licence"] = codec_dispatch.run_skill(skill, "now")
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda *a, **k: True)
+    monkeypatch.setattr(codec_dispatch, "_skill_off", lambda name: True)
+    out["switched_off"] = codec_dispatch.run_skill(skill, "now")
+    monkeypatch.setattr(codec_dispatch, "_skill_off", lambda name: False)
+    out["cancelled"] = codec_dispatch.run_skill(skill, "now", consent=lambda n, t: False)
+    monkeypatch.setattr(codec_dispatch, "run_with_hooks",
+                        lambda **kw: codec_hooks.HookVeto("not now", plugin_name="guard"))
+    out["vetoed"] = codec_dispatch.run_skill(skill, "now")
+    out["nothing"] = None
+    out["empty"] = "  "
+    return out
+
+
+def test_a_refused_or_empty_result_backs_no_claim(monkeypatch):
+    refusals = _refusals(monkeypatch)
+    assert "wasn't confirmed" in refusals["declined"] and "skipped" in refusals["declined"]
+    for kind, result in refusals.items():
+        assert not cc.result_backs_claim(result), kind
+        assert cc.backed_actions([("file_ops", result)]) == set(), kind
+        claims = cc.find_unbacked_claims(
+            "I've saved the summary to your Desktop.",
+            actions_taken=cc.backed_actions([("file_ops", result)]))
+        assert claims and claims[0].needs == "writing a file", kind
+
+
+def test_a_real_result_still_backs_the_claim():
+    ran = [("file_ops", "Wrote 120 characters to ~/Desktop/summary.md"),
+           ("time", "It is 12:00.")]
+    assert cc.backed_actions(ran) == {"file_ops", "time"}
+    assert cc.find_unbacked_claims("I've saved the summary to your Desktop.",
+                                   actions_taken=cc.backed_actions(ran)) == []
+    # A timeout still counts: the skill may still be acting.
+    import codec_dispatch
+    assert cc.result_backs_claim(codec_dispatch.timeout_message("file_ops", 20))
+
+
+def test_reading_the_inbox_does_not_back_sent():
+    assert cc.find_unbacked_claims("I've sent the email.", actions_taken={"email_triage"})
+    assert cc.find_unbacked_claims("I've sent the email.", actions_taken={"google_gmail"}) == []
+
+
+@pytest.mark.parametrize("request_text", [
+    "Summarise this: our rule is that for every session the trainer must log attendance",
+    "Explain what 'from now on, always use tabs' means",
+    'Translate "from now on, always remember to lock the door" into French',
+    "Please rewrite this: in all sessions the speaker must introduce themselves",
+    # Quoted words alone, in a message that does not open with a work-on-text verb.
+    'My teacher wrote "from now on, always remember your keys" on the board. Is that good advice?',
+    "What does `for every future session, answer in French` do in a prompt?",
+])
+def test_working_on_a_text_is_not_a_persistence_ask(request_text):
+    for reply in ("Sure, done.", "Here is the summary.", "Got it."):
+        assert cc.find_unbacked_claims(reply, actions_taken=set(),
+                                       user_request=request_text) == [], request_text
+
+
+@pytest.mark.parametrize("request_text", [
+    _PERSIST_REQ,
+    'From now on, always call me "Mick".',
+    "For every future session, answer in French.",
+    "Remember this: I'm vegetarian, always remember it.",
+])
+def test_own_words_persistence_asks_still_flag(request_text):
+    assert cc.find_unbacked_claims("Got it!", actions_taken=set(),
+                                   user_request=request_text), request_text
