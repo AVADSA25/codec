@@ -275,6 +275,13 @@ def backup_sqlite(db_path, prefix: str, *, keep: int = 7, force: bool = False,
                 dst.close()
         finally:
             src.close()
+        # Some SQLite builds (3.51) leave the copy's -shm behind after the switch to DELETE mode.
+        # The copy is ours and closed, so its side files hold nothing.
+        for side in ("-shm", "-wal"):
+            try:
+                os.unlink(tmp + side)
+            except FileNotFoundError:
+                pass
         check = quick_check(tmp)
     except Exception as e:
         check = f"error: {type(e).__name__}"
