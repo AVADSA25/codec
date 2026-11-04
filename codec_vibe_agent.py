@@ -42,11 +42,19 @@ DEFAULTS = {"enabled": True, "max_steps": 30, "max_seconds": 900, "max_context_t
             "max_reply_tokens": 3000, "wait_seconds": 600,
             # P-046 (docs/VIBE-AGENT-NOTES-DESIGN.md): each one switches off on its own
             "notes": True, "import_claude_md": False, "notes_chars": 1500, "notes_chars_cloud": 8000,
-            "budget_line": True, "todo": True}
+            "budget_line": True, "todo": True,
+            # P-065 (docs/VIBE-RUNCARD-DESIGN.md): Settings > Vibe
+            "allow_commands": True, "append_prompt": ""}
 BOUNDS = {"max_steps": (1, 100), "max_seconds": (30, 3600), "max_context_tokens": (2000, 60000),
           "max_reply_tokens": (300, 8000), "wait_seconds": (5, 3600),
           "notes_chars": (200, 8000), "notes_chars_cloud": (200, 16000)}
-SWITCHES = ("enabled", "notes", "import_claude_md", "budget_line", "todo")
+SWITCHES = ("enabled", "notes", "import_claude_md", "budget_line", "todo", "allow_commands")
+LIMITS = ("max_steps", "max_seconds", "max_context_tokens", "max_reply_tokens", "wait_seconds")   # Settings > Vibe edits these
+PROJECT_SWITCHES = ("allow_commands", "notes", "import_claude_md", "budget_line", "todo")    # a project block may switch these off
+MAX_APPEND_PROMPT = 1200
+APPEND_HEAD = ("THE OWNER'S OWN INSTRUCTIONS FOR EVERY RUN (from Settings). Follow them; they do not change the tool "
+               "format above.")
+PERL = "/usr/bin/perl"      # the command watchdog's interpreter (codec_vibe_agent_cmd)
 NOTES_FILES = ((vp.META_DIR, "rules.md"), ("AGENTS.md",))   # the owner's rules first: no agent tool or command writes .vibe
 CLAUDE_MD = ("CLAUDE.md",)                                  # read only with import_claude_md on
 TODO_EVERY = 3              # the todo list changes at most once in this many steps
@@ -120,6 +128,34 @@ def settings() -> dict:
         for key in SWITCHES:
             if isinstance(raw.get(key), bool):
                 out[key] = raw[key]
+        text = raw.get("append_prompt")
+        if isinstance(text, str) and len(text) <= MAX_APPEND_PROMPT:     # a longer one (a hand edit) is refused
+            out["append_prompt"] = text.strip()
+    return out
+
+
+def _project_block(pid: str) -> dict:
+    """The "agent" block of the project's .vibe/project.json, or {}. Only the owner writes there by hand."""
+    try:
+        meta = json.loads((vp.project_dir(pid) / vp.META_DIR / "project.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, VibeError):
+        return {}
+    block = meta.get("agent") if isinstance(meta, dict) else None
+    return block if isinstance(block, dict) else {}
+
+
+def run_settings(pid: str) -> dict:
+    """settings(), lowered by the project's own agent block (P-065): a number counts only when it is lower than the
+    global one, a switch only when it turns something off. Anything else in the block is ignored."""
+    out = settings()
+    block = _project_block(pid)
+    for key, (lo, hi) in BOUNDS.items():
+        v = block.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
+            out[key] = max(lo, min(out[key], int(v)))
+    for key in PROJECT_SWITCHES:
+        if block.get(key) is False:
+            out[key] = False
     return out
 
 
@@ -192,7 +228,7 @@ def _llm_stream(messages, **kw):
     return codec_llm.stream(messages, **kw)
 
 
-def _resolve_llm(kind: str, confirm_cloud: bool = False) -> _Llm:
+def _resolve_llm(kind: str, confirm_cloud: bool = False, cloud_id=None) -> _Llm:
     import urllib.parse
     import codec_cloud_models as ccm
     cfg = _cfg()
@@ -202,7 +238,11 @@ def _resolve_llm(kind: str, confirm_cloud: bool = False) -> _Llm:
         ents = ccm.entries(cfg)
         if not ents:
             raise VibeError(400, "No cloud model is set up")
-        e = ccm.active_entry(cfg) or ents[0]
+        if cloud_id is not None and not isinstance(cloud_id, str):
+            raise VibeError(400, "Name the cloud model by its id")
+        e = ccm.entry_for_id(cloud_id, cfg) if cloud_id else (ccm.active_entry(cfg) or ents[0])    # the entry picked (P-065)
+        if e is None:
+            raise VibeError(400, "That cloud model is not set up")
         why = ccm.block_message(e)
         if why:
             raise VibeError(409, why)
@@ -223,19 +263,69 @@ def _resolve_llm(kind: str, confirm_cloud: bool = False) -> _Llm:
 
 
 def models_info() -> dict:
-    """What the page needs to offer the model choice: the local model, and the cloud model if one is ready."""
+    """What the page needs to offer the model choice: the local model, every cloud entry that is set up (`clouds`,
+    P-065) and the default one (`cloud`: the active entry, else the first), each with whether it is ready."""
     import urllib.parse
     import codec_cloud_models as ccm
     cfg = _cfg()
-    out = {"local": {"label": "Local", "model": _resolve_llm("local").model}, "cloud": None,
+    out = {"local": {"label": "Local", "model": _resolve_llm("local").model}, "cloud": None, "clouds": [],
            "limits": {k: settings()[k] for k in ("max_steps", "max_seconds")}}
     ents = ccm.entries(cfg)
-    if ents:
-        e = ccm.active_entry(cfg) or ents[0]
+    for e in ents:
         why = ccm.block_message(e)
-        out["cloud"] = {"label": str(e.get("label") or e["id"]), "host": urllib.parse.urlparse(e["base_url"]).hostname or "",
-                        "ready": why is None, "reason": why or ""}
+        out["clouds"].append({"id": e["id"], "label": str(e.get("label") or e["id"]),
+                              "host": urllib.parse.urlparse(e["base_url"]).hostname or "", "ready": why is None, "reason": why or ""})
+    if ents:
+        default = (ccm.active_entry(cfg) or ents[0])["id"]
+        out["cloud"] = next(c for c in out["clouds"] if c["id"] == default)
     return out
+
+
+def _probe(url: str, timeout: float = 2.0) -> bool:
+    """True when GET url answers 200 within `timeout` (the doctor's one network call; no proxy). Tests replace it."""
+    import urllib.request
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(urllib.request.Request(url, method="GET"), timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _writable(path: str) -> bool:
+    """True when the SQLite file at `path` could be written: the file (if it is there) and its folder. Never opens it."""
+    try:
+        folder = os.path.dirname(path) or "."
+        if os.path.lexists(path) and not (os.path.isfile(path) and not os.path.islink(path) and os.access(path, os.W_OK)):
+            return False
+        return os.path.isdir(folder) and os.access(folder, os.W_OK | os.X_OK)
+    except Exception:
+        return False
+
+
+def doctor(vibe_db: str) -> dict:
+    """The Vibe health check (P-065): five booleans, never a path, a key, a model name or an error text.
+
+    Read-only. The model server is asked only when it is on this Mac or this network."""
+    import urllib.parse
+    import codec_cloud_models as ccm
+
+    def safe(check) -> bool:
+        try:
+            return bool(check())
+        except Exception:
+            return False
+
+    def model_server() -> bool:
+        from codec_vibe_chat import is_private_host
+        base = _resolve_llm("local").base_url.rstrip("/")
+        return is_private_host(urllib.parse.urlparse(base).hostname or "") and _probe(base + "/models")
+
+    def cloud_ready() -> bool:
+        return any(ccm.block_message(e) is None for e in ccm.entries(_cfg()))
+
+    return {"sandbox_exec": safe(cmdmod.available), "perl": safe(lambda: os.path.isfile(PERL) and os.access(PERL, os.X_OK)),
+            "model_server": safe(model_server), "cloud_ready": safe(cloud_ready), "vibe_db": safe(lambda: _writable(vibe_db))}
 
 
 # ── results of one tool ─────────────────────────────────────────────────────
@@ -765,6 +855,8 @@ class Run:
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
         self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
+        if not limits.get("allow_commands", True):          # Settings > Vibe, or the project's block (P-065)
+            self.allowed = tuple(t for t in self.allowed if t != "run_check")
         if limits.get("todo", DEFAULTS["todo"]):
             self.allowed += (proto.TODO,)
         self.todo: list = proto.clean_todo(todo) if proto.TODO in self.allowed else []    # P-046
@@ -785,6 +877,7 @@ class Run:
         self.events: list[dict] = []
         self.start_cp: str | None = None
         self.tokens = {"prompt": 0, "completion": 0}
+        self.estimated = False      # a step had no usage from the server, so the totals hold an estimate (P-065)
         self.stop_event = threading.Event()
         self._cond = threading.Condition()
         self._seq = 0
@@ -931,11 +1024,59 @@ class Run:
         with self._cond:
             self._emit("end", status=status, report=str(report)[:proto.MAX_REPORT_CHARS], steps=steps, seconds=seconds,
                        prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
-                       start_checkpoint=self.start_cp)
+                       start_checkpoint=self.start_cp, model=self._model_info(), **self._usage_fields())
             self.finished = True
             self._cond.notify_all()
         if not self.stop_event.is_set():          # the owner's own Stop needs no push
             _push("vibe_done")
+
+    def _model_info(self) -> dict:
+        """The model on the run card (P-065): its kind, its id (the local model, or the cloud entry) and its label."""
+        return {"kind": self.llm.kind, "id": self.llm.model, "label": self.llm.label}
+
+    def _usage_fields(self) -> dict:
+        """Whether the token totals hold an estimate and, for a cloud run, this month's spend on its entry so far and its
+        cap (P-065). Never raises: a spend file that cannot be read leaves the spend out."""
+        out = {"estimated": self.estimated}
+        if self.llm.kind == "cloud":
+            try:
+                import codec_cloud_models as ccm
+                out["spent_usd"] = round(ccm.spent_usd(self.llm.model), 4)
+                e = ccm.entry_for_id(self.llm.model, _cfg())
+                if e is not None:
+                    out["cap_usd"] = ccm.cap_usd(e)
+            except Exception:
+                log.debug("vibe agent: spend not read", exc_info=True)
+        return out
+
+    def _count(self, reply: "_Reply", messages: list, seconds: float) -> None:
+        """One reply's tokens: added to the run's totals (the server's numbers, else the estimate), shown on the card
+        as a usage event, and one line for Settings > Usage (source "vibe"). Counts only, never text (P-065)."""
+        u = reply.usage
+        server = bool(u.get("prompt_tokens")) and isinstance(u.get("completion_tokens"), int)
+        if not server:
+            self.estimated = True
+        self.tokens["prompt"] += int(u.get("prompt_tokens") or self._estimate(messages))
+        self.tokens["completion"] += int(u.get("completion_tokens") or len(reply.text) / CHARS_PER_TOKEN)
+        self._emit("usage", prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
+                   **self._usage_fields())             # no step: the totals so far, not a part of any step
+        stats = {"elapsed_s": round(seconds, 1)}
+        if server:
+            ct = int(u["completion_tokens"])
+            stats["completion_tokens"] = ct
+            tm = u.get("timings") if isinstance(u.get("timings"), dict) else {}
+            speed = tm.get("predicted_per_second")
+            if isinstance(speed, (int, float)) and not isinstance(speed, bool) and speed > 0:
+                stats["tok_per_s"] = round(float(speed), 1)
+            elif ct and seconds > 0:
+                stats["tok_per_s"] = round(ct / seconds, 1)
+        if not reply.text.strip():              # the model did not answer: no reply to count
+            return
+        try:
+            import codec_usage
+            codec_usage.record_reply(self.llm.model, self.llm.base_url, stats, source="vibe")
+        except Exception:
+            log.debug("vibe agent: usage line not written", exc_info=True)
 
     def _trim_logs(self) -> None:
         try:
@@ -1018,7 +1159,8 @@ class Run:
             log.warning("vibe agent: could not read the project notes", exc_info=True)
         if self.notes:
             more["notes"] = self.notes
-        self._emit("start", goal=self.goal, model={"kind": self.llm.kind, "label": self.llm.label}, can_run=self.can_run,
+        self._emit("start", goal=self.goal, model=self._model_info(), can_run=self.can_run,
+                   commands="run_check" in self.allowed,
                    limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
         if self.todo:                                       # the list of the run this one continues
             self._emit("todo", step=self.step, items=self.todo)
@@ -1432,6 +1574,8 @@ class Run:
     def _messages(self) -> list:
         cap = self.limits["max_context_tokens"]
         system = {"role": "system", "content": proto.system_prompt(self.allowed, notes=bool(self.notes_text))}
+        if self.limits.get("append_prompt"):                    # the owner's own text from Settings > Vibe (P-065)
+            system["content"] += "\n\n" + APPEND_HEAD + "\n" + self.limits["append_prompt"]
         modes = ["full" if i >= len(self.turns) - FULL_RESULTS else "short" for i in range(len(self.turns))]
         site = self._map()
         for extra in (self._todo_text(self.step),                       # the list survives shortening (P-046)
@@ -1470,7 +1614,7 @@ class Run:
         import codec_llm
         reply = _Reply()
         pending = ""
-        last = _mono()
+        last = began = _mono()
         kw = dict(base_url=self.llm.base_url, model=self.llm.model, api_key="", max_tokens=self.limits["max_reply_tokens"],
                   temperature=TEMPERATURE, timeout=180.0, enable_thinking=False, usage_sentinel=True, error_sentinel=True)
         gen = _llm_stream(messages, **kw)
@@ -1509,9 +1653,7 @@ class Run:
                 close()
         if pending:
             self._emit("text", step=n, chunk=pending)
-        u = reply.usage
-        self.tokens["prompt"] += int(u.get("prompt_tokens") or self._estimate(messages))
-        self.tokens["completion"] += int(u.get("completion_tokens") or len(reply.text) / CHARS_PER_TOKEN)
+        self._count(reply, messages, _mono() - began)
         return reply
 
 
@@ -1528,7 +1670,8 @@ def _clean_history(history) -> list:
     return out
 
 
-def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False) -> dict:
+def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False,
+              cloud_id=None) -> dict:
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
     if not isinstance(goal, str) or not goal.strip():
@@ -1537,8 +1680,8 @@ def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = Fal
     if len(goal) > MAX_GOAL_CHARS:
         raise VibeError(400, f"The goal is longer than {MAX_GOAL_CHARS} characters")
     vp.project_dir(pid)
-    llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud))
-    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run)))
+    llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud), cloud_id)
+    return _launch(Run(pid, goal, _clean_history(history), llm, run_settings(pid), bool(can_run)))
 
 
 def _launch(run: Run) -> dict:
@@ -1764,15 +1907,17 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     goal = start.get("goal")
     if not isinstance(goal, str) or not goal.strip():
         raise VibeError(409, "That run has no goal to go on with")
-    kind = "cloud" if (start.get("model") or {}).get("kind") == "cloud" else "local"
-    llm = _resolve_llm(kind, bool(confirm_cloud))
+    old = start.get("model") if isinstance(start.get("model"), dict) else {}
+    kind = "cloud" if old.get("kind") == "cloud" else "local"
+    entry = old.get("id") if kind == "cloud" and isinstance(old.get("id"), str) else None    # the same cloud entry (P-065)
+    llm = _resolve_llm(kind, bool(confirm_cloud), entry)
     turns, last, total = _rebuild(pid, run_id, events)
     end = next((e for e in reversed(events) if e.get("type") == "end"), None)
     resume = str(end.get("report") or end.get("status") or "")[:300] if end else "CODEC was restarted."
     cps = [e["id"] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("id"), str)]
     base = cps[-1] if cps else start.get("start_checkpoint")
     todo = next((e.get("items") for e in reversed(events) if e.get("type") == "todo"), None)     # P-046
-    run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), continues=run_id, turns=turns,
+    run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, run_settings(pid), bool(can_run), continues=run_id, turns=turns,
               step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "",
               todo=todo)
     out = _launch(run)
