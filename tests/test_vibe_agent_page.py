@@ -412,6 +412,8 @@ def test_the_plan_card_puts_the_plan_in_as_text_and_posts_only_on_a_click():
     for theirs in ("Approve", "Edit plan", "Keep planning"):                    # our own words, not another tool's
         assert theirs not in SRC, theirs
     assert "area.value = (run.end && run.end.report) || ''" in card and "innerHTML" not in card and "api(" not in card
+    mine = card[card.index("editForm.addEventListener('submit'"):card.index("againForm.addEventListener('submit'")]
+    assert mine.index("if (!text) { toast(") < mine.index("choose('build'")   # an emptied box never builds the old plan
     use = SRC[SRC.index("function usePlan(old, decision, text, controls, box) {"):SRC.index("function leave() {")]
     assert "'/plan'" in use and "planRequest(decision, text, model, ok)" in use and "confirmCloud()" in use
     assert use.index("confirmCloud()") < use.index("api(") and SRC.count("'/plan'") == 1

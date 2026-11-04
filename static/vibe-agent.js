@@ -1292,6 +1292,7 @@
     editForm.addEventListener('submit', function (e) {
       e.preventDefault();
       var text = area.value.trim();
+      if (!text) { toast('The plan must have 1 to ' + MAX_PLAN + ' characters.'); return; }     // an emptied box builds nothing
       choose('build', text === String((run.end && run.end.report) || '').trim() ? '' : text);   // unchanged: as written
     });
     againForm.addEventListener('submit', function (e) { e.preventDefault(); choose('again', line.value); });
