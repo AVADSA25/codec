@@ -171,6 +171,7 @@ def test_a_cloud_run_shows_this_months_spend_and_cap(scripted, clouds):
     view, _ = run_script(make_project(), [FINISH], scripted, model="cloud", confirm_cloud=True, cloud_id="mimo")
     u, end = events(view, "usage")[0], end_of(view)
     assert (u["spent_usd"], u["cap_usd"]) == (0.0412, 10.0) and (end["spent_usd"], end["cap_usd"]) == (0.0412, 10.0)
+    assert (u["prompt_tokens"], u["completion_tokens"]) == (end["prompt_tokens"], end["completion_tokens"]) == (100, len(FINISH) // 4)
 
 
 # ── (g) one Settings > Usage line per reply, source vibe ───────────────────
