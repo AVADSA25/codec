@@ -151,7 +151,8 @@ def test_a_4000_character_plan_fits_the_context_cap(scripted):
     own = ("Step. " * 700)[:proto.MAX_PLAN_CHARS]
     model = scripted(["Read it.\n@@ read_file big.js\n", "Again.\n@@ read_file big.js 1-300\n", DONE])
     out = va.plan_decision(pid, planned["run"], "build", plan=own)
-    wait_finished(pid, out["run"])
+    built = wait_finished(pid, out["run"])
+    assert end_of(built)["status"] == "done" and len(model.calls) == 3   # no step ended at the context limit
     cap = va.settings()["max_context_tokens"]
     for msgs in model.calls:
         assert va.Run._estimate(msgs) <= cap
