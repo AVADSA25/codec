@@ -423,3 +423,38 @@ def test_the_plan_card_puts_the_plan_in_as_text_and_posts_only_on_a_click():
     init = SRC[SRC.index("function init() {"):SRC.index("function active() {")]
     assert "el('button', 'amb', 'Plan first')" in init and "plan.id = 'amPlan'" in init
     assert ".agc-plan [hidden],.amb[hidden]{display:none}" in PAGE and ".agc-pe{" in PAGE
+
+@node
+def test_a_context_event_draws_the_meter_with_the_estimate_marked():
+    # P-049: the server's own count when it has one, else its estimate, which the label says.
+    est = {"seq": 3, "type": "context", "step": 2, "used": 4200, "cap": 14000, "estimate": True}
+    out = run("(function () { var r = A.newRun('p'); var eff = A.applyEvent(r, E); return [r.context, eff]; })()",
+              f"const E = {json.dumps(est)};")
+    want = {"used": 4200, "cap": 14000, "pct": 30, "estimate": True, "high": False, "text": "Context 4,200 of 14,000 tokens (estimate)"}
+    assert out == [want, [{"t": "context", "meter": want}]]
+    real = run("A.contextMeter(E)", f"const E = {json.dumps(dict(est, used=13300, estimate=False))};")
+    assert real == {"used": 13300, "cap": 14000, "pct": 95, "estimate": False, "high": True, "text": "Context 13,300 of 14,000 tokens"}
+    assert run("A.contextMeter(E).pct", f"const E = {json.dumps(dict(est, used=20000))};") == 100      # over the cap: a full bar
+    for bad in ({}, {"used": "1", "cap": 10}, {"used": 5, "cap": 0}, {"used": -1, "cap": 10}):
+        assert run("A.contextMeter(E)", f"const E = {json.dumps(bad)};") is None
+    assert run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps({'seq': 4, 'type': 'context', 'step': 3})};") == []
+    draw = SRC[SRC.index("function drawContext(m) {"):SRC.index("function drawTodo(items) {")]
+    assert "box.setAttribute('role', 'meter')" in draw and "c.ctx.label.textContent = m.text;" in draw and "innerHTML" not in draw
+    assert "else if (eff.t === 'context') drawContext(eff.meter);" in SRC
+    assert ".agc-ctx{" in PAGE and ".agc-ctx-fill{" in PAGE and ".agc-ctx.high .agc-ctx-fill{" in PAGE
+
+
+@node
+def test_a_compact_event_draws_one_row_whose_note_opens_under_it():
+    # P-049: old steps folded into the model's note. The note is model text: drawn as text only.
+    ev = {"seq": 9, "type": "compact", "step": 30, "first": 1, "last": 23, "turns": 23,
+          "summary": "Read pages 1 to 23. <b>x</b>", "before": 2929, "after": 2015}
+    out = run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps(ev)};")
+    assert out == [{"t": "compact", "head": "Steps 1 to 23 folded into a short note to save space",
+                    "summary": "Read pages 1 to 23. <b>x</b>"}]
+    assert run("A.compactText(E).summary.length", f"const E = {json.dumps(dict(ev, summary='y' * 900))};") == 600
+    for bad in ({}, {"first": 5, "last": 2}, {"first": "1", "last": 3}):
+        assert run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps(dict(bad, type='compact'))};") == []
+    draw = SRC[SRC.index("function drawCompact(eff) {"):SRC.index("function drawContext(m) {")]
+    assert "el('summary', null, eff.head)" in draw and "el('div', 'agc-fold-t', eff.summary)" in draw and "innerHTML" not in draw
+    assert "else if (eff.t === 'compact') drawCompact(eff);" in SRC and ".agc-fold-t{" in PAGE

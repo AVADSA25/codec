@@ -199,6 +199,7 @@ Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, 
 | `vibe_agent_step` | `project`, `run`, `n` (step number), `tool_name`, `ok`, `ms` |
 | `vibe_agent_blocked` | `project`, `run`, `n`, `reason` (`path`\|`secret`: a safety rule refused the step; `plugin`: a plugin's `pre_tool` vetoed it, P-067; `mode`: the run's mode or tools list does not offer that tool, P-047) |
 | `vibe_agent_end` | `project`, `run`, `status` (`done`\|`stopped`\|`limit`\|`failed`), `steps`, `seconds`, `prompt_tokens`, `completion_tokens`, `model` |
+| `vibe_agent_compact` | `project`, `run`, `n`, `turns` (steps folded), `chars` (the note's length, 0 when the call gave none), `ok`, and when `ok`: `before`, `after` (estimated prompt tokens; `after` null when it still did not fit). Only with `vibe_agent.compact` on (P-049) |
 | `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`declined`\|`refused`), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
 | `vibe_agent_allow` | `project`, `action` (`allow`\|`forget`), `network` |
 
