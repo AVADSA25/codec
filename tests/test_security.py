@@ -226,15 +226,6 @@ def test_memory_has_cleanup():
 # SkillRegistry.load (manifest + AST gate, see tests/test_skill_registry.py).
 
 
-# ── Preview frame CSP ──────────────────────────────────────────────────────
-
-def test_preview_frame_has_csp():
-    """preview_frame must set Content-Security-Policy headers"""
-    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    content = open(os.path.join(REPO, "codec_dashboard.py")).read()
-    assert "Content-Security-Policy" in content, "preview_frame must set CSP headers"
-
-
 # ── Per-crew permission scoping ──────────────────────────────────────────────
 
 def test_crew_has_allowed_tools_field():

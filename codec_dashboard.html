@@ -305,6 +305,21 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .set-preset { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; font-family: var(--font-sans); font-size: var(--fs-13); cursor: pointer; }
 .set-preset:hover { border-color: var(--border-strong); }
 .set-preset.sel { border-color: var(--accent); background: var(--accent-dim); }
+.set-preset:disabled { opacity: 0.6; cursor: default; }
+/* P-039: the best local model for this Mac (Settings > Language model) */
+.set-fit .set-main { flex: 1 1 100%; }
+.set-fit-item { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.set-fit-item.best { border-color: var(--accent); }
+.set-fit-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.set-fit-name { font-size: var(--fs-14); color: var(--text); font-weight: 600; }
+.set-fit-meta { font-size: var(--fs-12); color: var(--text-dim); }
+.set-fit-notice { font-size: var(--fs-12); line-height: 1.4; color: var(--text); margin-top: 6px; padding: 6px 8px; border-left: 2px solid var(--accent); }
+.set-fit-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.set-fit-bar { flex: 1 1 160px; min-width: 0; height: 8px; accent-color: var(--accent); }
+.set-fit-in-use { font-size: var(--fs-12); color: var(--success); }
+.set-fit-more { margin-top: 10px; }
+.set-fit-more > summary { cursor: pointer; font-size: var(--fs-13); color: var(--text-dim); }
+.set-fit a { color: var(--accent); text-underline-offset: 2px; }
 .set-advanced > summary { cursor: pointer; list-style: revert; }
 .raw-config { width: 100%; max-width: 100%; text-align: left; font-size: var(--fs-13); line-height: 1.45; min-height: 240px; resize: vertical; margin-bottom: 10px; }
 @media (max-width: 767px) {
@@ -3648,7 +3663,7 @@ for (var _hk = 1; _hk <= 20; _hk++) _HOTKEY_OPTS.push(['f' + _hk, 'F' + _hk]);
 var SETTINGS_SCHEMA = [
   { title: 'Identity', sec: 'identity', put: 'Identity', fields: [
     { k: 'agent_name', label: 'Assistant name', help: 'The name CODEC uses for itself in replies and on screen.', c: 'text' } ] },
-  { title: 'Language model', sec: 'llm', put: 'LLM', fields: [
+  { title: 'Language model', sec: 'llm', put: 'LLM', modelFit: true, fields: [
     { k: 'llm_provider', label: 'Provider', help: 'Where replies come from. "This Mac" keeps everything local.', c: 'select',
       opts: [['mlx', 'This Mac (MLX)'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'], ['openai', 'OpenAI-compatible'], ['anthropic', 'Anthropic'], ['gemini', 'Gemini'], ['custom', 'Custom server']] },
     { k: 'llm_model', label: 'Model', help: 'The model id the provider serves. The model picker in Chat switches local models.', c: 'text' },
@@ -3754,10 +3769,16 @@ function renderSettings(cfg) {
         '<div class="set-status" id="hotkeyPresetStatus" role="status" aria-live="polite"></div></div>' +
         '<div class="set-presets" id="hotkeyPresets"></div></div>';
     }
+    if (sec.modelFit) {
+      html += '<div class="setting-row set-row set-fit"><div class="set-main"><span class="setting-label">Best model for this Mac</span>' +
+        '<div class="set-help" id="modelFitHelp">Checking this Mac\'s memory...</div>' +
+        '<div id="modelFitBody"></div></div></div>';
+    }
     html += '</div></div>';
   });
   document.getElementById('settingsContent').innerHTML = html;
   loadHotkeyPresets();
+  loadModelFit();
 }
 // P-029: the keyboard presets (GET /api/hotkeys/presets). Labels from the server
 // go in with textContent, never as HTML.
@@ -3852,6 +3873,152 @@ async function saveSetting(el) {
     if (st) { st.textContent = 'Not saved: ' + e.message; st.className = 'set-status err'; }
   } finally {
     el.disabled = false;
+  }
+}
+
+// ── Best model for this Mac (P-039, docs/MODEL-FIT-OFFER-DESIGN.md) ────────
+// GET /api/models/fit ranks the catalog against this Mac's memory
+// (codec_cookbook/offer.py). Server text goes in with textContent, never as HTML.
+var _fitPolls = [];
+function _fitEl(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+function _fitGb(x) { return (Math.round(Number(x || 0) * 10) / 10) + ' GB'; }
+function _fitLink(text, url) {
+  var a = _fitEl('a', '', text);
+  a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  return a;
+}
+function _fitStopPolls() { _fitPolls.forEach(function (t) { clearInterval(t); }); _fitPolls = []; }
+function _fitItem(m, best) {
+  var row = _fitEl('div', 'set-fit-item' + (best ? ' best' : ''));
+  var head = _fitEl('div', 'set-fit-head');
+  head.appendChild(_fitEl('span', 'set-fit-name', m.label));
+  head.appendChild(_fitEl('span', 'set-fit-meta', _fitGb(m.size_gb) + ' download, about ' + _fitGb(m.need_gb) + ' of memory in use'));
+  row.appendChild(head);
+  var lic = m.licence || {};
+  var licLine = _fitEl('div', 'set-help', 'Licence: ' + (lic.name || 'unknown') + ' ');
+  if (lic.card_url) licLine.appendChild(_fitLink('model card', lic.card_url));
+  row.appendChild(licLine);
+  if (lic.notice) {
+    var n = _fitEl('div', 'set-fit-notice', lic.notice);
+    if (lic.policy_url) {
+      n.appendChild(document.createTextNode(' Use follows the '));
+      n.appendChild(_fitLink('Acceptable Use Policy', lic.policy_url));
+      n.appendChild(document.createTextNode('.'));
+    }
+    row.appendChild(n);
+  }
+  if (m.image_note) row.appendChild(_fitEl('div', 'set-help', m.image_note));
+  var act = _fitEl('div', 'set-fit-actions');
+  var st = _fitEl('div', 'set-status');
+  st.setAttribute('role', 'status'); st.setAttribute('aria-live', 'polite');
+  if (m.active) {
+    act.appendChild(_fitEl('span', 'set-fit-in-use', 'In use'));
+  } else if (m.installed) {
+    var u = _fitEl('button', 'set-preset', 'Use it');
+    u.type = 'button';
+    u.addEventListener('click', function () { askUseFitModel(m, act, st); });
+    act.appendChild(u);
+  } else {
+    var d = m.download || {}, running = d.state === 'starting' || d.state === 'running';
+    var b = _fitEl('button', 'set-preset', running ? 'Downloading...' : (d.bytes ? 'Resume download' : 'Download ' + _fitGb(m.size_gb)));
+    b.type = 'button'; b.disabled = running;
+    var bar = _fitEl('progress', 'set-fit-bar');
+    bar.max = 100; bar.value = d.percent || 0; bar.hidden = !running && !d.bytes;
+    bar.setAttribute('aria-label', 'Download of ' + m.label);
+    b.addEventListener('click', function () { startFitDownload(m, b, bar, st); });
+    act.appendChild(b); act.appendChild(bar);
+    if (d.state === 'error' && d.error) { st.textContent = 'Download stopped: ' + d.error; st.className = 'set-status err'; }
+    if (running) _fitWatch(m, b, bar, st);
+  }
+  row.appendChild(act); row.appendChild(st);
+  return row;
+}
+async function loadModelFit() {
+  var body = document.getElementById('modelFitBody'), help = document.getElementById('modelFitHelp');
+  if (!body || !help) return;
+  _fitStopPolls();
+  try {
+    var r = await fetch('/api/models/fit');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var d = await r.json();
+    body.textContent = '';
+    if (!d.ram_gb) { help.textContent = 'Could not read this Mac\'s memory.'; return; }
+    var line = 'This Mac has ' + _fitGb(d.ram_gb) + ' of memory; about ' + _fitGb(d.available_gb) + ' is free for a model.';
+    if (!d.best) { help.textContent = line + ' No catalog model fits it. A cloud provider above still works.'; return; }
+    help.textContent = line + ' ' + (d.best.active ? 'CODEC already uses the best model that fits.'
+      : d.upgrade ? 'A bigger model than the one in use fits.'
+      : d.active_local ? 'The model in use is at least as large as the best fit; this one is an alternative.'
+      : 'The best local model for this Mac:');
+    if (d.image_busy) body.appendChild(_fitEl('div', 'set-status err', d.image_busy));
+    body.appendChild(_fitItem(d.best, true));
+    if (d.others && d.others.length) {
+      var more = _fitEl('details', 'set-fit-more');
+      more.open = true;
+      more.appendChild(_fitEl('summary', '', 'Other models that fit (' + d.others.length + ')'));
+      d.others.forEach(function (m) { more.appendChild(_fitItem(m, false)); });
+      body.appendChild(more);
+    }
+  } catch (e) { help.textContent = 'Could not check which models fit: ' + e.message; }
+}
+async function startFitDownload(m, btn, bar, st) {
+  btn.disabled = true;
+  st.textContent = 'Starting the download...'; st.className = 'set-status';
+  try {
+    var r = await fetch('/api/models/fit/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) });
+    var d = await r.json();
+    if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    btn.textContent = 'Downloading...'; bar.hidden = false; bar.value = d.percent || 0;
+    _fitWatch(m, btn, bar, st);
+  } catch (e) {
+    st.textContent = 'Not started: ' + e.message; st.className = 'set-status err';
+    btn.disabled = false;
+  }
+}
+function _fitWatch(m, btn, bar, st) {
+  var t = setInterval(async function () {
+    if (!bar.isConnected) { clearInterval(t); return; }
+    try {
+      var d = await (await fetch('/api/models/fit/download?id=' + encodeURIComponent(m.id))).json();
+      bar.value = d.percent || 0;
+      st.className = 'set-status';
+      st.textContent = (d.percent || 0) + '% of ' + _fitGb((d.total_bytes || 0) / 1e9);
+      if (d.state === 'done') { clearInterval(t); loadModelFit(); }
+      else if (d.state !== 'starting' && d.state !== 'running') {
+        clearInterval(t);
+        st.textContent = 'Download stopped' + (d.error ? ': ' + d.error : '.'); st.className = 'set-status err';
+        btn.disabled = false; btn.textContent = 'Resume download';
+      }
+    } catch (e) { /* try again on the next tick */ }
+  }, 2000);
+  _fitPolls.push(t);
+}
+// No native dialog: the Use button asks in place before the model server reloads.
+function askUseFitModel(m, act, st) {
+  act.textContent = '';
+  act.appendChild(_fitEl('span', 'set-help', 'CODEC reloads its model with ' + m.label + ' and answers again in about a minute.'));
+  var yes = _fitEl('button', 'set-preset sel', 'Switch now'), no = _fitEl('button', 'set-preset', 'Cancel');
+  yes.type = 'button'; no.type = 'button';
+  yes.addEventListener('click', function () { useFitModel(m, yes, no, st); });
+  no.addEventListener('click', function () { loadModelFit(); });
+  act.appendChild(yes); act.appendChild(no);
+}
+async function useFitModel(m, yes, no, st) {
+  yes.disabled = true; no.disabled = true;
+  st.textContent = 'Switching to ' + m.label + '... this can take a few minutes.'; st.className = 'set-status';
+  try {
+    var r = await fetch('/api/models/fit/use', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) });
+    var d = await r.json();
+    if (!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    showToast('CODEC now uses ' + m.label);
+    await loadSettings();
+  } catch (e) {
+    st.textContent = 'Not switched: ' + e.message; st.className = 'set-status err';
+    yes.disabled = false; no.disabled = false;
   }
 }
 

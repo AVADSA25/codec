@@ -29,7 +29,7 @@
     "compare.py": "9562b18ed4dafdab5472a76a655e6dd348fd904b4c412087a37b837a5c03dca9",
     "cookbook_download.py": "8fd9c8a5b82f8e910cc0721904b908f2d201908ff0ac6373994be922598c382c",
     "cookbook_list.py": "23c19b92742bfd88a801e74bd79e8bbd70f88d49ac1951f1c30e4857cc693a79",
-    "cookbook_recommend.py": "66b09eac0510ca9ca1e19f5619ab10a167bda6e34d17be13bda77ba7ffe0b5e3",
+    "cookbook_recommend.py": "e942fd97f7038690c142b48fb405b20a22ed3dc4d1f9c987a9a581e7af767a92",
     "cookbook_scan.py": "9bc1fe32073267c45c20d6dca67e293ed07f5c04dfff0109b480f778ffeaa3bb",
     "cookbook_serve.py": "8a08bb5deecd988431da421b1b4825cd411c7e9c7658bc547aa16ce74c0e1ddd",
     "cookbook_stop.py": "8b51e04ef08e08899df24d032af7a609bef7bf02ad72be5badf95eb0a2b1ce64",

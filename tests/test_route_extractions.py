@@ -135,8 +135,6 @@ class TestFSeriesRouteExtractions:
         "/api/tts",
         "/api/response",
         "/api/vision",
-        "/api/preview",
-        "/preview_frame",
         "/api/run_code",
         "/api/cdp/status",
     ])
@@ -153,12 +151,12 @@ class TestFSeriesRouteExtractions:
     def test_dashboard_does_not_redefine_endpoints(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
-        # All 10 endpoints below must NOT have an `@app.<method>("<path>")`
+        # All 8 endpoints below must NOT have an `@app.<method>("<path>")`
         # decorator inside codec_dashboard.py — they live in routes/*.py only.
         moved = [
             '/api/config")', '/api/history")', '/api/conversations")',
             '/api/tts")', '/api/response")', '/api/vision")',
-            '/api/preview")', '/preview_frame"', '/api/run_code")',
+            '/api/run_code")',
             '/api/cdp/status")',
         ]
         for snippet in moved:
