@@ -183,6 +183,9 @@ Emitted by `codec_vibe_projects` (docs/VIBE-PROJECTS-DESIGN.md), source `codec-v
 | `vibe_apply` | `project`, `checkpoint`, `files_changed`, `lines_added`, `lines_removed` |
 | `vibe_restore` | `project`, `restored_to`, `checkpoint`, `saved_before` |
 | `vibe_project_trash` | `project` |
+| `vibe_project_fork` | `project` (the copy), `from`, `checkpoint`, `files` (P-077, docs/VIBE-V4-DESIGN.md) |
+| `vibe_session_trash` | `messages`, `reason` (`owner`\|`retention`); from `routes/vibe.py`, after the chat's trash file is written (P-077) |
+| `vibe_retention_sweep` | `days`, `sessions`, `messages`, `skipped`; from `routes/vibe.py`, one line per sweep, never while `vibe.retention_days` is 0 (P-077) |
 | `vibe_project_run` | `project`, `kind` (`serve`\|`run`), `port`, `command_chars` (a length, never the command) |
 | `vibe_project_stop` | `project`, `kind`, `reason` (`user`\|`replaced`\|`idle`\|`reaped`\|`exit`\|`test`), `seconds`, `exit_code` (null for a file server) |
 

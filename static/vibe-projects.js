@@ -193,6 +193,12 @@
         refreshPreview();
         adoptLive(id);
         if (window.VibeAgent) window.VibeAgent.adopt(id);
+        leftOff(id).then(function (n) {
+          var cm = $('cm');
+          if (!n || P.id !== id || !cm) return;
+          var old = $('leftOff'); if (old) old.remove();
+          cm.appendChild(n);
+        });
         return info;
       });
     });
@@ -382,7 +388,9 @@
   }
 
   // ── what the person sees in the chat after an apply ───────────────────
-  function messageNode(explanation, result) {
+  // index: the answer's place in the chat (hist). With it, and outside a private chat, the answer also offers
+  // Rewind to here (P-077): the page's rewindTo restores this checkpoint and hides the later messages.
+  function messageNode(explanation, result, index) {
     var box = el('div', 'mg ma');
     if (explanation) {
       var p = el('div', null, explanation);
@@ -408,8 +416,92 @@
       undo.addEventListener('click', function () { revertTo(res.before, res.checkpoint.id, undo); });
       box.appendChild(undo);
     }
+    if (res.checkpoint && typeof index === 'number' && window._vibePrivate !== true && typeof window.rewindTo === 'function') {
+      var rw = el('button', 'undo-link', 'Rewind to here');
+      rw.type = 'button';
+      rw.title = 'Files back to this answer, later messages hidden (Undo rewind brings them back)';
+      rw.addEventListener('click', function () { window.rewindTo(index, res.checkpoint.id, rw); });
+      box.appendChild(rw);
+    }
     return box;
   }
+
+  // A reloaded answer (P-077): its text now, and its chips, Revert and Rewind from the checkpoint its row stores.
+  // pid is passed in because the page draws the chat while the project is still opening.
+  var FILES_LINE = /\n?\[Files (?:written|changed): [^\]\n]*\]\s*$/;
+  function savedTurnNode(text, cid, index, pid) {
+    var full = String(text == null ? '' : text);
+    var box = el('div', 'mg ma');
+    var p = el('div', null, full.replace(FILES_LINE, '') || full);
+    p.style.whiteSpace = 'pre-wrap';
+    box.appendChild(p);
+    if (!/^c\d{4,}$/.test(String(cid || '')) || !/^[a-z0-9][a-z0-9-]{2,60}$/.test(String(pid || ''))) { p.textContent = full; return box; }
+    api('GET', '/api/vibe/projects/' + pid + '/checkpoints/' + encodeURIComponent(cid) + '/changes').then(function (d) {
+      var n = messageNode(null, { res: d }, index);
+      while (n.firstChild) box.appendChild(n.firstChild);
+    }).catch(function () {
+      p.textContent = full;      // the version is gone: keep the file list the text carries
+    });
+    return box;
+  }
+
+  // Copy to a new project (P-077): exactly this version's files and the history up to it. The page opens the copy.
+  function forkFrom(cp, btn) {
+    if (!P.id) return Promise.resolve();
+    if (P.agent) { toast('The agent is working on these files. Stop it first.'); return Promise.resolve(); }
+    btn.disabled = true;
+    return flush().catch(function () {}).then(function () { return api('POST', base('/fork'), { checkpoint: cp.id }); })
+      .then(function (info) {
+        closeVersions();
+        toast('Copied to a new project');
+        if (typeof window.openForked === 'function') return window.openForked(info);
+      }, function (e) { btn.disabled = false; toast('Could not copy: ' + e.message); });
+  }
+
+  // How many files the versions do not keep (P-077): build folders, files over 1 MB, links.
+  function unversionedText(u) {
+    if (!u || !u.count) return '';
+    var why = [];
+    var names = Object.keys(u.folders || {}).filter(function (k) { return u.folders[k] > 0; });
+    if (names.length) why.push('in ' + names.join(', '));
+    if (u.large) why.push(u.large + ' over 1 MB');
+    if (u.links) why.push(u.links + (u.links === 1 ? ' link' : ' links'));
+    return (u.capped ? 'More than ' : '') + u.count + (u.count === 1 ? ' file is' : ' files are') + ' not versioned' +
+      (why.length ? ' (' + why.join(', ') + ')' : '') + '. Versions, Restore and Copy leave them as they are.';
+  }
+
+  // Where you left off (P-077): the last agent run's own report, from its log. No model is asked.
+  // Shown when the chat does not already end with that report; runs a rewind went back over are listed.
+  function leftOff(id) {
+    return api('GET', '/api/vibe/projects/' + id + '/agent/left-off').then(function (d) {
+      if (P.id !== id || !d || d.live) return null;
+      var rewound = Array.isArray(d.rewound) ? d.rewound : [];
+      var hist = Array.isArray(window.hist) ? window.hist : [];
+      var last = hist.length ? String(hist[hist.length - 1].content || '') : '';
+      var report = d.run && typeof d.report === 'string' ? d.report.trim() : '';
+      var showReport = !!d.run && (report ? last.indexOf(report) !== 0 : !hist.length);
+      if (!showReport && !rewound.length) return null;
+      var box = el('div', 'mg ma vleft');
+      box.id = 'leftOff';
+      box.appendChild(el('div', 'vleft-h', 'Where you left off'));
+      if (showReport) {
+        var when = d.ended ? fmtTime(d.ended * 1000) : '';
+        box.appendChild(el('div', 'vleft-g', String(d.goal || '')));
+        box.appendChild(el('div', 'vmeta', [String(d.status || ''), d.steps ? d.steps + (d.steps === 1 ? ' step' : ' steps') : '', when]
+          .filter(Boolean).join('  ·  ')));
+        var r = el('div', null, report || 'The run ended without a report.');
+        r.style.whiteSpace = 'pre-wrap';
+        box.appendChild(r);
+      }
+      if (rewound.length) {
+        box.appendChild(el('div', 'vmeta', 'Rewound: ' + rewound.map(function (x) { return '"' + String(x.goal || x.run) + '"'; }).join(', ') +
+          '. Their logs are kept.'));
+      }
+      return box;
+    }).catch(function () { return null; });
+  }
+
+  function setTitle(t) { if (P.id && typeof t === 'string' && t.trim()) P.title = t.trim(); }
 
   function revertTo(beforeId, cpId, btn) {
     var later = P.lastAi && P.lastAi !== cpId;
@@ -464,6 +556,11 @@
       if (!cps.length) { listEl.appendChild(el('div', 'vmsg', 'No versions yet.')); return; }
       listEl.appendChild(changesRow(cps[0]));
       cps.forEach(function (cp, i) { listEl.appendChild(versionRow(cp, i === 0)); });
+      var id = P.id;
+      api('GET', base('/unversioned')).then(function (u) {        // P-077: what the versions do not keep
+        var t = unversionedText(u);
+        if (t && P.id === id && versionsOpen()) listEl.insertBefore(el('div', 'vmsg vunv', t), listEl.firstChild);
+      }).catch(function () {});
     }).catch(function (e) { listEl.textContent = ''; listEl.appendChild(el('div', 'vmsg', 'Could not load versions: ' + e.message)); });
   }
 
@@ -529,7 +626,8 @@
     head.appendChild(el('span', 'vlabel', cp.label || cp.id));
     var st = cp.stat || {};
     var meta = fmtTime(cp.ts) + (st.lines_added || st.lines_removed ? '  ·  +' + st.lines_added + ' −' + st.lines_removed : '') +
-      '  ·  ' + (cp.files_count || 0) + (cp.files_count === 1 ? ' file' : ' files');
+      '  ·  ' + (cp.files_count || 0) + (cp.files_count === 1 ? ' file' : ' files') +
+      (cp.rewound ? '  ·  rewound' : '');     // a rewind went back over it (P-077)
     head.appendChild(el('span', 'vmeta', meta));
     row.appendChild(head);
     var body = el('div', 'vbody');
@@ -559,6 +657,11 @@
           btn.addEventListener('click', function () { restoreTo(cp, btn); });
           body.appendChild(btn);
         }
+        var fk = el('button', 'bb vrestore', 'Copy to a new project');
+        fk.type = 'button';
+        fk.title = 'A new project with this version\'s files and the history up to it. This one stays as it is.';
+        fk.addEventListener('click', function () { forkFrom(cp, fk); });
+        body.appendChild(fk);
       }).catch(function (e) { body.textContent = ''; body.appendChild(el('div', 'vmsg', 'Could not load: ' + e.message)); });
     });
     return row;
@@ -792,6 +895,7 @@
     detach: detach, undo: undo, versions: versions, closeVersions: closeVersions, messageNode: messageNode,
     previewSource: previewSource, setActiveText: setActiveText, previewPath: previewPath, fileText: fileText,
     setFileText: setFileText, saveVersion: saveVersion,
+    savedTurnNode: savedTurnNode, forkFrom: forkFrom, unversionedText: unversionedText, leftOff: leftOff, setTitle: setTitle,
     runDialog: runDialog, closeRun: closeRun, runGo: runGo, stopLive: stopLive, liveActive: liveActive,
     liveReload: liveReload, reload: reload, activate: activate, restoreId: restoreId, setBusy: setBusy, diffNode: diffNode,
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },

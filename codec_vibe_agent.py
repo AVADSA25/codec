@@ -771,8 +771,9 @@ class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
                  continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = "",
                  todo=None, mode: str = "default", tools=None, plan: str = "", plan_from: str = "", plan_note: str = "",
-                 plan_edited: bool = False):
+                 plan_edited: bool = False, private: bool = False):
         self.id = "r" + secrets.token_hex(4)
+        self.private = bool(private)    # a private chat's run (P-077): events in memory only, no log, no kept output
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
         # P-047: the tools a run has today, cut to its mode's tools and to the request's list; never one added
         self.mode = mode if mode in MODES else "default"
@@ -829,6 +830,8 @@ class Run:
         return vp.project_dir(self.pid) / vp.META_DIR / RUNS_DIR / f"{self.id}.jsonl"
 
     def _write_log(self, ev: dict) -> None:
+        if self.private:
+            return
         try:
             path = self._log_path()
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -853,6 +856,8 @@ class Run:
 
         Secret shapes are replaced first with the audit log's own patterns; without them only the counts are kept.
         No seq: the event is not part of the page's sequence (get_run also leaves it out)."""
+        if self.private:
+            return
         ev = {"t": round(time.time(), 3), "type": "reply", "step": n, "chars": len(reply.text), "cut": reply.cut}
         clean = _redact(reply.text)
         if clean is not None:
@@ -977,6 +982,8 @@ class Run:
 
     def _out_path(self, n: int) -> "str | None":
         """A fresh place for step n's command output, its folders made 0700. None when there is none."""
+        if self.private:
+            return None
         path = None
         try:
             path = _spill_file(self.pid, self.id, n)
@@ -1602,7 +1609,7 @@ def _clean_history(history) -> list:
 
 
 def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False,
-              mode="default", tools=None) -> dict:
+              mode="default", tools=None, temporary: bool = False) -> dict:
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
     if not isinstance(goal, str) or not goal.strip():
@@ -1613,7 +1620,8 @@ def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = Fal
     mode, tools = _check_mode(mode), _check_tools(tools)
     vp.project_dir(pid)
     llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud))
-    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run), mode=mode, tools=tools))
+    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run), mode=mode, tools=tools,
+                          private=temporary is True))
 
 
 def _check_mode(mode, status: int = 400) -> str:
@@ -1974,6 +1982,7 @@ def list_runs(pid: str) -> list:
         return []
     out = []
     files = sorted((p for p in d.glob("r*.jsonl") if RUN_ID_RE.match(p.stem)), key=lambda p: p.stat().st_mtime, reverse=True)
+    rewound = vp.rewound_checkpoints(pid)       # a run that started where a rewind went back over (P-077)
     for p in files[:KEEP_RUNS]:
         try:
             events = _file_events(pid, p.stem)
@@ -1986,7 +1995,7 @@ def list_runs(pid: str) -> list:
         out.append({"run": p.stem, "goal": str(start.get("goal", ""))[:200], "status": status,
                     "started": start.get("t"), "steps": sum(1 for e in events if e.get("type") == "tool"),
                     "model": (start.get("model") or {}).get("label", ""), "start_checkpoint": start.get("start_checkpoint"),
-                    "seconds": end.get("seconds")})
+                    "seconds": end.get("seconds"), "rewound": start.get("start_checkpoint") in rewound})
     return out
 
 
@@ -2039,3 +2048,23 @@ def answer_run(pid: str, run_id: str, qid, text) -> dict:
         raise VibeError(400, "Send the question id and the answer")
     run.answer(qid, text.strip())
     return {"run": run_id, "ok": True}
+
+
+def left_off(pid: str) -> dict:
+    """Where you left off (P-077): the newest ended run that no rewind took back, its own report from its log.
+
+    No model is called. A run going on now gives live=True (the page follows it instead); runs a rewind went back over
+    are listed after it as rewound, newest first. A private run has no log and is not here."""
+    later = []
+    for r in list_runs(pid):
+        if r["status"] in ("running", "waiting"):
+            return {"run": None, "live": True, "rewound": []}
+        if r["rewound"]:
+            later.append({"run": r["run"], "goal": r["goal"], "status": r["status"]})
+            continue
+        events = _file_events(pid, r["run"])
+        end = next((e for e in reversed(events) if e.get("type") == "end"), {})
+        return {"run": r["run"], "goal": r["goal"], "status": r["status"], "steps": r["steps"],
+                "report": str(end.get("report") or "")[:proto.MAX_REPORT_CHARS], "ended": end.get("t"),
+                "live": False, "rewound": later[:5]}
+    return {"run": None, "live": False, "rewound": later[:5]}
