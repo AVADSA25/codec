@@ -192,8 +192,8 @@ def test_every_field_the_api_returns_has_a_label_and_help(client):
 def test_controls_save_by_themselves():
     assert "saveConfigBtn" not in DASH and "function saveConfig(" not in DASH, "no Save Changes button"
     ctl = DASH[DASH.index("function _setControl("):DASH.index("function renderSettings(")]
-    assert ctl.count('onchange="saveSetting(this)"') == 5, "switch, select, range, number and text"
-    for c in ("'switch'", "'select'", "'range'", "'number'"):
+    assert ctl.count('onchange="saveSetting(this)"') == 6, "switch, select, range, number, text and long text (P-065)"
+    for c in ("'switch'", "'select'", "'range'", "'number'", "'longtext'"):
         assert c in ctl
     save = DASH[DASH.index("async function saveSetting(el)"):DASH.index("// ── Advanced: edit config.json")]
     assert "_setShow(el, f, before);" in save, "a failed save puts the old value back"

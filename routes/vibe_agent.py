@@ -42,6 +42,17 @@ async def models():
     return await _call(va.models_info)
 
 
+@router.get("/api/vibe/doctor")
+async def doctor(request: Request):
+    """The Vibe health check (P-065, docs/VIBE-RUNCARD-DESIGN.md): five booleans, nothing else. Read-only, this Mac
+    only, and it answers with the agent switched off too."""
+    from routes._shared import _is_remote_request
+    if _is_remote_request(request):
+        return JSONResponse({"error": "The check runs only at this Mac."}, status_code=403)
+    from routes.vibe import VIBE_DB
+    return await asyncio.to_thread(va.doctor, VIBE_DB)
+
+
 @router.get("/api/vibe/agent/live")
 async def live():
     """The run going on this Mac, ids only: the page opened from a phone push shows it again (P-070)."""
@@ -57,7 +68,7 @@ async def run(pid: str, request: Request):
     return await _call(va.start_run, pid, body.get("goal"), model=body.get("model") or "local",
                        confirm_cloud=body.get("confirm_cloud") is True, history=body.get("history"),
                        can_run=not _is_remote_request(request), mode=body.get("mode"), tools=body.get("tools"),
-                       temporary=body.get("temporary") is True)
+                       temporary=body.get("temporary") is True, cloud_id=body.get("cloud_id"))
 
 
 @router.get("/api/vibe/projects/{pid}/agent/runs")

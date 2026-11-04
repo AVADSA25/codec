@@ -83,6 +83,8 @@ def agent_env(tmp_path, monkeypatch, cfg):
     monkeypatch.setattr(vp, "_audit", lambda event, message, extra: audits.append((event, dict(extra))))
     monkeypatch.setattr(va, "_llm_stream", ScriptedModel([]))
     monkeypatch.setattr(va, "_push", lambda kind: None)        # no test reaches codec_push unless it asks (P-070)
+    import codec_cloud_models as ccm                            # a cloud run's card reads this month's spend (P-065)
+    monkeypatch.setattr(ccm, "SPEND_PATH", str(tmp_path / "cloud_spend.json"))
     # No test loads ~/.codec/plugins (P-067): an empty registry on a temp folder, never scanned, so nothing is written.
     none = tmp_path / "no-plugins"
     monkeypatch.setattr(codec_hooks, "_registry",

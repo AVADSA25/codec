@@ -906,7 +906,7 @@ def test_local_is_the_default_and_a_chat_switched_to_the_cloud_does_not_move_the
     pid = make_project()
     view, model = run_script(pid, ["@@ finish\nok\n"], scripted)
     assert model.kwargs[0]["base_url"] == "http://localhost:8083/v1" and model.kwargs[0]["model"] == "local-qwen"
-    assert [e for e in view["events"] if e["type"] == "start"][0]["model"] == {"kind": "local", "label": "Local"}
+    assert [e for e in view["events"] if e["type"] == "start"][0]["model"] == {"kind": "local", "id": "local-qwen", "label": "Local"}
 
 
 def test_a_cloud_run_needs_a_confirmation_a_model_and_a_clear_cap(scripted, cfg, monkeypatch):
@@ -926,7 +926,7 @@ def test_a_cloud_run_needs_a_confirmation_a_model_and_a_clear_cap(scripted, cfg,
     monkeypatch.setattr(ccm, "block_message", lambda entry: None)
     view, model = run_script(pid, ["@@ finish\nok\n"], scripted, model="cloud", confirm_cloud=True)
     assert model.kwargs[0]["base_url"] == "https://api.example.com/v1" and model.kwargs[0]["model"] == "mimo"
-    assert [e for e in view["events"] if e["type"] == "start"][0]["model"] == {"kind": "cloud", "label": "MiMo"}
+    assert [e for e in view["events"] if e["type"] == "start"][0]["model"] == {"kind": "cloud", "id": "mimo", "label": "MiMo"}
     assert end_of(view)["status"] == "done"
 
 
@@ -948,7 +948,7 @@ def test_models_info_names_the_local_model_and_the_cloud_one(cfg, monkeypatch):
     cfg["extra_models"] = [CLOUD]
     monkeypatch.setattr(ccm, "block_message", lambda entry: None)
     info = va.models_info()
-    assert info["cloud"] == {"label": "MiMo", "host": "api.example.com", "ready": True, "reason": ""}
+    assert info["cloud"] == {"id": "mimo", "label": "MiMo", "host": "api.example.com", "ready": True, "reason": ""}
     assert info["limits"]["max_steps"] == 30
 
 

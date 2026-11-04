@@ -126,6 +126,21 @@ NESTED_BLOCKS = {
     "ui_prefs": {},  # the Page Customization switches: any id -> bool
 }
 
+
+def _vibe_agent_rules() -> dict:
+    """P-065 (docs/VIBE-RUNCARD-DESIGN.md): Settings > Vibe. The five limits inside codec_vibe_agent.BOUNDS, two
+    switches and the owner's own prompt text, with the agent's own defaults (one source for both)."""
+    import codec_vibe_agent as va
+    rules = {k: (int, _between(*va.BOUNDS[k]), va.DEFAULTS[k]) for k in va.LIMITS}
+    rules["enabled"] = (bool, None, va.DEFAULTS["enabled"])
+    rules["allow_commands"] = (bool, None, va.DEFAULTS["allow_commands"])
+    rules["append_prompt"] = (str, lambda v: (len(v) <= va.MAX_APPEND_PROMPT,
+                                              f"must be at most {va.MAX_APPEND_PROMPT} characters"), "")
+    return rules
+
+
+NESTED_BLOCKS["vibe_agent"] = _vibe_agent_rules()
+
 # Keys the Advanced editor never changes: masked secrets, and the model switch's
 # own record of the local model to go back to (AGENTS.md §10).
 _RAW_READ_ONLY = _SENSITIVE_FIELDS | {"llm_local_restore"}

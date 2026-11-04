@@ -35,6 +35,7 @@ Please include: affected component/version, reproduction steps or PoC, impact, a
 - The skill execution + load-time safety gate (`codec_skill_registry.py`, `codec_config.is_dangerous_skill_code`) and the plugin trust model (`codec_hooks.py`).
 - The audit log integrity + secret-redaction layer (`codec_audit.py`), Keychain handling (`codec_keychain.py`), and the sandboxed exec path (`codec_sandbox.py`, `python_exec`).
 - The agent permission gate (`codec_agent_runner.py`) and dangerous-command guard (`codec_config.is_dangerous`).
+- The Vibe coding agent's command sandbox (`codec_vibe_agent_cmd.py`) and the Vibe project store with its path rules and checkpoints (`codec_vibe_projects.py`).
 
 **Out of scope** (the user's own trust boundary, by design):
 - User-authored skills in `~/.codec/skills/` and plugins in `~/.codec/plugins/` (the user curates these; the load-time AST gate + SHA-256 allowlist is the documented control, not a sandbox).
