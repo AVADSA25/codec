@@ -117,6 +117,10 @@
         run.context = m;
         return [{ t: 'context', meter: m }];
       }
+      case 'compact': {                                               // old steps folded into a note (P-049)
+        var k = compactText(ev);
+        return k ? [{ t: 'compact', head: k.head, summary: k.summary }] : [];
+      }
       default:
         return [];
     }
@@ -222,6 +226,12 @@
   // The context meter (P-049): how full the last prompt was, against the cap, in the model's tokens. The server sends
   // the model's own count when it has one, else its estimate, marked. Display only: nothing on the page decides on it.
   function fmtCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function compactText(ev) {
+    var a = ev && ev.first, b = ev && ev.last;
+    if (typeof a !== 'number' || typeof b !== 'number' || b < a) return null;
+    return { head: 'Steps ' + a + ' to ' + b + ' folded into a short note to save space',
+      summary: String(ev.summary || '').slice(0, 600) };
+  }
   function contextMeter(ev) {
     var used = ev && ev.used, cap = ev && ev.cap;
     if (typeof used !== 'number' || typeof cap !== 'number' || !(cap > 0) || !(used >= 0)) return null;
@@ -430,7 +440,7 @@
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
     selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
     notesLine: notesLine, todoItems: todoItems,
-    contextMeter: contextMeter };
+    contextMeter: contextMeter, compactText: compactText };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -860,6 +870,16 @@
     S.card.steps.appendChild(el('li', 'agc-note', eff.text));
   }
 
+  // Old steps folded into the model's note (P-049): one row; the note opens under it. Text only, never HTML.
+  function drawCompact(eff) {
+    if (!S.card) return;
+    var li = el('li', 'agc-note agc-fold'), d = el('details'), sm = el('summary', null, eff.head);
+    d.appendChild(sm);
+    if (eff.summary) d.appendChild(el('div', 'agc-fold-t', eff.summary));
+    li.appendChild(d);
+    S.card.steps.appendChild(li);
+  }
+
   // The context meter right under the card's head (P-049), made at the first context event. Display only.
   function drawContext(m) {
     var c = S.card;
@@ -966,6 +986,7 @@
       else if (eff.t === 'todo') drawTodo(eff.items);
       else if (eff.t === 'message') drawMessage(eff);
       else if (eff.t === 'context') drawContext(eff.meter);
+      else if (eff.t === 'compact') drawCompact(eff);
       else if (eff.t === 'live') { c.live.textContent = eff.text; c.live.hidden = !eff.text; }
       else if (eff.t === 'end') { drawEnd(eff.end); drawAllowed(); }
     });

@@ -384,3 +384,18 @@ def test_a_context_event_draws_the_meter_with_the_estimate_marked():
     assert "box.setAttribute('role', 'meter')" in draw and "c.ctx.label.textContent = m.text;" in draw and "innerHTML" not in draw
     assert "else if (eff.t === 'context') drawContext(eff.meter);" in SRC
     assert ".agc-ctx{" in PAGE and ".agc-ctx-fill{" in PAGE and ".agc-ctx.high .agc-ctx-fill{" in PAGE
+
+
+def test_a_compact_event_draws_one_row_whose_note_opens_under_it():
+    # P-049: old steps folded into the model's note. The note is model text: drawn as text only.
+    ev = {"seq": 9, "type": "compact", "step": 30, "first": 1, "last": 23, "turns": 23,
+          "summary": "Read pages 1 to 23. <b>x</b>", "before": 2929, "after": 2015}
+    out = run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps(ev)};")
+    assert out == [{"t": "compact", "head": "Steps 1 to 23 folded into a short note to save space",
+                    "summary": "Read pages 1 to 23. <b>x</b>"}]
+    assert run("A.compactText(E).summary.length", f"const E = {json.dumps(dict(ev, summary='y' * 900))};") == 600
+    for bad in ({}, {"first": 5, "last": 2}, {"first": "1", "last": 3}):
+        assert run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps(dict(bad, type='compact'))};") == []
+    draw = SRC[SRC.index("function drawCompact(eff) {"):SRC.index("function drawContext(m) {")]
+    assert "el('summary', null, eff.head)" in draw and "el('div', 'agc-fold-t', eff.summary)" in draw and "innerHTML" not in draw
+    assert "else if (eff.t === 'compact') drawCompact(eff);" in SRC and ".agc-fold-t{" in PAGE
