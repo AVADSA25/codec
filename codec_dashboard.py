@@ -35,6 +35,7 @@ from routes._shared import (
 # D1/D2: sqlite3, uuid, pathlib.Path moved with the qchat/vibe/schedules
 # extractions (the only callers left used them).
 
+import codec_web_policy  # the page policies CSPMiddleware sends (P-089)
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
 from codec_audit import log_event  # STEP_BUDGET_EXHAUSTED moved with _StepBudget to codec_chat_pipeline (B6-P2)
@@ -228,29 +229,17 @@ class CSPMiddleware(BaseHTTPMiddleware):
     Referer to third-party hosts when the user clicks an outbound link.
     """
 
-    CSP = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
-        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
-        "font-src 'self' https://cdnjs.cloudflare.com; "
-        "img-src 'self' data: https:; "
-        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; "
-        # Vibe (step 2b) frames a project that runs on this Mac, always at 127.0.0.1.
-        "frame-src 'self' http://127.0.0.1:*; "
-        "worker-src 'self' blob:; "
-        # Phase 0 (2026-05-27): allow embedding only from same origin or the AVA
-        # Digital portal. Adding `https://avadigital.ai` lets /console/codec
-        # iframe the dashboard. Without this directive, no browser-side iframe
-        # restriction exists for the main dashboard (only /preview_frame had
-        # X-Frame-Options:SAMEORIGIN). This is an additive hardening step.
-        "frame-ancestors 'self' https://avadigital.ai"
-    )
+    # Stage 0 page policies (P-089): /vibe's or the general one, ws/wss for the Host only.
+    CSP, CSP_VIBE, PERMISSIONS_POLICY = codec_web_policy.CSP, codec_web_policy.CSP_VIBE, codec_web_policy.PERMISSIONS_POLICY
+    for_request = staticmethod(codec_web_policy.for_request)
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         content_type = response.headers.get("content-type", "")
         if "text/html" in content_type:
-            response.headers["Content-Security-Policy"] = self.CSP
+            response.headers["Content-Security-Policy"] = self.for_request(
+                request.scope.get("path", ""), request.headers.get("host", ""))
+            response.headers["Permissions-Policy"] = self.PERMISSIONS_POLICY
         # Apply nosniff + Referrer-Policy to every response — cheap defense
         # in depth regardless of content type.
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -870,8 +859,7 @@ async def vibe_page():
     with open(vibe_path) as f:
         return HTMLResponse(f.read(), headers=_NO_CACHE)
 
-# F5 preview → moved to routes/*.py
-# F5 preview_frame → moved to routes/*.py
+# F5 preview + preview_frame: removed (P-089); the Vibe preview is a sandboxed srcdoc frame.
 # F5 run_code → moved to routes/*.py
 # /api/save_file safety check — mirrors PR-1C's `file_write` skill blocklist.
 # A1 / SR-8: previously `~/.codec` was in the allowlist, which let any

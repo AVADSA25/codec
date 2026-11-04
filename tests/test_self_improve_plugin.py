@@ -213,6 +213,20 @@ def test_on_operation_end_threshold_spawns_drafter(plugin, fake_ctx, monkeypatch
     assert spawned[0]["daemon"] is True
 
 
+def test_vibe_agent_tools_never_become_gaps(plugin, fake_ctx, monkeypatch):
+    """The Vibe agent's tools (P-067: vibe:<tool>, transport vibe) are not skills. Two calls of one, or a run of
+    timed-out edits, spawn no drafter, where the same calls of an unknown skill do (the test above)."""
+    spawned = []
+    monkeypatch.setattr(threading, "Thread", lambda **kw: spawned.append(kw) or MagicMock())
+    for _ in range(2):
+        plugin.post_tool(fake_ctx(tool_name="vibe:read_file", transport="vibe"), "1: h1 { color: red; }")
+    for _ in range(5):
+        plugin.on_error(fake_ctx(tool_name="vibe:edit_file", transport="vibe"), TimeoutError("slow"))
+    plugin.on_operation_end(fake_ctx(tool_name=None, transport="vibe", operation_id="r1a2b3c4d5e6"))
+    assert spawned == []
+    assert codec_self_improve._find_gaps(plugin._get_signals_snapshot_for_test(), set()) == []
+
+
 # ── 5. Throttle blocks rapid re-draft ────────────────────────────────────────
 
 def test_throttle_blocks_repeat_draft_for_same_tool(plugin, fake_ctx, monkeypatch):
