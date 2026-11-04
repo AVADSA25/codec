@@ -364,3 +364,23 @@ def test_a_todo_event_becomes_a_checklist():
     assert "box.disabled = true" in draw and "el('span', null, it.text)" in draw and "c.todo.textContent = '';" in draw
     assert "else if (eff.t === 'todo') drawTodo(eff.items);" in SRC
     assert ".agc-todo{" in PAGE and ".agc-todo li.done span{" in PAGE
+
+
+@node
+def test_a_context_event_draws_the_meter_with_the_estimate_marked():
+    # P-049: the server's own count when it has one, else its estimate, which the label says.
+    est = {"seq": 3, "type": "context", "step": 2, "used": 4200, "cap": 14000, "estimate": True}
+    out = run("(function () { var r = A.newRun('p'); var eff = A.applyEvent(r, E); return [r.context, eff]; })()",
+              f"const E = {json.dumps(est)};")
+    want = {"used": 4200, "cap": 14000, "pct": 30, "estimate": True, "high": False, "text": "Context 4,200 of 14,000 tokens (estimate)"}
+    assert out == [want, [{"t": "context", "meter": want}]]
+    real = run("A.contextMeter(E)", f"const E = {json.dumps(dict(est, used=13300, estimate=False))};")
+    assert real == {"used": 13300, "cap": 14000, "pct": 95, "estimate": False, "high": True, "text": "Context 13,300 of 14,000 tokens"}
+    assert run("A.contextMeter(E).pct", f"const E = {json.dumps(dict(est, used=20000))};") == 100      # over the cap: a full bar
+    for bad in ({}, {"used": "1", "cap": 10}, {"used": 5, "cap": 0}, {"used": -1, "cap": 10}):
+        assert run("A.contextMeter(E)", f"const E = {json.dumps(bad)};") is None
+    assert run("A.applyEvent(A.newRun('p'), E)", f"const E = {json.dumps({'seq': 4, 'type': 'context', 'step': 3})};") == []
+    draw = SRC[SRC.index("function drawContext(m) {"):SRC.index("function drawTodo(items) {")]
+    assert "box.setAttribute('role', 'meter')" in draw and "c.ctx.label.textContent = m.text;" in draw and "innerHTML" not in draw
+    assert "else if (eff.t === 'context') drawContext(eff.meter);" in SRC
+    assert ".agc-ctx{" in PAGE and ".agc-ctx-fill{" in PAGE and ".agc-ctx.high .agc-ctx-fill{" in PAGE

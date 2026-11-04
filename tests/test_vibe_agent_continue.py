@@ -122,7 +122,7 @@ def test_a_cut_run_check_is_never_replayed_and_asking_again_needs_a_new_approval
     wait_finished(pid, old)
     assert commands == ["npm test", "npm run build"]
     cut(pid, old, 2, drop_result=True)                 # the restart came after the owner allowed npm run build
-    assert [e["type"] for e in logged(pid, old) if e.get("step") == 2] == ["reply", "tool", "approval", "decision"]
+    assert [e["type"] for e in logged(pid, old) if e.get("step") == 2] == ["reply", "context", "tool", "approval", "decision"]
     model = scripted(["Build again.\n@@ run_check\nnpm run build\n", "@@ finish\nNot checked.\n"])
     new = va.continue_run(pid, old, can_run=True)["run"]
     ask = approval_in(pid, new)                          # a fresh approval card: the old "once" does not carry over

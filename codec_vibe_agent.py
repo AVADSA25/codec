@@ -75,6 +75,7 @@ REPEAT_WARN = 3
 REPEAT_STOP = 5
 MODEL_RETRIES = 2
 CHARS_PER_TOKEN = 3.5
+TOKEN_FACTOR = 1.4          # the model's own tokens per estimated token (1.3 to 1.5 measured): the meter's units (P-049)
 TEXT_FLUSH_SECONDS = 0.25
 MAX_WAIT_SECONDS = 25.0
 WAIT_STEP = 1.0              # how often a waiting run looks at the clock and the stop flag
@@ -1074,6 +1075,7 @@ class Run:
             self._drop_text(n)
             if reply.text.strip():
                 self._log_reply(n, reply)
+            self._context(n, messages, reply)
             if reply.stopped:
                 return self._end("stopped", "Stopped.")
             if reply.timed_out:
@@ -1428,6 +1430,17 @@ class Run:
     @staticmethod
     def _estimate(msgs: list) -> int:
         return int(sum(len(m["content"]) for m in msgs) / CHARS_PER_TOKEN) + 4 * len(msgs)
+
+    def _context(self, n: int, messages: list, reply: "_Reply") -> None:
+        """How full step n's prompt was, for the meter on the page (P-049). Display only: nothing decides on it.
+
+        The server's prompt_tokens when it sent them (a reply that writes on past its tool block is closed early,
+        before the usage chunk), else the estimate times TOKEN_FACTOR, marked so. The cap is max_context_tokens in the
+        same units."""
+        real = reply.usage.get("prompt_tokens")
+        known = isinstance(real, int) and not isinstance(real, bool) and real > 0
+        self._emit("context", step=n, used=real if known else int(self._estimate(messages) * TOKEN_FACTOR),
+                   cap=int(self.limits["max_context_tokens"] * TOKEN_FACTOR), estimate=not known)
 
     def _messages(self) -> list:
         cap = self.limits["max_context_tokens"]

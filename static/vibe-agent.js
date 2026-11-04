@@ -111,6 +111,12 @@
         run.end = { status: run.status, report: ev.report || '', steps: ev.steps, seconds: ev.seconds, startCp: ev.start_checkpoint || run.startCp };
         run.live = '';
         return [{ t: 'live', text: '' }, { t: 'meta' }, { t: 'end', end: run.end }];
+      case 'context': {                                               // how full the last prompt was (P-049)
+        var m = contextMeter(ev);
+        if (!m) return [];
+        run.context = m;
+        return [{ t: 'context', meter: m }];
+      }
       default:
         return [];
     }
@@ -211,6 +217,18 @@
   function todoItems(items) {
     return (Array.isArray(items) ? items : []).filter(function (i) { return i && typeof i.text === 'string' && i.text.trim(); })
       .slice(0, 12).map(function (i) { return { text: i.text, done: i.done === true }; });
+  }
+
+  // The context meter (P-049): how full the last prompt was, against the cap, in the model's tokens. The server sends
+  // the model's own count when it has one, else its estimate, marked. Display only: nothing on the page decides on it.
+  function fmtCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function contextMeter(ev) {
+    var used = ev && ev.used, cap = ev && ev.cap;
+    if (typeof used !== 'number' || typeof cap !== 'number' || !(cap > 0) || !(used >= 0)) return null;
+    used = Math.round(used); cap = Math.round(cap);
+    var pct = Math.min(100, Math.round(used * 100 / cap)), est = ev.estimate !== false;
+    return { used: used, cap: cap, pct: pct, estimate: est, high: pct >= 85,
+      text: 'Context ' + fmtCount(used) + ' of ' + fmtCount(cap) + ' tokens' + (est ? ' (estimate)' : '') };
   }
 
   // A run read from its log after a dashboard restart has no end event: the server says it is over and calls it interrupted.
@@ -411,7 +429,8 @@
     runRequest: runRequest, mentionAt: mentionAt, mentionMatches: mentionMatches, insertMention: insertMention,
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
     selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
-    notesLine: notesLine, todoItems: todoItems };
+    notesLine: notesLine, todoItems: todoItems,
+    contextMeter: contextMeter };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -841,6 +860,28 @@
     S.card.steps.appendChild(el('li', 'agc-note', eff.text));
   }
 
+  // The context meter right under the card's head (P-049), made at the first context event. Display only.
+  function drawContext(m) {
+    var c = S.card;
+    if (!c) return;
+    if (!c.ctx) {
+      var box = el('div', 'agc-ctx');
+      box.setAttribute('role', 'meter');
+      box.setAttribute('aria-label', 'How full the agent\'s context is');
+      box.setAttribute('aria-valuemin', '0');
+      var bar = el('span', 'agc-ctx-bar'), fill = el('span', 'agc-ctx-fill'), label = el('span', 'agc-ctx-t');
+      bar.appendChild(fill); box.appendChild(bar); box.appendChild(label);
+      c.root.insertBefore(box, c.goal.parentNode.nextSibling);
+      c.ctx = { box: box, fill: fill, label: label };
+    }
+    c.ctx.box.setAttribute('aria-valuemax', String(m.cap));
+    c.ctx.box.setAttribute('aria-valuenow', String(Math.min(m.used, m.cap)));
+    c.ctx.box.setAttribute('aria-valuetext', m.text);
+    c.ctx.box.classList.toggle('high', m.high);
+    c.ctx.fill.style.width = m.pct + '%';
+    c.ctx.label.textContent = m.text;
+  }
+
   // The agent's todo list as a checklist under the card's head (P-046). Its boxes show the state; they cannot be clicked.
   function drawTodo(items) {
     var c = S.card;
@@ -924,6 +965,7 @@
       else if (eff.t === 'note') drawNote(eff);
       else if (eff.t === 'todo') drawTodo(eff.items);
       else if (eff.t === 'message') drawMessage(eff);
+      else if (eff.t === 'context') drawContext(eff.meter);
       else if (eff.t === 'live') { c.live.textContent = eff.text; c.live.hidden = !eff.text; }
       else if (eff.t === 'end') { drawEnd(eff.end); drawAllowed(); }
     });

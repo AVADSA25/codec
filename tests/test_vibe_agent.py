@@ -505,6 +505,20 @@ def test_older_results_are_shortened_when_the_context_is_full(scripted, cfg):
         assert va.Run._estimate(call) <= 2000
 
 
+def test_every_model_call_sends_the_meter_the_servers_count_or_the_estimate_times_1_4(scripted, cfg):
+    # P-049: display only. A stream closed at the first tool block has no usage chunk, so it is the marked estimate.
+    cfg["vibe_agent"] = {"max_context_tokens": 5000}
+    pid = make_project()
+    view, model = run_script(pid, ["@@ read_file style.css\n", "@@ finish\nok\n"], scripted)
+    ctx = [e for e in view["events"] if e["type"] == "context"]
+    assert [e["step"] for e in ctx] == [1, 2] and all(e["cap"] == 7000 for e in ctx)           # 5000 x 1.4
+    assert ctx[0]["estimate"] is True and ctx[0]["used"] == int(va.Run._estimate(model.calls[0]) * 1.4)
+    assert ctx[1]["estimate"] is False and ctx[1]["used"] == 100                                # the fake server's prompt_tokens
+    assert model.closed_early == 1 and model.completed == 1
+    logged = [json.loads(x)["type"] for x in (vp.project_dir(pid) / ".vibe" / "runs" / f"{view['run']}.jsonl").read_text().splitlines()]
+    assert logged.count("context") == 2                                                         # a reloaded page draws it too
+
+
 def test_a_read_is_replaced_once_the_file_changed(scripted):
     pid = make_project()
     view, model = run_script(pid, ["@@ read_file style.css\n", CSS_EDIT, "@@ list_files\n", "@@ finish\nok\n"], scripted)
