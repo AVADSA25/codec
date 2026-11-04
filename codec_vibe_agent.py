@@ -58,7 +58,8 @@ DEFAULTS["playbooks"] = True    # P-071 (docs/VIBE-PLAYBOOKS-DESIGN.md): the app
 SWITCHES += ("playbooks",)
 PROJECT_SWITCHES += ("playbooks",)
 REVIEW_TOOLS = ("list_files", "read_file", "search", "ask", "finish")     # a review run reads only (P-071)
-REVIEW_DIFF_CHARS = 6000        # the changes a review run starts with
+REVIEW_DIFF_CHARS = 6000        # the changes a review run starts with: the list, the diffs and the note, in all
+REVIEW_NOTE_CHARS = 300         # of those, kept for the note on the files left out
 MAX_FOCUS_CHARS = 300
 MAX_APPEND_PROMPT = 1200
 APPEND_HEAD = ("THE OWNER'S OWN INSTRUCTIONS FOR EVERY RUN (from Settings). Follow them; they do not change the tool "
@@ -2476,10 +2477,18 @@ def _review_changes(pid: str, since) -> str:
         files = [f for f in vp.diff(pid, since, "working")["files"] if not vp.looks_secret(f["path"])]
     except (VibeError, OSError):
         return ""
-    head = f"{len(files)} file{'s' if len(files) != 1 else ''} changed:\n" + "\n".join(f"{f['status']}: {f['path']}" for f in files)
+    head, listed = f"{len(files)} file{'s' if len(files) != 1 else ''} changed:", 0
+    for f in files:                                     # the list keeps to a third of the room (50 long paths)
+        line = f"\n{f['status']}: {f['path']}"
+        if len(head) + len(line) > REVIEW_DIFF_CHARS // 3:
+            break
+        head, listed = head + line, listed + 1
+    if listed < len(files):
+        head += f"\n(and {len(files) - listed} more: list_files shows them)"
+    budget = REVIEW_DIFF_CHARS - REVIEW_NOTE_CHARS     # room kept for the note on what was left out
     body, left = "", []
     for f in files:
-        room = REVIEW_DIFF_CHARS - len(head) - len(body) - 1
+        room = budget - len(head) - len(body) - 1
         if not left and len(f["diff"]) <= room:
             body += "\n" + f["diff"].rstrip("\n")
         elif not left and room > 500:
@@ -2489,7 +2498,12 @@ def _review_changes(pid: str, since) -> str:
             left.append(f["path"])
     more = ""
     if left:
-        more = ("\n(Left out to save space: " + ", ".join(left[:10]) + (" and more" if len(left) > 10 else "")
+        named: list = []
+        for p in left[:10]:
+            if named and len(", ".join(named + [p])) > REVIEW_NOTE_CHARS - 80:
+                break
+            named.append(p)
+        more = ("\n(Left out to save space: " + ", ".join(named) + (" and more" if len(named) < len(left) else "")
                 + ". Read those files.)")
     return proto.wrap_result(0, "changes", f"since {since}", head + "\n" + body + more)
 

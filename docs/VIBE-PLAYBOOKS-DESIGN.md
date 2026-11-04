@@ -84,7 +84,8 @@ report: findings
 - The run's tools are the playbook's tools cut to `list_files`, `read_file`, `search`, `ask`, `finish` (a P-047
   tools list, so Continue keeps it). No `playbook` tool. The goal is fixed engine text ("Review the changes since
   version c0012: 3 files changed.") plus the focus line. The first message holds the playbook block and the changes
-  as data: `[RESULT 0 changes since c0012]` with each file and its status, then the diffs, at most 6,000 characters.
+  as data: `[RESULT 0 changes since c0012]` with each file and its status, then the diffs, at most 6,000 characters
+  in all (the file list keeps to a third of that, and 300 are kept for the note on the files left out).
 - A playbook with `report: findings`: at `finish` the engine reads lines `- [high|medium|low] path[:line] text`
   from the report (at most 30, path 200 and text 300 characters) and emits `findings {step, items}` before `end`.
 - Page: an ended run card that changed files gets "Review changes" and "Security review" (since the run's start

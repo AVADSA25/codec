@@ -441,6 +441,19 @@ def test_review_run_has_only_reading_tools_over_the_changed_files(scripted):
                               {"level": "low", "path": "style.css", "line": None, "text": "colours"}]
 
 
+def test_review_changes_keep_to_6000_characters_with_many_long_paths():
+    pid = make_project()
+    since = vp.list_checkpoints(pid)[-1]["id"]
+    folder = "/".join(["d" * 40] * 4)                              # 50 files, each path about 180 characters
+    for i in range(50):
+        vp.write_file(pid, f"{folder}/file-{i:02d}.js", f"// {i}\n" + "x = 1;\n" * 200)
+    block = va._review_changes(pid, since)
+    inner = block.split("\n", 1)[1].rsplit("\n[END RESULT]", 1)[0]
+    assert block.startswith(f"[RESULT 0 changes since {since}]\n50 files changed:\nadded: {folder}/file-00.js")
+    assert len(inner) <= va.REVIEW_DIFF_CHARS, len(inner)
+    assert "more: list_files shows them)" in inner and "(Left out to save space: " in inner and " and more. " in inner
+
+
 def test_review_run_refuses_what_it_cannot_review(cfg):
     pid, since = changed_project()
     with pytest.raises(vp.VibeError) as e:
