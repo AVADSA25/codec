@@ -317,6 +317,14 @@
     return hit || (models && models.cloud) || null;
   }
 
+  // The entry a Continue sends to: the old run's own (the server keeps its id). A list loaded before that entry was
+  // set up does not have it, and the dialog must then name the run's entry, never the default one.
+  function continueEntry(models, run) {
+    if (!run || !run.modelId) return cloudEntry(models, null);          // an older run: the server's default, as before
+    var hit = cloudList(models).filter(function (c) { return c && c.id === run.modelId; })[0];
+    return hit || { id: run.modelId, label: run.model || run.modelId, host: '' };
+  }
+
   // A value of the model list, or the one this browser kept for the project: 'local', or 'cloud:<id>' for an entry that
   // is set up and ready. Anything else (an entry gone or not ready, a bad value) is the local model.
   function modelPick(value, models) {
@@ -484,7 +492,7 @@
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
     selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
     notesLine: notesLine, todoItems: todoItems,
-    cloudList: cloudList, cloudEntry: cloudEntry, modelPick: modelPick, withCloudId: withCloudId, modelText: modelText,
+    cloudList: cloudList, cloudEntry: cloudEntry, continueEntry: continueEntry, modelPick: modelPick, withCloudId: withCloudId, modelText: modelText,
     fmtTokens: fmtTokens, tokensText: tokensText, spendText: spendText };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
@@ -618,7 +626,8 @@
     if (save) saveModel();
   }
 
-  function saveModel() { if (S.pid) lsSet(MODEL_KEY + ':' + S.pid, pickValue()); }
+  // A project made by a chat message is not adopted, so S.pid is still empty there: the open project's id counts too.
+  function saveModel() { var pid = S.pid || (VP && VP.id ? VP.id() : null); if (pid) lsSet(MODEL_KEY + ':' + pid, pickValue()); }
 
   // The project's own pick, from this browser; Local when there is none, or when its entry is gone or not ready.
   function loadModel() { applyPick(S.pid ? lsGet(MODEL_KEY + ':' + S.pid) : 'local', false); }
@@ -1269,7 +1278,7 @@
   function continueRun(old, btn) {
     if (S.run !== old || running() || !canContinue(old)) return;
     var cloud = old.modelKind === 'cloud';
-    var go = cloud ? confirmCloud(cloudEntry(S.models, old.modelId)) : Promise.resolve(true);   // the old run's entry
+    var go = cloud ? confirmCloud(continueEntry(S.models, old)) : Promise.resolve(true);   // the old run's entry
     return go.then(function (ok) {
       if (!ok || S.run !== old || running()) return;
       btn.disabled = true;

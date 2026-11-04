@@ -356,6 +356,10 @@ def test_the_pick_is_local_unless_it_names_a_ready_entry():
     assert [(o["model"], o["cloudId"]) for o in out] == [("local", None), ("cloud", "mimo")] + [("local", None)] * 5
     assert run_js(JS, "[A.cloudEntry(M, 'other').label, A.cloudEntry(M, '').label, A.cloudEntry(M, 'gone').label]",
                   f"var M = {json.dumps(MODELS)};") == ["Other", "MiMo", "MiMo"]
+    # Continue names the old run's own entry, also when this page's list is older than that entry
+    assert run_js(JS, "[A.continueEntry(M, {modelId: 'other', model: 'Other'}).label, A.continueEntry(M, {modelId: ''}).label, "
+                      "A.continueEntry(M, {modelId: 'new', model: 'New one'})]", f"var M = {json.dumps(MODELS)};") == \
+        ["Other", "MiMo", {"id": "new", "label": "New one", "host": ""}]
     bodies = run_js(JS, "[A.withCloudId(A.runRequest('g', 'cloud', true, []), 'other'), "
                         "A.withCloudId(A.runRequest('g', 'cloud', false, []), 'other'), A.withCloudId(A.runRequest('g', 'local', true, []), 'other')]")
     assert bodies[0]["cloud_id"] == "other" and "cloud_id" not in bodies[1] and "cloud_id" not in bodies[2]
@@ -385,11 +389,12 @@ def test_a_chat_message_to_the_cloud_names_the_entry_only_after_the_yes():
 
 def test_the_page_wiring_keeps_the_pick_per_project_and_shows_the_counts():
     src = JS.read_text(encoding="utf-8")
-    assert "var MODEL_KEY = 'vibeAgentModel';" in src and "lsSet(MODEL_KEY + ':' + S.pid, pickValue())" in src
+    assert "var MODEL_KEY = 'vibeAgentModel';" in src and "lsSet(MODEL_KEY + ':' + pid, pickValue())" in src
+    assert "var pid = S.pid || (VP && VP.id ? VP.id() : null);" in src     # a project a chat message made keeps it too
     assert "lsGet(MODEL_KEY + ':' + S.pid)" in src and "c.value = 'cloud:' + cl.id;" in src
     assert "sel.addEventListener('change', function () { applyPick(sel.value, true); });" in src
     assert "c.tok.textContent = [tokensText(r), spendText(r)].filter(Boolean).join(' · ');" in src
-    assert "confirmCloud(cloudEntry(S.models, old.modelId))" in src and "withCloudId(body, cloudId);" in src
+    assert "confirmCloud(continueEntry(S.models, old))" in src and "withCloudId(body, cloudId);" in src
     assert "chatCloudId: function () { return S.askedCloud; }" in src
     chat = CHAT_JS.read_text(encoding="utf-8")
     assert "cloudId: root.VibeAgent.chatCloudId()" in chat
