@@ -364,3 +364,60 @@ def test_a_todo_event_becomes_a_checklist():
     assert "box.disabled = true" in draw and "el('span', null, it.text)" in draw and "c.todo.textContent = '';" in draw
     assert "else if (eff.t === 'todo') drawTodo(eff.items);" in SRC
     assert ".agc-todo{" in PAGE and ".agc-todo li.done span{" in PAGE
+
+
+# ── P-047: plan mode ──────────────────────────────────────────────────────
+
+@node
+def test_the_plan_request_body_and_its_chat_label():
+    out = run("[A.planRequest('build', '', 'local', true), A.planRequest('build', '  My plan  ', 'cloud', true), "
+              "A.planRequest('again', ' Shorter ', 'cloud', false), A.planRequest('anything', 'x', 'local', true)]")
+    assert out == [{"decision": "build", "model": "local", "confirm_cloud": False},
+                   {"decision": "build", "model": "cloud", "confirm_cloud": True, "plan": "My plan"},
+                   {"decision": "again", "model": "cloud", "confirm_cloud": False, "note": "Shorter"},
+                   {"decision": "build", "model": "local", "confirm_cloud": False, "plan": "x"}]
+    assert run("[A.planLabel('build', ' Add a form '), A.planLabel('again', 'Add a form')]") == [
+        "Build the plan: Add a form", "Plan again: Add a form"]
+    fits = run("[A.planTextFits('build', ''), A.planTextFits('build', 'x'.repeat(4000)), A.planTextFits('build', 'x'.repeat(4001)), "
+               "A.planTextFits('again', 'x'.repeat(600)), A.planTextFits('again', 'x'.repeat(601)), A.planTextFits('again', '  ')]")
+    assert fits == [False, True, False, True, False, False]
+
+
+@node
+def test_the_plan_card_shows_only_for_a_ready_plan_run_and_its_start_says_so():
+    start = dict(EVENTS[0], mode="plan")
+    out = run("(function () { var r = A.newRun('p'); var fx = A.applyEvent(r, S); var before = A.canUsePlan(r); "
+              "A.applyEvent(r, {seq: 9, type: 'end', status: 'done', report: 'The plan'}); var notReady = A.canUsePlan(r); "
+              "r.planReady = true; var ready = A.canUsePlan(r); r.status = 'limit'; var limit = A.canUsePlan(r); "
+              "var d = A.newRun('p'); A.applyEvent(d, E[0]); A.applyEvent(d, E[14]); d.planReady = true; "
+              "var b = A.newRun('p'); var bx = A.applyEvent(b, B); "
+              "return { mode: r.mode, notes: fx.filter(function (x) { return x.t === 'note'; }).map(function (x) { return x.text; }), "
+              "before: before, notReady: notReady, ready: ready, limit: limit, plain: A.canUsePlan(d), dmode: d.mode, "
+              "build: bx.filter(function (x) { return x.t === 'note'; }).map(function (x) { return x.text; }), bmode: b.mode }; })()",
+              f"var S = {json.dumps(start)}; var E = {json.dumps(EVENTS)}; "
+              f"var B = {json.dumps(dict(EVENTS[0], plan='1. do it', plan_from='r1a2b3c4', plan_edited=True))};")
+    assert out == {"mode": "plan", "notes": ["Plan mode: the agent reads the project and writes a plan. It changes no file except PLAN.md."],
+                   "before": False, "notReady": False, "ready": True, "limit": False, "plain": False, "dmode": "default",
+                   "build": ["This run follows your version of the plan."], "bmode": "default"}
+    poll = SRC[SRC.index("function poll() {"):SRC.index("function releaseUi() {")]
+    assert "if (d.finished) run.planReady = !!d.plan_ready;" in poll and poll.index("plan_ready") < poll.index("draw(effects)")
+
+
+def test_the_plan_card_puts_the_plan_in_as_text_and_posts_only_on_a_click():
+    end = SRC[SRC.index("function drawEnd(end) {"):SRC.index("function drawYou(text, state) {")]
+    assert "if (canUsePlan(r)) drawPlan(c, r);" in end
+    card = SRC[SRC.index("function drawPlan(c, run) {"):SRC.index("function usePlan(old, decision, text, controls, box) {")]
+    for label in ("'Build this plan'", "'Change it first'", "'Plan again'", "'Build my version'"):
+        assert label in card, label
+    for theirs in ("Approve", "Edit plan", "Keep planning"):                    # our own words, not another tool's
+        assert theirs not in SRC, theirs
+    assert "area.value = (run.end && run.end.report) || ''" in card and "innerHTML" not in card and "api(" not in card
+    use = SRC[SRC.index("function usePlan(old, decision, text, controls, box) {"):SRC.index("function leave() {")]
+    assert "'/plan'" in use and "planRequest(decision, text, model, ok)" in use and "confirmCloud()" in use
+    assert use.index("confirmCloud()") < use.index("api(") and SRC.count("'/plan'") == 1
+    start = SRC[SRC.index("function startRun(text, inp) {"):SRC.index("function stopRun() {")]
+    assert "var plan = S.plan === true;" in start and "if (plan) body.mode = 'plan';" in start
+    assert start.index("var body = runRequest(") < start.index("body.mode = 'plan'")
+    init = SRC[SRC.index("function init() {"):SRC.index("function active() {")]
+    assert "el('button', 'amb', 'Plan first')" in init and "plan.id = 'amPlan'" in init
+    assert ".agc-plan [hidden],.amb[hidden]{display:none}" in PAGE and ".agc-pe{" in PAGE
