@@ -19,6 +19,8 @@ import subprocess
 from functools import lru_cache
 from typing import Optional
 
+from . import fit
+
 log = logging.getLogger("codec_cookbook.probe")
 
 # Protected ports Cookbook must never bind to or stop. Mirrored by serve.py.
@@ -166,14 +168,17 @@ def resident_gb_total() -> float:
                      if p.get("status") == "online"), 3)
 
 
-def available_gb(os_reserve_gb: int = OS_RESERVE_GB) -> float:
+def available_gb(os_reserve_gb: Optional[float] = None) -> float:
     """Unified memory available for a NEW model:
         total - os_reserve - sum(resident PM2 RSS).
-    Deterministic (doesn't depend on the fluctuating vm_stat free figure)."""
+    Deterministic (doesn't depend on the fluctuating vm_stat free figure).
+    No reserve given: fit.os_reserve_for(total), which is OS_RESERVE_GB on a
+    64 GB Mac and above and the same share of memory on a smaller one."""
     total = unified_total_gb()
     if total <= 0:
         return 0.0
-    return round(total - os_reserve_gb - resident_gb_total(), 3)
+    reserve = fit.os_reserve_for(total) if os_reserve_gb is None else os_reserve_gb
+    return round(total - reserve - resident_gb_total(), 3)
 
 
 def is_port_bound(port: int, host: str = "127.0.0.1") -> bool:
@@ -221,7 +226,7 @@ def snapshot() -> dict:
         "vm_free_gb": round(vm_free_gb(), 1),
         "resident_gb_total": resident_gb_total(),
         "available_gb": available_gb(),
-        "os_reserve_gb": OS_RESERVE_GB,
+        "os_reserve_gb": fit.os_reserve_for(unified_total_gb()),
         "pm2_process_count": len(procs),
         "pm2_processes": procs,
         "mlx_version": mlx_version(),

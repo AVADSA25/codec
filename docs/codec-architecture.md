@@ -159,6 +159,13 @@ Emitted by `codec_models.note_swap` (outcome and level `warning`, existing envel
 |---|---|---|---|
 | `model_swap` | `codec-models` | warning | `caller` (`voice`), `requested` (the id sent, from config), `loaded` (the `/health` value, only when it is a plain hub id), `correlation_id` (the voice session) |
 
+### Model download events (2026-11, P-039)
+Emitted by `codec_cookbook.offer.start_download` (outcome `ok`, existing envelope) when Settings > Language model starts downloading an offered model into the Hugging Face cache. A switch to it afterwards reuses `model_switched`. Design: `docs/MODEL-FIT-OFFER-DESIGN.md`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `model_download_started` | `codec-cookbook` | info | `model` (catalog id), `repo` (hub id), `size_gb` |
+
 ### Create image events (2026-09)
 One event name, emitted by `codec_image` when an image job ends. Metadata only: the prompt text is never recorded. Design: `docs/CHAT-CREATE-IMAGE-DESIGN.md`.
 

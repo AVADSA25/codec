@@ -3,7 +3,8 @@
 Weight size comes from the model's ACTUAL Hugging Face file sizes; KV-cache
 geometry from its real `config.json`. No fabricated architecture constants —
 the only tunables are the conservative over-estimate (×1.10 + 1.5 GB) and the
-deployment safety figures (os_reserve=24, margin=8), which are policy, not
+deployment safety figures (os_reserve=24, margin=8 on a 64 GB Mac, scaled down
+on a smaller one: os_reserve_for / margin_for), which are policy, not
 architecture.
 
 MoE note: footprint = TOTAL params (every expert is resident in unified
@@ -28,6 +29,29 @@ DEFAULT_OS_RESERVE_GB = 24
 DEFAULT_MARGIN_GB = 8
 _OVERHEAD_MULT = 1.10   # +10% for activations / fragmentation
 _OVERHEAD_FLAT_GB = 1.5  # runtime / framework baseline
+
+# The two figures above were set on a 64 GB Mac (hw.memsize / 1e9). At that size
+# and above they apply unchanged; a smaller Mac keeps the same share of its
+# memory, never less than the floors (P-039, docs/MODEL-FIT-OFFER-DESIGN.md).
+REFERENCE_TOTAL_GB = 64 * 1024 ** 3 / 1e9
+MIN_OS_RESERVE_GB = 4.0
+MIN_MARGIN_GB = 1.0
+
+
+def _scaled(full: float, floor: float, total_gb: float) -> float:
+    if total_gb >= REFERENCE_TOTAL_GB:
+        return full
+    return max(floor, round(full * max(total_gb, 0.0) / REFERENCE_TOTAL_GB, 1))
+
+
+def os_reserve_for(total_gb: float) -> float:
+    """Memory kept for macOS and CODEC's other services on a Mac with `total_gb`."""
+    return _scaled(DEFAULT_OS_RESERVE_GB, MIN_OS_RESERVE_GB, total_gb)
+
+
+def margin_for(total_gb: float) -> float:
+    """Headroom a model must leave on a Mac with `total_gb`."""
+    return _scaled(DEFAULT_MARGIN_GB, MIN_MARGIN_GB, total_gb)
 
 
 def weight_gb_from_hub(repo: str) -> float:
@@ -97,9 +121,11 @@ def fits(need_gb: float, avail_gb: float,
 
 def quick_need_gb(entry: dict, ctx: int) -> float:
     """Best-effort footprint for a catalog entry, preferring its anchor_gb so
-    ranking doesn't require a weight download. KV is added when config is
-    reachable (best-effort). Used by the recommend skill."""
-    return estimate_footprint_gb(entry["hf_repo"], ctx, anchor_gb=entry.get("anchor_gb"))
+    ranking doesn't require a weight download. KV comes from the entry's `kv`
+    geometry (copied from its config.json) when it has one, else from the Hub
+    when reachable (best-effort). Used by the recommend skill and Settings."""
+    return estimate_footprint_gb(entry["hf_repo"], ctx, anchor_gb=entry.get("anchor_gb"),
+                                 cfg=entry.get("kv"))
 
 
 def recommend(entries: list[dict], avail_gb: float, ctx: int,

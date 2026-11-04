@@ -30,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 DEFAULT_APP = os.path.join(REPO, "dist", "Sovereign AI Workstation.app")
 
-COOKBOOK_MODULES = ["catalog", "args", "probe", "fit", "download", "serve"]
+COOKBOOK_MODULES = ["catalog", "args", "probe", "fit", "download", "serve", "offer"]
 NOT_SHIPPED = ["codec-mcp", "codec-watchdog"]
 MUST_SHIP = ["codec-mcp-http"]
 MACHO_MAGICS = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"}
