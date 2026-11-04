@@ -290,10 +290,15 @@ def models_info() -> dict:
 
 
 def _probe(url: str, timeout: float = 2.0) -> bool:
-    """True when GET url answers 200 within `timeout` (the doctor's one network call; no proxy). Tests replace it."""
+    """True when GET url answers 200 within `timeout` (the doctor's one network call; no proxy, no redirect, so it
+    never reaches another host). Tests replace it."""
     import urllib.request
+
+    class _Stay(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):      # a 3xx is an answer, not a 200: never followed
+            return None
     try:
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _Stay())
         with opener.open(urllib.request.Request(url, method="GET"), timeout=timeout) as r:
             return r.status == 200
     except Exception:

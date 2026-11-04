@@ -299,6 +299,33 @@ def test_the_doctor_says_no_without_asking_a_public_host_and_refuses_the_tunnel(
     assert r.status_code == 403 and set(r.json()) == {"error"}
 
 
+def test_the_doctor_probe_never_follows_a_redirect():
+    import http.server
+    import threading
+    hits = []
+
+    class Server(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200 if self.path == "/v1/models" else 302)
+            if self.path != "/v1/models":
+                self.send_header("Location", "/v1/models")     # followed, this would answer 200
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Server)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        assert va._probe(base + "/v1/models") is True
+        assert va._probe(base + "/moved/models") is False and hits[-1] == "/moved/models"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
 # ── (f) SECURITY.md, and the page side ─────────────────────────────────────
 
 def test_security_scope_names_the_vibe_sandbox_and_project_store():

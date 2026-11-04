@@ -59,7 +59,7 @@ check for the sandbox and the model server; agent replies do not reach Settings 
 `GET /api/vibe/doctor` (behind the login; 403 for a tunnel request) answers five booleans and nothing else:
 `sandbox_exec` (`/usr/bin/sandbox-exec` on macOS), `perl` (`/usr/bin/perl` executable, the command watchdog),
 `model_server` (`GET <local base>/models` answers 200 within 2 seconds, only for a host on this Mac or network, no
-proxy), `cloud_ready` (at least one cloud entry passes `block_message`), `vibe_db` (`~/.codec/vibe.db` and its folder
+proxy, and a redirect is not followed, so the check never reaches another host), `cloud_ready` (at least one cloud entry passes `block_message`), `vibe_db` (`~/.codec/vibe.db` and its folder
 can be written, checked with `os.access`; the database is never opened). It works with the agent switched off.
 Read-only: no write, no start, no prompt.
 
