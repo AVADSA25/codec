@@ -538,6 +538,19 @@ def test_continue_loads_the_playbook_again_or_says_it_is_gone(scripted, cfg):
     assert "[PLAYBOOK review" not in first_user(model, 0)
 
 
+def test_continue_with_playbooks_switched_off_since_says_so(scripted, cfg):
+    approve("shipped", "review")
+    pid = make_project()
+    cfg["vibe_agent"] = {"max_steps": 2}
+    view, _ = run_script(pid, ["@@ playbook review\n", "@@ read_file app.js\n"], scripted)
+    cfg["vibe_agent"] = {"playbooks": False}
+    model = scripted(["@@ finish\nok\n"])
+    later = wait_finished(pid, va.continue_run(pid, view["run"])["run"])
+    assert "playbook" not in kinds(later) and "[PLAYBOOK review" not in first_user(model, 0)
+    text = "\n".join(m["content"] for m in model.calls[0])
+    assert "(Playbooks are switched off now, so this run goes on without the playbook review.)" in text
+
+
 def test_continue_keeps_a_review_run_read_only(scripted, cfg):
     approve("shipped", "review")
     pid, since = changed_project()

@@ -71,7 +71,8 @@ report: findings
   this change no result, file name, notes file or plan can forge `[PLAYBOOK` or `[END PLAYBOOK]` (marked as inside the
   data, as `[NOTES` since P-046).
 - A `playbook` event `{step, name, source, sha256, first, last, total, tools}` goes in the run log. Continue (P-044)
-  loads the last one again (approval checked again); a playbook no longer approved is left out, with one line.
+  loads the last one again (approval checked again); a playbook no longer approved, or with playbooks switched off
+  since, is left out, with one line.
 
 ## The review run
 

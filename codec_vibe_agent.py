@@ -961,6 +961,10 @@ class Run:
         self._findings = False                  # a playbook with report: findings was loaded
         self._pb_offer: dict = {}               # name -> Playbook, listed in the prompt; hashed at the start
         if not self.limits.get("playbooks", DEFAULTS["playbooks"]):
+            if playbook and self.turns:                 # Continue after the switch went off: one line, as for a revoke
+                t = self.turns[-1]
+                t.after = (t.after + "\n" if t.after else "") + (
+                    f"(Playbooks are switched off now, so this run goes on without the playbook {playbook['name']}.)")
             return
         if self.review is None:
             try:
