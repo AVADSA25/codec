@@ -201,6 +201,10 @@ def test_several_reads_and_a_helper_have_their_own_labels_and_helper_steps_are_n
         'Reading several: read_file a.js + search "x"', "Asking a read-only helper: Where is it?"]
     out = run("A.applyEvent(A.newRun('p'), {seq: 1, type: 'note', step: 1, sub: 2, text: 'Helper step 2: Read a.js'})")
     assert [x["t"] for x in out] == ["live", "note"] and out[1]["text"] == "Helper step 2: Read a.js"
+    # the helper's steps count toward the run's limit, once each, however often a note comes again
+    assert run("(function () { var r = A.newRun('p'); r.maxSteps = 30; A.applyEvent(r, {seq: 1, type: 'tool', step: 2, name: 'delegate', arg: 'q'}); "
+               "[1, 2, 2, 3].forEach(function (k, i) { A.applyEvent(r, {seq: 2 + i, type: 'note', step: 2, sub: k, text: 'h'}); }); "
+               "var live = A.stepText(r); r.finished = true; return [live, A.stepText(r)]; })()") == ["Step 5 of 30", "5 steps"]
 
 
 # ── wiring ──
