@@ -342,9 +342,9 @@ def test_files_that_pass_200_during_a_run_end_it_failed_with_the_reason(scripted
 
     def list_then_flood(run, folder):
         out = real(run, folder)
-        (pdir / "dist").mkdir(exist_ok=True)
+        (pdir / "generated").mkdir(exist_ok=True)       # not dist/: build folders are not versioned (P-077)
         for i in range(vp.MAX_FILES):
-            (pdir / "dist" / f"chunk{i:03d}.js").write_text("x\n")
+            (pdir / "generated" / f"chunk{i:03d}.js").write_text("x\n")
         return out
 
     monkeypatch.setattr(va, "_t_list_files", list_then_flood)

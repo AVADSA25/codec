@@ -204,6 +204,14 @@
     return text + (run.changed.length ? '\n[Files changed: ' + run.changed.join(', ') + ']' : '');
   }
 
+  // The checkpoint the report's chat row stores (P-077): the run's newest one, or its start when it changed nothing.
+  // Rewind to here on that row goes back to the files as the run left them.
+  function endCheckpoint(run) {
+    var cps = (run && run.checkpoints) || [];
+    if (cps.length) return cps[cps.length - 1].id || null;
+    return (run && ((run.end && run.end.startCp) || run.startCp)) || null;
+  }
+
   // The project notes a run read at its start, each with its size, or why it was not read (P-046).
   function fmtSize(n) {
     n = Math.max(0, n || 0);
@@ -434,7 +442,7 @@
 
   var core = { newRun: newRun, synthEnd: synthEnd, applyEvent: applyEvent, describeLive: describeLive, toolLabel: toolLabel, statusText: statusText,
     stepText: stepText, isActive: isActive, fmtElapsed: fmtElapsed, canUndoRun: canUndoRun, historyFor: historyFor,
-    reportMessage: reportMessage, readAt: readAt, canContinue: canContinue, noteFits: noteFits, continueLabel: continueLabel,
+    reportMessage: reportMessage, endCheckpoint: endCheckpoint, readAt: readAt, canContinue: canContinue, noteFits: noteFits, continueLabel: continueLabel,
     commandList: commandList, parseCommand: parseCommand, helpText: helpText, modelChoice: modelChoice, runCommand: runCommand,
     runRequest: runRequest, mentionAt: mentionAt, mentionMatches: mentionMatches, insertMention: insertMention,
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
@@ -1078,7 +1086,7 @@
       showPreview(run.changed);
     }).catch(function () { /* the editor catches up when the project is opened again */ })
       .then(function () { drawNext(run); });
-    if (root.hist) root.hist.push({ role: 'assistant', content: reportMessage(run), plain: reportMessage(run) });
+    if (root.hist) root.hist.push({ role: 'assistant', content: reportMessage(run), plain: reportMessage(run), checkpoint: endCheckpoint(run) });
     if (typeof root.doSaveSes === 'function') root.doSaveSes();
     var q = S.queue;                          // a message the agent never read becomes the next goal (P-044)
     S.queue = null;
@@ -1169,6 +1177,7 @@
         if (!pm) { if (root.addMsg) root.addMsg('assistant', 'The agent needs project mode, which is not available here.'); return; }
         S.pid = VP.id();
         var body = runRequest(text, model, ok, earlier);         // confirm_cloud only after the dialog's yes
+        if (root._vibePrivate === true) body.temporary = true;   // a private chat: the run keeps no log (P-077)
         return api('POST', base(S.pid, '/run'), body).then(function (res) {
           var run = newRun(S.pid);
           run.id = res.run; run.goal = text; run.model = (res.model && res.model.label) || ''; run.maxSteps = (res.limits && res.limits.max_steps) || 30;

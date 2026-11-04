@@ -14,11 +14,15 @@
 
   // The turns as vibe.db keeps them: what the owner typed, not the [PROJECT FILES] / [CURRENT CODE] block that went
   // to the model with it, and for an answer in a project its explanation plus "[Files written: ...]" (the files are in
-  // the project folder). A turn with no short text recorded is kept as it is.
+  // the project folder). A turn with no short text recorded is kept as it is. A turn that made a checkpoint keeps its
+  // id (P-077): a reloaded answer draws its file chips from it, and Rewind to here goes back to it.
+  var CID = /^c\d{4,}$/;
   function stored(hist) {
     return (hist || []).map(function (m) {
       var short = typeof m.plain === 'string' && m.plain !== '';
-      return { role: m.role, content: short ? m.plain : (m.content == null ? '' : m.content) };
+      var row = { role: m.role, content: short ? m.plain : (m.content == null ? '' : m.content) };
+      if (typeof m.checkpoint === 'string' && CID.test(m.checkpoint)) row.checkpoint_id = m.checkpoint;
+      return row;
     });
   }
 
@@ -34,7 +38,9 @@
   function loaded(rows) {
     return (rows || []).map(function (m) {
       var content = m.content == null ? '' : String(m.content);
-      return { role: m.role, content: m.role === 'user' ? typedText(content) : content };
+      var row = { role: m.role, content: m.role === 'user' ? typedText(content) : content };
+      if (typeof m.checkpoint_id === 'string' && CID.test(m.checkpoint_id)) row.checkpoint = m.checkpoint_id;
+      return row;
     });
   }
 
