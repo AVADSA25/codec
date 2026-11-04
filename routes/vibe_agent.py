@@ -67,8 +67,8 @@ async def run(pid: str, request: Request):
     from routes._shared import _is_remote_request
     return await _call(va.start_run, pid, body.get("goal"), model=body.get("model") or "local",
                        confirm_cloud=body.get("confirm_cloud") is True, history=body.get("history"),
-                       can_run=not _is_remote_request(request), temporary=body.get("temporary") is True,
-                       cloud_id=body.get("cloud_id"))
+                       can_run=not _is_remote_request(request), mode=body.get("mode"), tools=body.get("tools"),
+                       temporary=body.get("temporary") is True, cloud_id=body.get("cloud_id"))
 
 
 @router.get("/api/vibe/projects/{pid}/agent/runs")
@@ -160,4 +160,18 @@ async def continue_(pid: str, run_id: str, request: Request):
         return _BAD_BODY
     from routes._shared import _is_remote_request
     return await _call(va.continue_run, pid, run_id, confirm_cloud=body.get("confirm_cloud") is True,
+                       can_run=not _is_remote_request(request))
+
+
+@router.post("/api/vibe/projects/{pid}/agent/{run_id}/plan")
+async def plan(pid: str, run_id: str, request: Request):
+    """The owner's choice on a finished plan run (P-047): build it (as written, or his own text in `plan`) or plan
+    again with a `note`. The new run is a normal run: a cloud one needs confirm_cloud true, commands follow this
+    request's origin, as for /run and /continue."""
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    from routes._shared import _is_remote_request
+    return await _call(va.plan_decision, pid, run_id, body.get("decision"), plan=body.get("plan"), note=body.get("note"),
+                       model=body.get("model") or "local", confirm_cloud=body.get("confirm_cloud") is True,
                        can_run=not _is_remote_request(request))

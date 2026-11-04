@@ -204,6 +204,25 @@ def check_syntax_fixed(files, events, report, pdir=None):
     return True, "app.py parses and the tests pass" + (" (after a check note)" if noted else " (fixed before any check note)")
 
 
+PLAN_TASK_FILES = {"index.html": page(), "style.css": BASE_CSS, "app.js": "// the page script\n"}
+
+
+def check_plan(files, events, report, pdir=None):
+    """Plan mode (P-047): it ends with a plan that names the project's files, and no file changed except PLAN.md."""
+    end = next((e for e in events if e["type"] == "end"), {})
+    problems = []
+    if end.get("status") != "done":
+        problems.append(f"ended as {end.get('status')}")
+    if {p: c for p, c in files.items() if p != "PLAN.md"} != PLAN_TASK_FILES:
+        problems.append("a project file changed in plan mode")
+    if len(report.strip()) < 120:
+        problems.append("the plan is shorter than 120 characters")
+    if not any(name in report for name in PLAN_TASK_FILES):
+        problems.append("the plan names none of the project's files")
+    refused = sum(1 for e in events if e["type"] == "result" and "not allowed in plan mode" in str(e.get("output", "")))
+    return not problems, "; ".join(problems) or f"a plan of {len(report)} characters, no file changed ({refused} refused calls)"
+
+
 def check_impossible(files, events, report, pdir=None):
     end = next((e for e in events if e["type"] == "end"), {})
     problems = []
@@ -289,6 +308,9 @@ TASKS = [
                                "    def test_count(self):\n        self.assertEqual(count([5, 6, 7]), 3)\n        self.assertEqual(count([]), 0)\n\n\n"
                                "if __name__ == '__main__':\n    unittest.main()\n")},
      "goal": "Add a function count(prices) to app.py that returns how many prices there are."},
+    {"id": 15, "kind": "behaviour", "title": "plan mode: a plan, and no file changed (P-047)", "needs": "plan_mode",
+     "mode": "plan", "check": check_plan, "files": PLAN_TASK_FILES,
+     "goal": "Add a dark mode toggle button to the page. Clicking it switches between light and dark colours, and the choice is remembered after reloading the page."},
 ]
 
 
@@ -327,7 +349,7 @@ def require_local(base_url):
 
 def features_available(cmdmod):
     """The features a task can name in `needs`. A name that is not here does not exist yet, so its task is skipped."""
-    return {"run_check": bool(cmdmod.available())}
+    return {"run_check": bool(cmdmod.available()), "plan_mode": True}
 
 
 def count_failures(events):
@@ -384,7 +406,8 @@ def run_task(task, va, vp, real_cfg, verbose, note=""):
     cfg = dict(real_cfg)
     cfg["vibe_agent"] = {**(real_cfg.get("vibe_agent") or {}), **(task.get("limits") or {})}
     va._cfg = lambda: cfg
-    started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check")
+    started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check",
+                           mode=task.get("mode", "default"))
     run_id = started["run"]
     try:
         events, capped = follow_run(task, va, pid, run_id, verbose)
