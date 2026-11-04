@@ -297,7 +297,7 @@ def test_continue_is_offered_only_when_the_server_says_so_and_posts_to_its_route
     poll = SRC[SRC.index("function poll() {"):SRC.index("function releaseUi() {")]
     assert "if (d.finished) run.continuable = !!d.continuable;" in poll and poll.index("continuable") < poll.index("draw(effects)")
     cont = SRC[SRC.index("function continueRun(old, btn) {"):SRC.index("function leave() {")]
-    assert "'/continue'" in cont and "{ confirm_cloud: cloud }" in cont and "confirmCloud()" in cont
+    assert "'/continue'" in cont and "{ confirm_cloud: cloud }" in cont and "confirmCloud(" in cont
     assert "old.modelKind === 'cloud'" in cont                                  # a cloud run asks again, every time
     end = SRC[SRC.index("function drawEnd(end) {"):SRC.index("function drawYou(text, state) {")]
     assert "canContinue(r)" in end and "continueRun(r, go)" in end and "'Continue'" in end

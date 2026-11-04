@@ -29,7 +29,7 @@
     return { pid: pid, id: null, status: 'running', goal: '', model: '', maxSteps: 30, step: 0, since: 0, startedAt: 0,
       startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
       ranCommands: false, end: null, finished: false, offset: 0, modelKind: 'local', continues: null, continuable: false,
-      ownerStop: false, notes: [], todo: [] };
+      ownerStop: false, notes: [], todo: [], modelId: '', tokens: null, spent: null, cap: null, commands: true };
   }
 
   function addUnique(list, items) {
@@ -49,6 +49,8 @@
         run.status = 'running';
         run.canRun = ev.can_run !== false;
         run.modelKind = (ev.model && ev.model.kind) || run.modelKind;
+        run.modelId = (ev.model && typeof ev.model.id === 'string' && ev.model.id) || run.modelId;     // P-065
+        run.commands = ev.commands !== false;
         run.continues = ev.continues || null;
         run.offset = ev.continues ? (ev.earlier_steps || 0) : 0;      // a continued run counts its own steps from 1
         run.notes = Array.isArray(ev.notes) ? ev.notes : [];          // the project notes it read (P-046)
@@ -105,9 +107,14 @@
         run.status = 'running';
         run.approval = null;
         return [{ t: 'meta' }, { t: 'decision', id: ev.id, decision: ev.decision, network: !!ev.network }];
+      case 'usage':                                                   // the token totals so far (P-065)
+        setUsage(run, ev);
+        return [{ t: 'meta' }];
       case 'end':
         run.status = ev.status || 'done';
         run.finished = true;
+        if (typeof ev.prompt_tokens === 'number') setUsage(run, ev);
+        if (ev.model && typeof ev.model.id === 'string' && ev.model.id) run.modelId = ev.model.id;
         run.end = { status: run.status, report: ev.report || '', steps: ev.steps, seconds: ev.seconds, startCp: ev.start_checkpoint || run.startCp };
         run.live = '';
         return [{ t: 'live', text: '' }, { t: 'meta' }, { t: 'end', end: run.end }];
@@ -297,6 +304,71 @@
     return { goal: goal, model: cloud ? 'cloud' : 'local', confirm_cloud: cloud && confirmed === true, history: history || [] };
   }
 
+  // ── the model choice and what a run used (P-065, docs/VIBE-RUNCARD-DESIGN.md) ──
+  // Every cloud entry that is set up: the server's list, or its one default entry.
+  function cloudList(models) {
+    if (models && Array.isArray(models.clouds)) return models.clouds;
+    return models && models.cloud ? [models.cloud] : [];
+  }
+
+  // The cloud entry with this id, else the default one (what the server uses when no id is sent).
+  function cloudEntry(models, id) {
+    var hit = id ? cloudList(models).filter(function (c) { return c && c.id === id; })[0] : null;
+    return hit || (models && models.cloud) || null;
+  }
+
+  // A value of the model list, or the one this browser kept for the project: 'local', or 'cloud:<id>' for an entry that
+  // is set up and ready. Anything else (an entry gone or not ready, a bad value) is the local model.
+  function modelPick(value, models) {
+    var v = String(value || '');
+    if (v.indexOf('cloud:') !== 0) return { model: 'local', cloudId: null };
+    var id = v.slice(6);
+    var c = cloudList(models).filter(function (x) { return x && x.id === id; })[0];
+    return c && c.ready ? { model: 'cloud', cloudId: id } : { model: 'local', cloudId: null };
+  }
+
+  // The picked entry goes with a cloud request only once the dialog said yes; nothing else in the body changes.
+  function withCloudId(body, cloudId) {
+    if (body && body.model === 'cloud' && body.confirm_cloud === true && typeof cloudId === 'string' && cloudId) body.cloud_id = cloudId;
+    return body;
+  }
+
+  // The card's model: "Local: <model name>", or "<label> (cloud: <entry id>)".
+  function modelText(run) {
+    if (!run) return '';
+    if (run.modelKind === 'cloud') return (run.model || 'Cloud') + (run.modelId ? ' (cloud: ' + run.modelId + ')' : ' (cloud)');
+    return run.modelId ? 'Local: ' + String(run.modelId).split('/').pop() : (run.model || '');
+  }
+
+  function fmtTokens(n) {
+    n = Math.max(0, Math.round(Number(n) || 0));
+    if (n < 1000) return String(n);
+    if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return Math.round(n / 1000) + 'k';
+  }
+
+  // "1.2k in, 340 out tokens", with "(estimated)" when a step had no numbers from the server.
+  function tokensText(run) {
+    var t = run && run.tokens;
+    if (!t) return '';
+    return fmtTokens(t.prompt) + ' in, ' + fmtTokens(t.completion) + ' out tokens' + (t.estimated ? ' (estimated)' : '');
+  }
+
+  function usd(n) { return Number.isInteger(n) ? String(n) : n.toFixed(2); }
+
+  // A cloud run's spend on its entry this month, from the server's ledger: "$0.04 of $10 this month".
+  function spendText(run) {
+    if (!run || run.modelKind !== 'cloud' || typeof run.spent !== 'number' || !isFinite(run.spent)) return '';
+    var cap = typeof run.cap === 'number' && isFinite(run.cap) && run.cap > 0 ? ' of $' + usd(run.cap) : '';
+    return '$' + usd(run.spent) + cap + ' this month';
+  }
+
+  function setUsage(run, ev) {
+    run.tokens = { prompt: ev.prompt_tokens || 0, completion: ev.completion_tokens || 0, estimated: ev.estimated === true };
+    if (typeof ev.spent_usd === 'number') run.spent = ev.spent_usd;
+    if (typeof ev.cap_usd === 'number') run.cap = ev.cap_usd;
+  }
+
   // The @word being typed at the caret: { start (the @), query } or null. It starts at the start or after a space.
   function mentionAt(text, caret) {
     var before = String(text || '').slice(0, typeof caret === 'number' ? caret : String(text || '').length);
@@ -411,7 +483,9 @@
     runRequest: runRequest, mentionAt: mentionAt, mentionMatches: mentionMatches, insertMention: insertMention,
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
     selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
-    notesLine: notesLine, todoItems: todoItems };
+    notesLine: notesLine, todoItems: todoItems,
+    cloudList: cloudList, cloudEntry: cloudEntry, modelPick: modelPick, withCloudId: withCloudId, modelText: modelText,
+    fmtTokens: fmtTokens, tokensText: tokensText, spendText: spendText };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -422,7 +496,9 @@
 
   var VP = root.VibeProj;
   var S = { available: false, mode: 'chat', model: 'local', models: null, run: null, pid: null, card: null, timer: null,
-    clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {}, compact: false, editor: null };
+    clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {}, compact: false, editor: null,
+    cloudId: null, askedCloud: null };                                   // the cloud entry picked, and the one a chat yes named (P-065)
+  var MODEL_KEY = 'vibeAgentModel';                                      // + ':' + project: the pick, kept per project
   var M = { open: false, at: null, items: [], sel: 0, query: null };      // the @file list under the composer (P-069)
   var RUN_HINT = 'Message the agent (it reads it at its next step). Esc stops it.';
   var KEY = 'vibeAgentMode';
@@ -511,30 +587,50 @@
   function loadMode() {
     var own = S.pid ? lsGet(modeKey()) : null;
     S.mode = (own || lsGet(KEY)) === 'agent' ? 'agent' : 'chat';
+    loadModel();
     renderMode();
   }
 
+  // The model list: Local, then every cloud entry that is set up (one not ready is shown, greyed, with the reason).
   function setupModels(info) {
     S.models = info;
     var sel = $('amModel');
     if (!sel) return;
     sel.textContent = '';
     var local = el('option', null, 'Local model'); local.value = 'local'; sel.appendChild(local);
-    if (info.cloud) {
-      var c = el('option', null, info.cloud.label + ' (cloud)');
-      c.value = 'cloud'; c.disabled = !info.cloud.ready;
-      if (!info.cloud.ready) c.title = info.cloud.reason || 'Not ready';
+    cloudList(info).forEach(function (cl) {
+      var c = el('option', null, cl.label + ' (cloud)');
+      c.value = 'cloud:' + cl.id; c.disabled = !cl.ready;
+      if (!cl.ready) c.title = cl.reason || 'Not ready';
       sel.appendChild(c);
-    }
-    sel.value = S.model = 'local';
+    });
+    loadModel();
   }
+
+  function pickValue() { return S.model === 'cloud' && S.cloudId ? 'cloud:' + S.cloudId : 'local'; }
+
+  // Sets the pick from a list value; save keeps it for the open project in this browser.
+  function applyPick(value, save) {
+    var p = modelPick(value, S.models);
+    S.model = p.model; S.cloudId = p.cloudId;
+    var sel = $('amModel');
+    if (sel) sel.value = pickValue();
+    if (save) saveModel();
+  }
+
+  function saveModel() { if (S.pid) lsSet(MODEL_KEY + ':' + S.pid, pickValue()); }
+
+  // The project's own pick, from this browser; Local when there is none, or when its entry is gone or not ready.
+  function loadModel() { applyPick(S.pid ? lsGet(MODEL_KEY + ':' + S.pid) : 'local', false); }
+
+  function picked() { return cloudEntry(S.models, S.cloudId); }
 
   function init() {
     if (!VP) return;
     var chat = $('amChat'), agent = $('amAgent'), sel = $('amModel');
     if (chat) chat.addEventListener('click', function () { setMode('chat'); });
     if (agent) agent.addEventListener('click', function () { setMode('agent'); });
-    if (sel) sel.addEventListener('change', function () { S.model = sel.value === 'cloud' ? 'cloud' : 'local'; });
+    if (sel) sel.addEventListener('change', function () { applyPick(sel.value, true); });
     var vi = $('vi');
     if (vi) vi.addEventListener('keydown', function (e) {        // Esc in the composer stops a working agent (P-044)
       if (e.key === 'Escape' && !e.isComposing && running() && !M.open) { e.preventDefault(); stopRun(); }
@@ -571,7 +667,8 @@
     var model = el('span', 'agc-model', '');
     var step = el('span', 'agc-step', '');
     var time = el('span', 'agc-time', '');
-    meta.appendChild(st); meta.appendChild(model); meta.appendChild(step); meta.appendChild(time);
+    var tok = el('span', 'agc-tok', ''); tok.hidden = true;             // tokens and a cloud run's spend (P-065)
+    meta.appendChild(st); meta.appendChild(model); meta.appendChild(step); meta.appendChild(time); meta.appendChild(tok);
     var stop = el('button', 'agc-stop', 'Stop');
     stop.type = 'button'; stop.setAttribute('aria-label', 'Stop the agent');
     stop.addEventListener('click', stopRun);
@@ -587,7 +684,7 @@
     liveLine.setAttribute('aria-live', 'polite');
     var end = el('div', 'agc-end'); end.hidden = true;
     card.appendChild(head); card.appendChild(steps); card.appendChild(liveLine); card.appendChild(end);
-    var c = { root: card, goal: goal, st: st, model: model, step: step, time: time, stop: stop, steps: steps, live: liveLine, end: end,
+    var c = { root: card, goal: goal, st: st, model: model, step: step, time: time, tok: tok, stop: stop, steps: steps, live: liveLine, end: end,
       rows: {}, atBottom: true, compactBtn: compact, rawBtn: raw, raw: false, replyStep: 0, replyBusy: false, run: run };
     compact.addEventListener('click', function () { setCompact(!S.compact); });
     raw.addEventListener('click', function () { setRaw(c, !c.raw); });
@@ -649,7 +746,10 @@
     if (!c || !r) return;
     c.st.textContent = statusText(r);
     c.root.setAttribute('data-status', r.status);
-    c.model.textContent = r.model || '';
+    c.model.textContent = modelText(r);
+    c.model.title = r.modelId || '';
+    c.tok.textContent = [tokensText(r), spendText(r)].filter(Boolean).join(' · ');
+    c.tok.hidden = !c.tok.textContent;
     c.step.textContent = stepText(r);
     var t0 = r.startedAt || Date.now() / 1000;
     var secs = r.finished && r.end && typeof r.end.seconds === 'number' ? r.end.seconds : (Date.now() / 1000 - t0);
@@ -1037,9 +1137,10 @@
     vi.value = vi.value.trim() ? text + '\n' + vi.value : text;
   }
 
-  function confirmCloud() {
+  // entry: the cloud entry the run will use (Continue keeps the old run's); none means the one picked now (P-065).
+  function confirmCloud(entry) {
     if (!(root.CodecShell && root.CodecShell.ask)) return Promise.resolve(false);      // no dialog, no cloud run (P-069)
-    var c = S.models && S.models.cloud;
+    var c = entry || picked();
     return ask({ title: 'Send this project to ' + (c ? c.label : 'the cloud') + '?',
       message: 'For this run, the goal and every file the agent reads go to ' + (c && c.host ? c.host : 'the cloud provider') +
         ', not only to this Mac. It counts against your monthly cap.', confirm: 'Send' });
@@ -1051,7 +1152,8 @@
 
   function confirmChatCloud() {
     if (!(root.CodecShell && root.CodecShell.ask)) return Promise.resolve(false);      // no dialog, no cloud
-    var c = S.models && S.models.cloud;
+    var c = picked();
+    S.askedCloud = c ? c.id : null;                  // the message goes to the entry the dialog names (chatCloudId)
     return Promise.resolve(root.CodecShell.ask({ title: 'Send this message to ' + (c ? c.label : 'the cloud') + '?',
       message: 'For this message, your text, the earlier messages of this chat and the project files in it go to ' +
         (c && c.host ? c.host : 'the cloud provider') + ', not only to this Mac. It counts against your monthly cap.', confirm: 'Send' }));
@@ -1094,6 +1196,7 @@
   // Start a run on a goal. inp is the composer, or null for a queued message (put back if the owner says no).
   function startRun(text, inp) {
     var model = S.model === 'cloud' ? 'cloud' : 'local';       // fixed now: a /model or a list change while asking does not count
+    var cloudId = model === 'cloud' ? S.cloudId : null;        // the entry the dialog names (P-065)
     var go = model === 'cloud' ? confirmCloud() : Promise.resolve(true);
     return go.then(function (ok) {
       if (ok !== true) { if (!inp) backToComposer(text); return; }
@@ -1105,7 +1208,9 @@
       return VP.begin(text).then(function (pm) {
         if (!pm) { if (root.addMsg) root.addMsg('assistant', 'The agent needs project mode, which is not available here.'); return; }
         S.pid = VP.id();
+        applyPick(model === 'cloud' && cloudId ? 'cloud:' + cloudId : 'local', true);   // kept for this project
         var body = runRequest(text, model, ok, earlier);         // confirm_cloud only after the dialog's yes
+        withCloudId(body, cloudId);
         return api('POST', base(S.pid, '/run'), body).then(function (res) {
           var run = newRun(S.pid);
           run.id = res.run; run.goal = text; run.model = (res.model && res.model.label) || ''; run.maxSteps = (res.limits && res.limits.max_steps) || 30;
@@ -1164,7 +1269,7 @@
   function continueRun(old, btn) {
     if (S.run !== old || running() || !canContinue(old)) return;
     var cloud = old.modelKind === 'cloud';
-    var go = cloud ? confirmCloud() : Promise.resolve(true);
+    var go = cloud ? confirmCloud(cloudEntry(S.models, old.modelId)) : Promise.resolve(true);   // the old run's entry
     return go.then(function (ok) {
       if (!ok || S.run !== old || running()) return;
       btn.disabled = true;
@@ -1248,10 +1353,9 @@
   function say(text) { if (typeof root.addMsg === 'function') root.addMsg('assistant', text); else toast(text); }
 
   function pickModel(m) {
-    S.model = m === 'cloud' ? 'cloud' : 'local';
-    var sel = $('amModel');
-    if (sel) sel.value = S.model;
-    var cloud = S.models && S.models.cloud;
+    var def = S.models && S.models.cloud;                // /model cloud picks the default entry; the list picks any
+    applyPick(m === 'cloud' && def ? 'cloud:' + def.id : 'local', true);
+    var cloud = picked();
     toast(S.model === 'cloud' ? 'Next message: ' + (cloud ? cloud.label : 'cloud') + '. You are asked before anything is sent.'
       : 'Next message: the local model.');
   }
@@ -1402,6 +1506,7 @@
 
   root.VibeAgent = { active: active, running: running, send: send, stop: stopRun, adopt: adopt, leave: leave, setMode: setMode,
     chatCloud: chatCloud, confirmChatCloud: confirmChatCloud, command: command, keyAction: keyAction, attachEditor: attachEditor,
+    chatCloudId: function () { return S.askedCloud; },
     core: core, _state: S };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

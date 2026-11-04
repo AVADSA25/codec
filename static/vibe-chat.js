@@ -43,8 +43,8 @@
       .map(function (m) { return { role: m.role, content: m.content }; });
   }
 
-  // o: { messages: [{role, content}], system: text, project: bool, workdir: text, cloud: bool }
-  // cloud is true only after the owner said yes to the dialog for this message.
+  // o: { messages: [{role, content}], system: text, project: bool, workdir: text, cloud: bool, cloudId: text }
+  // cloud is true only after the owner said yes to the dialog for this message; cloudId is the entry it named.
   function request(route, o) {
     var workdir = o.workdir || '';
     if (route === 'chat') {
@@ -55,7 +55,10 @@
     }
     var body = { messages: turns(o.messages), stream: true, project: !!o.project, workdir: workdir,
       model: o.cloud === true ? 'cloud' : 'local' };
-    if (o.cloud === true) body.confirm_cloud = true;
+    if (o.cloud === true) {
+      body.confirm_cloud = true;
+      if (typeof o.cloudId === 'string' && o.cloudId) body.cloud_id = o.cloudId;    // the entry the dialog named (P-065)
+    }
     return { url: '/api/vibe/chat', body: body };
   }
 
@@ -84,6 +87,9 @@
   // Sends one chat message; resolves to the fetch Response of whichever route took it. A 404 from the new route
   // (the switch was flipped, or an older server) sends this message to the old route and remembers it for the page.
   function send(o, signal) {
+    if (o && o.cloud === true && o.cloudId === undefined && root.VibeAgent && root.VibeAgent.chatCloudId) {
+      o = Object.assign({}, o, { cloudId: root.VibeAgent.chatCloudId() });
+    }
     return route().then(function (rt) {
       return post(request(rt, o), signal).then(function (r) {
         if (rt === 'own' && r.status === 404) { S.route = 'chat'; return post(request('chat', o), signal); }
