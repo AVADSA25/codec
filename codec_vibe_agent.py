@@ -83,6 +83,7 @@ TEMPERATURE = 0.2
 REPLY_LOG_CHARS = 8000      # what the run log keeps of one model reply (the same as a turn keeps)
 LOG_ONLY = ("reply",)       # events kept in the run log on disk only: the page never gets them
 CONTINUABLE = ("interrupted", "stopped", "limit", "failed")    # a run that ended so can be continued (P-044)
+MODES = {"default": proto.TOOLS, "plan": proto.PLAN_TOOLS}       # a run's mode and the tools it allows (P-047)
 MAX_CHAIN = 3               # a continued run of a continued run: how many earlier runs Continue reads back
 MAX_REBUILT_TURNS = 40      # the newest turns a continued run starts with
 CUT_COMMAND = ("The run stopped before this command finished, so its result is not known. It is not run again by "
@@ -769,12 +770,21 @@ def _signature(call: proto.Call) -> str:
 class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
                  continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = "",
-                 todo=None):
+                 todo=None, mode: str = "default", tools=None, plan: str = "", plan_from: str = "", plan_note: str = "",
+                 plan_edited: bool = False):
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
-        self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
-        if limits.get("todo", DEFAULTS["todo"]):
+        # P-047: the tools a run has today, cut to its mode's tools and to the request's list; never one added
+        self.mode = mode if mode in MODES else "default"
+        self.tools = tuple(tools) if tools is not None else None
+        self.plan, self.plan_from, self.plan_note, self.plan_edited = plan, plan_from, plan_note, bool(plan_edited)
+        known = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
+        self.allowed = tuple(t for t in known if t in MODES[self.mode] and (self.tools is None or t in self.tools))
+        self._parse = known                 # what the scanner reads: a tool left out is refused by name, not unknown
+        if limits.get("todo", DEFAULTS["todo"]) and self.mode == "default":
             self.allowed += (proto.TODO,)
+            self._parse += (proto.TODO,)
+        self._report_cap = proto.MAX_PLAN_CHARS if self.mode == "plan" else proto.MAX_REPORT_CHARS
         self.todo: list = proto.clean_todo(todo) if proto.TODO in self.allowed else []    # P-046
         self._todo_step: int | None = None      # the step the list last changed at, in this run
         self._todo_refused = 0                  # the step whose todo block came too soon
@@ -942,7 +952,7 @@ class Run:
         if op:
             vhooks.end(self.id, (_mono() - self._t0) * 1000.0, status)
         with self._cond:
-            self._emit("end", status=status, report=str(report)[:proto.MAX_REPORT_CHARS], steps=steps, seconds=seconds,
+            self._emit("end", status=status, report=str(report)[:self._report_cap], steps=steps, seconds=seconds,
                        prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
                        start_checkpoint=self.start_cp)
             self.finished = True
@@ -1031,6 +1041,14 @@ class Run:
             log.warning("vibe agent: could not read the project notes", exc_info=True)
         if self.notes:
             more["notes"] = self.notes
+        if self.mode != "default":                          # P-047: each only when set, so a default log is unchanged
+            more["mode"] = self.mode
+        if self.tools is not None:
+            more["tools"] = list(self.tools)
+        if self.plan:
+            more.update(plan=self.plan, plan_from=self.plan_from, plan_edited=self.plan_edited)
+        if self.plan_note:
+            more["plan_note"] = self.plan_note
         self._emit("start", goal=self.goal, model={"kind": self.llm.kind, "label": self.llm.label}, can_run=self.can_run,
                    limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
         if self.todo:                                       # the list of the run this one continues
@@ -1102,7 +1120,7 @@ class Run:
                 _sleep(2.0)
                 continue
             self._model_fails = 0
-            scan = proto.scan_reply(reply.text, self.allowed, final=True, lenient=reply.normal_end)
+            scan = proto.scan_reply(reply.text, self._parse, final=True, lenient=reply.normal_end, report_chars=self._report_cap)
             if scan.note:
                 self._emit("note", step=n, text=scan.note[:600])
             if scan.todo:
@@ -1183,7 +1201,10 @@ class Run:
             _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
             self._end("done", report)
             return True
-        if call.name == "ask":
+        refused = self._refusal(call)                      # P-047: plan mode and the tools list, before anything runs
+        if refused is not None:
+            result = refused
+        elif call.name == "ask":
             result = self._ask(n, call)
             if result is None:
                 return True
@@ -1220,9 +1241,22 @@ class Run:
                                 full=result.text if call.name in READABLE else "", saved=saved, lines=lines))
         if result.ok and result.changed:
             self._checkpoint(n, f"Agent: {call.name} {result.changed[0]}", result.changed)
-        elif call.name == "run_check":
+        elif call.name == "run_check" and refused is None:
             self._checkpoint(n, "Agent: ran " + call.args["command"][:60], ())
         return False
+
+    def _refusal(self, call: proto.Call) -> "Result | None":
+        """Why this call is not run in this run, or None (P-047). Refused before any hook, write or command."""
+        if call.name not in self.allowed:
+            if self.mode == "plan":
+                return _fail(f"{call.name} is not allowed in plan mode, so nothing was changed or run. In plan mode you read "
+                             f"the project and finish with the plan; the only file you may write is {proto.PLAN_FILE}.", "mode")
+            return _fail(f"{call.name} is not allowed in this run, so nothing was changed or run. This run's tools are: "
+                         + ", ".join(t for t in self.allowed if t != proto.TODO) + ".", "mode")
+        if self.mode == "plan" and call.name == "write_file" and _edit_key(call.args["path"]) != proto.PLAN_FILE:
+            return _fail(f"In plan mode the only file you may write is {proto.PLAN_FILE}, so nothing was written. Put the plan "
+                         f"after @@ finish, or write it to {proto.PLAN_FILE}.", "mode")
+        return None
 
     def _edit_advice(self, rel: str, fails: int) -> str:
         """From the FAIL_EDITS-th edit of one file in a row that did not apply: what to do instead. The run goes on.
@@ -1418,6 +1452,11 @@ class Run:
 
     def _first_user(self) -> str:
         parts = ["GOAL\n" + self.goal]
+        if self.plan:                                       # never trimmed by the shrink loop (P-047)
+            head = "YOUR EARLIER PLAN (the owner wants it changed)" if self.mode == "plan" else "THE PLAN THE OWNER APPROVED"
+            parts.append(head + "\n" + proto.plan_block(self.plan))
+        if self.plan_note:
+            parts.append("WHAT THE OWNER WANTS CHANGED IN THE PLAN\n" + self.plan_note)
         if self.history:
             lines = [f"{m['role']}: {m['content']}" for m in self.history]
             parts.append("EARLIER IN THIS CHAT (context only)\n" + "\n".join(lines))
@@ -1430,7 +1469,12 @@ class Run:
             parts.append("This run continues an earlier run on this goal that stopped before it was done. Its steps and "
                          "their results follow." + gone + " Go on from where it stopped: do not repeat steps that worked, "
                          "and read a file again before you change it.")
-        parts.append("Work in the project folder. Start with the smallest step that moves toward the goal.")
+        if self.mode == "plan":
+            parts.append(f"Plan mode: read what the goal needs, then finish with the plan. Change no file except {proto.PLAN_FILE}.")
+        elif self.plan:
+            parts.append("Work in the project folder. Follow the plan in order, starting with its first step.")
+        else:
+            parts.append("Work in the project folder. Start with the smallest step that moves toward the goal.")
         return "\n\n".join(parts)
 
     def _map(self) -> str:
@@ -1459,7 +1503,8 @@ class Run:
 
     def _messages(self) -> list:
         cap = self.limits["max_context_tokens"]
-        system = {"role": "system", "content": proto.system_prompt(self.allowed, notes=bool(self.notes_text))}
+        system = {"role": "system", "content": proto.system_prompt(self.allowed, notes=bool(self.notes_text), mode=self.mode,
+                                                                   plan=bool(self.plan))}
         modes = ["full" if i >= len(self.turns) - FULL_RESULTS else "short" for i in range(len(self.turns))]
         site = self._map()
         for extra in (self._todo_text(self.step),                       # the list survives shortening (P-046)
@@ -1526,7 +1571,7 @@ class Run:
                 if _mono() - last >= TEXT_FLUSH_SECONDS:
                     self._emit("text", step=n, chunk=pending)
                     pending, last = "", _mono()
-                sc = proto.scan_reply(reply.text, self.allowed, final=False)
+                sc = proto.scan_reply(reply.text, self._parse, final=False)
                 if sc.state in ("complete", "error") and sc.cut:
                     break
             else:
@@ -1556,7 +1601,8 @@ def _clean_history(history) -> list:
     return out
 
 
-def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False) -> dict:
+def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False,
+              mode="default", tools=None) -> dict:
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
     if not isinstance(goal, str) or not goal.strip():
@@ -1564,9 +1610,37 @@ def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = Fal
     goal = goal.strip()
     if len(goal) > MAX_GOAL_CHARS:
         raise VibeError(400, f"The goal is longer than {MAX_GOAL_CHARS} characters")
+    mode, tools = _check_mode(mode), _check_tools(tools)
     vp.project_dir(pid)
     llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud))
-    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run)))
+    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run), mode=mode, tools=tools))
+
+
+def _check_mode(mode, status: int = 400) -> str:
+    """The run's mode (P-047): "default" (also for None) or "plan"."""
+    if mode is None or mode == "default":
+        return "default"
+    if mode == "plan":
+        return "plan"
+    raise VibeError(status, 'The mode is "default" or "plan"')
+
+
+def _check_tools(tools, status: int = 400):
+    """The run request's tools list (P-047), or None for no list. It names known tools and holds finish; it can only
+    take tools away (the run cuts it to what it may have)."""
+    if tools is None:
+        return None
+    if not isinstance(tools, list) or not tools or len(tools) > 2 * len(proto.TOOLS):
+        raise VibeError(status, "The tools list is a list of tool names")
+    out = []
+    for name in tools:
+        if not isinstance(name, str) or name not in proto.TOOLS:
+            raise VibeError(status, "The tools list names a tool that does not exist. Tools: " + ", ".join(proto.TOOLS))
+        if name not in out:
+            out.append(name)
+    if "finish" not in out:
+        raise VibeError(status, "The tools list must hold finish, or the run cannot end with a report")
+    return out
 
 
 def _launch(run: Run) -> dict:
@@ -1618,13 +1692,17 @@ def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
     run = _RUNS.get(run_id)
     if run is not None and run.pid == pid:
         view = run.view(since, wait)
+        mode = run.mode
     else:
         events = _file_events(pid, run_id)
         evs = [e for e in events if e.get("type") not in LOG_ONLY and int(e.get("seq", 0)) > int(since or 0)]
         view = {"run": run_id, "project": pid, "status": _status_of(events), "finished": True, "events": evs,
                 "next": evs[-1]["seq"] if evs else int(since or 0), "step": sum(1 for e in events if e.get("type") == "tool")}
+        mode = next((e.get("mode") for e in events if e.get("type") == "start"), None)
     if view["finished"]:                     # the page shows Continue when this is true (P-044)
         view["continuable"] = view["status"] in CONTINUABLE and _newest_run(pid) == run_id
+        if mode == "plan":                   # and the plan card's buttons when this is (P-047)
+            view["plan_ready"] = view["status"] == "done" and _newest_run(pid) == run_id
     return view
 
 
@@ -1800,11 +1878,82 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     cps = [e["id"] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("id"), str)]
     base = cps[-1] if cps else start.get("start_checkpoint")
     todo = next((e.get("items") for e in reversed(events) if e.get("type") == "todo"), None)     # P-046
+    plan = _plan_fields(start)                          # a plan run stays one, a build run keeps its plan (P-047)
     run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), continues=run_id, turns=turns,
               step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "",
-              todo=todo)
+              todo=todo, **plan)
     out = _launch(run)
     out.update(continues=run_id, earlier_steps=last)
+    return out
+
+
+def _plan_fields(start: dict) -> dict:
+    """A logged run's mode, tools list and plan, for a run that goes on from it (P-047). A log this code did not write
+    cannot be continued: 409, never a wider run."""
+    try:
+        mode, tools = _check_mode(start.get("mode"), 409), _check_tools(start.get("tools"), 409)
+    except VibeError:
+        raise VibeError(409, "That run cannot be continued") from None
+    plan, note = start.get("plan"), start.get("plan_note")
+    return {"mode": mode, "tools": tools, "plan": plan[:proto.MAX_PLAN_CHARS] if isinstance(plan, str) else "",
+            "plan_from": start.get("plan_from") if isinstance(start.get("plan_from"), str) else "",
+            "plan_note": note[:proto.MAX_PLAN_NOTE_CHARS] if isinstance(note, str) else "",
+            "plan_edited": start.get("plan_edited") is True}
+
+
+PLAN_DECISIONS = ("build", "again")
+
+
+def _plan_text(value, cap: int, what: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise VibeError(400, f"Write the {what} first")
+    value = value.strip()
+    if len(value) > cap:
+        raise VibeError(400, f"The {what} is longer than {cap} characters")
+    return value
+
+
+def plan_decision(pid: str, run_id: str, decision, *, plan=None, note=None, model="local", confirm_cloud: bool = False,
+                  can_run: bool = False) -> dict:
+    """The owner's choice on a finished plan run (P-047). "build" starts a default run on its goal that begins with the
+    plan (its report, or the owner's own text in `plan`); "again" starts another plan run with the same tools list
+    that sees the earlier plan and the owner's `note`. Only the project's newest run, ended done. The model follows
+    this request, like /run (a plan made on the cloud entry can be built locally); commands follow its origin."""
+    if not vp.enabled() or not enabled():
+        raise VibeError(404, "The agent is switched off")
+    if decision not in PLAN_DECISIONS:
+        raise VibeError(400, 'Choose "build" or "again"')
+    vp.project_dir(pid)
+    live = _RUNS.get(run_id)
+    if live is not None and live.pid == pid and not live.finished:
+        raise VibeError(409, "That run is still going")
+    events = _file_events(pid, run_id)
+    start = next((e for e in events if e.get("type") == "start"), {})
+    if start.get("mode") != "plan":
+        raise VibeError(409, "That run did not write a plan")
+    end = next((e for e in reversed(events) if e.get("type") == "end"), None)
+    if not end or end.get("status") != "done":
+        raise VibeError(409, "That plan run did not finish with a plan")
+    if _newest_run(pid) != run_id:
+        raise VibeError(409, "Only the newest run's plan can be used")
+    goal = start.get("goal")
+    if not isinstance(goal, str) or not goal.strip():
+        raise VibeError(409, "That run has no goal to go on with")
+    written = str(end.get("report") or "").strip()[:proto.MAX_PLAN_CHARS]
+    fields = _plan_fields(start)
+    if decision == "build":
+        own = _plan_text(plan, proto.MAX_PLAN_CHARS, "plan") if plan is not None else None
+        text = own if own is not None else written
+        if not text:
+            raise VibeError(409, "That run's plan is empty")
+        kw = {"plan": text, "plan_edited": own is not None and own != written}
+    else:
+        kw = {"mode": "plan", "tools": fields["tools"], "plan": written,
+              "plan_note": _plan_text(note, proto.MAX_PLAN_NOTE_CHARS, "change you want")}
+    llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud))
+    run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), plan_from=run_id, **kw)
+    out = _launch(run)
+    out.update(plan_from=run_id, mode=run.mode)
     return out
 
 
