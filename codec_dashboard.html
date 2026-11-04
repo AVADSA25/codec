@@ -298,8 +298,9 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .set-status.err { color: var(--danger); }
 .set-row .set-text, .set-row .set-select { flex: 0 1 46%; min-width: 0; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 34px; }
 .set-row .set-range { flex: 0 1 46%; }
+.set-row .set-long { height: auto; min-height: 84px; line-height: 1.45; resize: vertical; }
 .set-num { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.set-num input { width: 84px; font-size: var(--fs-14); height: 34px; }
+.set-num input { width: 104px; font-size: var(--fs-14); height: 34px; }
 .set-unit { font-size: var(--fs-12); color: var(--text-dim); }
 .set-presets { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 1 46%; justify-content: flex-end; }
 .set-preset { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; font-family: var(--font-sans); font-size: var(--fs-13); cursor: pointer; }
@@ -2590,6 +2591,9 @@ async function loadVersionInfo() {
     l.hidden = !d.notices;
   } catch (e) { v.textContent = 'not available'; l.hidden = true; }
 }
+// Where a reply line came from (codec_usage.record_reply's source): chat, voice, and Vibe (its chat and its agent, P-065).
+var _USE_SOURCES = { chat: 'Chat', voice: 'Voice', vibe: 'Vibe' };
+function useSourceLabel(s) { return _USE_SOURCES[s] || String(s); }
 async function loadUsage() {
   var card = document.getElementById('usageCard');
   if (!card) return;
@@ -2619,9 +2623,11 @@ async function loadUsage() {
       return '<label class="cs-check"><input type="radio" name="useFallback" value="' + escHtml(c.id) + '"' + (fb.value === c.id ? ' checked' : '') + '> ' + escHtml(c.label) + '</label>';
     }).join('') + '</div><div class="use-note">' + escHtml(fb.note || '') + '</div>';
   var rep = d.replies || {}, n = rep.replies || {};
+  var bySrc = rep.by_source || {}, srcNames = Object.keys(bySrc).sort(function (a, b) { return bySrc[b] - bySrc[a]; });
   h += '<div class="push-sub">Replies in the last 7 days</div><div class="push-row"><div class="push-row-main"><div class="push-row-name">' +
     (n.local || 0) + ' on this Mac · ' + (n.cloud || 0) + ' in the cloud</div>' +
-    (rep.since ? '<div class="push-row-hint">Counted since ' + escHtml(fmtTime(rep.since)) + ' (chat and voice).</div>' : '<div class="push-row-hint">Counting starts with the next reply.</div>') + '</div></div>';
+    (srcNames.length ? '<div class="push-row-hint">' + escHtml(srcNames.map(function (s) { return useSourceLabel(s) + ': ' + bySrc[s]; }).join(' · ')) + '</div>' : '') +
+    (rep.since ? '<div class="push-row-hint">Counted since ' + escHtml(fmtTime(rep.since)) + ' (chat, voice and Vibe).</div>' : '<div class="push-row-hint">Counting starts with the next reply.</div>') + '</div></div>';
   h += '<div class="push-sub">Busiest skills, last 7 days</div>';
   h += (d.skills || []).length ? (d.skills || []).map(function (s) {
     return '<div class="push-row"><span class="push-row-name">' + escHtml(s.name) + '</span><span class="push-row-hint">' + s.count + (s.count === 1 ? ' run' : ' runs') + '</span></div>';
@@ -3720,7 +3726,17 @@ var SETTINGS_SCHEMA = [
   { title: 'Image generation', sec: 'image', put: 'image', fields: [
     { k: 'steps', label: 'Quality steps', help: 'More steps: finer images, slower. 20 takes about 46 seconds at 512 px.', c: 'range', min: 4, max: 50, step: 1 },
     { k: 'max_count', label: 'Images per request', help: 'The most images one request can make.', c: 'select', num: true, opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4']] },
-    { k: 'min_free_gb', label: 'Free memory needed', help: 'Image jobs wait until this much memory is free (a run holds about 35 GB).', c: 'number', min: 8, max: 128, unit: 'GB' } ] }
+    { k: 'min_free_gb', label: 'Free memory needed', help: 'Image jobs wait until this much memory is free (a run holds about 35 GB).', c: 'number', min: 8, max: 128, unit: 'GB' } ] },
+  // P-065 (docs/VIBE-RUNCARD-DESIGN.md): the coding agent in Vibe. min and max are codec_vibe_agent.BOUNDS (a test pins them).
+  { title: 'Vibe', sec: 'vibe_agent', put: 'vibe_agent', doctor: true, fields: [
+    { k: 'enabled', label: 'Coding agent', help: 'The Agent mode in Vibe. Off: Vibe answers in chat mode only.', c: 'switch' },
+    { k: 'max_steps', label: 'Steps per run', help: 'A run stops after this many steps. The files keep the work done so far.', c: 'number', min: 1, max: 100, unit: 'steps' },
+    { k: 'max_seconds', label: 'Working time per run', help: 'A run stops after this much work. Time spent waiting for you is not counted.', c: 'number', min: 30, max: 3600, unit: 's' },
+    { k: 'max_context_tokens', label: 'Context limit', help: 'How much the model reads at each step. Older results are shortened to fit.', c: 'number', min: 2000, max: 60000, unit: 'tokens' },
+    { k: 'max_reply_tokens', label: 'Reply limit', help: 'The longest reply the model may write in one step.', c: 'number', min: 300, max: 8000, unit: 'tokens' },
+    { k: 'wait_seconds', label: 'Wait for my answer', help: 'How long a run waits for your answer or approval before it stops.', c: 'number', min: 5, max: 3600, unit: 's' },
+    { k: 'allow_commands', label: 'Let the agent ask to run commands', help: 'Tests and builds, each approved by you at this Mac. Off: the agent is never offered commands.', c: 'switch' },
+    { k: 'append_prompt', label: 'Standing instructions', help: 'Added to the instructions of every run, for example a style or a language. At most 1200 characters.', c: 'longtext', max: 1200 } ] }
 ];
 
 function _setId(sec, k) { return 'set-' + sec + '-' + k; }
@@ -3745,6 +3761,10 @@ function _setControl(sec, f, val) {
       '" onchange="saveSetting(this)" onkeydown="if(event.key===\'Enter\')this.blur()">' + (f.unit ? '<span class="set-unit">' + escHtml(f.unit) + '</span>' : '') + '</span>';
   }
   var shown = f.c === 'list' ? (val || []).join(', ') : (val === null || val === undefined ? '' : String(val));
+  if (f.c === 'longtext') {   // P-065: several lines; saves when it loses focus
+    return '<textarea class="setting-input set-text set-long"' + a + ' rows="4" maxlength="' + f.max + '" spellcheck="false" onchange="saveSetting(this)">' +
+      escHtml(shown) + '</textarea>';
+  }
   var type = f.c === 'password' ? 'password' : 'text';
   var ph = f.c === 'password' && !shown ? ' placeholder="Not set"' : '';
   return '<input class="setting-input set-text" type="' + type + '"' + a + ' value="' + escAttr(shown) + '"' + ph +
@@ -3769,6 +3789,11 @@ function renderSettings(cfg) {
         '<div class="set-status" id="hotkeyPresetStatus" role="status" aria-live="polite"></div></div>' +
         '<div class="set-presets" id="hotkeyPresets"></div></div>';
     }
+    if (sec.doctor) {
+      html += '<div class="setting-row set-row"><div class="set-main"><span class="setting-label">Check</span>' +
+        '<div class="set-help">What the agent needs on this Mac.</div>' +
+        '<div class="set-help" id="vibeDoctor" role="status" aria-live="polite">Checking...</div></div></div>';
+    }
     if (sec.modelFit) {
       html += '<div class="setting-row set-row set-fit"><div class="set-main"><span class="setting-label">Best model for this Mac</span>' +
         '<div class="set-help" id="modelFitHelp">Checking this Mac\'s memory...</div>' +
@@ -3778,6 +3803,7 @@ function renderSettings(cfg) {
   });
   document.getElementById('settingsContent').innerHTML = html;
   loadHotkeyPresets();
+  loadVibeDoctor();
   loadModelFit();
 }
 // P-029: the keyboard presets (GET /api/hotkeys/presets). Labels from the server
@@ -3830,6 +3856,19 @@ function _setValue(el, f) {
   if (f.nullable && !el.value.trim()) return null;
   return el.value.trim();
 }
+// P-065: the Vibe section's check line (GET /api/vibe/doctor: five true/false answers, this Mac only).
+var _VIBE_CHECKS = [['sandbox_exec', 'command sandbox'], ['perl', 'command timer (perl)'], ['model_server', 'local model server'],
+  ['cloud_ready', 'a cloud model ready'], ['vibe_db', 'Vibe history file writable']];
+async function loadVibeDoctor() {
+  var st = document.getElementById('vibeDoctor');
+  if (!st) return;
+  try {
+    var r = await fetch('/api/vibe/doctor'), d = await r.json().catch(function () { return {}; });
+    if (r.status === 403) { st.textContent = 'This check runs only at this Mac.'; return; }
+    if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    st.textContent = _VIBE_CHECKS.map(function (c) { return (d[c[0]] === true ? 'Yes: ' : 'No: ') + c[1]; }).join(' · ');
+  } catch (e) { st.textContent = 'The check is not available: ' + e.message; }
+}
 function _setShow(el, f, v) {
   if (f.c === 'switch') el.checked = !!v;
   else if (f.c === 'list') el.value = (v || []).join(', ');
@@ -3844,6 +3883,11 @@ async function saveSetting(el) {
   var row = el.closest('.set-row'), st = row && row.querySelector('.set-status');
   if (f.c === 'password' && typeof v === 'string' && v.charAt(0) === '*') return;  // still the masked value
   if (JSON.stringify(v) === JSON.stringify(before)) return;
+  if (f.c === 'longtext' && f.max && v.length > f.max) {
+    _setShow(el, f, before);
+    if (st) { st.textContent = 'At most ' + f.max + ' characters.'; st.className = 'set-status err'; }
+    return;
+  }
   if ((f.c === 'number' || f.num) && (v === null || (f.min !== undefined && (v < f.min || v > f.max)))) {
     _setShow(el, f, before);
     if (st) { st.textContent = 'Use a number from ' + f.min + ' to ' + f.max + '.'; st.className = 'set-status err'; }

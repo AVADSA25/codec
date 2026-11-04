@@ -270,7 +270,7 @@ def test_a_default_run_is_unchanged_in_its_log_and_view(scripted):
     view, model = run_script(pid, [READ, DONE], scripted)
     run = va._RUNS[view["run"]]
     assert run.allowed == tuple(t for t in proto.TOOLS if t != "run_check") + (proto.TODO,) and run._report_cap == 2000
-    assert set(start_event(view)) == {"seq", "t", "type", "goal", "model", "can_run", "limits", "start_checkpoint"}
+    assert set(start_event(view)) == {"seq", "t", "type", "goal", "model", "can_run", "commands", "limits", "start_checkpoint"}
     assert "plan_ready" not in view and "plan_ready" not in va.get_run(pid, view["run"])
     assert first_user(model).startswith("GOAL\nDo the thing\n\nWork in the project folder. Start with the smallest step that "
                                        "moves toward the goal.\n\nPROJECT FILES")

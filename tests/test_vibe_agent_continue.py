@@ -149,7 +149,7 @@ def test_continue_of_a_cloud_run_needs_confirm_cloud_again(scripted, cfg, monkey
     model = scripted(["@@ finish\nok\n"])
     new = wait_finished(pid, va.continue_run(pid, view["run"], confirm_cloud=True)["run"])
     assert model.kwargs[0]["base_url"] == "https://api.example.com/v1"
-    assert next(e for e in new["events"] if e["type"] == "start")["model"] == {"kind": "cloud", "label": "MiMo"}
+    assert next(e for e in new["events"] if e["type"] == "start")["model"] == {"kind": "cloud", "id": "mimo", "label": "MiMo"}
 
 
 def test_continue_is_refused_for_a_done_run_a_live_one_and_an_older_one(scripted):

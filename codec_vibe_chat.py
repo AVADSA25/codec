@@ -214,7 +214,7 @@ def is_private_host(host: str) -> bool:
     return "." not in h
 
 
-def resolve_llm(kind: str, confirm_cloud, cfg: Optional[dict] = None) -> Llm:
+def resolve_llm(kind: str, confirm_cloud, cfg: Optional[dict] = None, cloud_id=None) -> Llm:
     """Local unless the owner confirmed the cloud model for this message.
 
     local: llm_base_url / llm_model through codec_cloud_models.local_only, so a chat switched to a registered cloud
@@ -228,7 +228,11 @@ def resolve_llm(kind: str, confirm_cloud, cfg: Optional[dict] = None) -> Llm:
         ents = ccm.entries(c)
         if not ents:
             raise ChatError(400, "No cloud model is set up")
-        e = ccm.active_entry(c) or ents[0]
+        if cloud_id is not None and not isinstance(cloud_id, str):
+            raise ChatError(400, "Name the cloud model by its id")
+        e = ccm.entry_for_id(cloud_id, c) if cloud_id else (ccm.active_entry(c) or ents[0])   # the one picked (P-065)
+        if e is None:
+            raise ChatError(400, "That cloud model is not set up")
         why = ccm.block_message(e)
         if why:
             raise ChatError(409, why)
@@ -302,7 +306,7 @@ def prepare(body: dict, cfg: Optional[dict] = None) -> Prepared:
     kind = body.get("model", "local")
     if not isinstance(kind, str):
         raise ChatError(400, "The model must be local or cloud")
-    llm = resolve_llm(kind, body.get("confirm_cloud"), c)
+    llm = resolve_llm(kind, body.get("confirm_cloud"), c, body.get("cloud_id"))
     system = build_system_prompt(project, wd)
     messages = [{"role": "system", "content": system}] + turns
     counts = {"route": "own", "messages": len(turns), "files": count_files(turns[-1]["content"]),

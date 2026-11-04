@@ -113,7 +113,7 @@ def test_model_only_selects_and_no_request_has_confirm_cloud_without_the_dialog(
     start = part(SRC, "function startRun(text, inp) {", "function stopRun() {")
     assert "var body = runRequest(text, model, ok, earlier);" in start and "if (ok !== true)" in start
     assert start.index("confirmCloud()") < start.index("runRequest(")
-    cloud = part(SRC, "function confirmCloud() {", "function chatCloud()")
+    cloud = part(SRC, "function confirmCloud(entry) {", "function chatCloud()")
     assert "if (!(root.CodecShell && root.CodecShell.ask)) return Promise.resolve(false);" in cloud
     assert "confirm_cloud: S.model" not in SRC and "confirm_cloud: true" not in SRC
 
