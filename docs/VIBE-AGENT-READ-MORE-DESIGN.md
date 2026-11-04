@@ -32,7 +32,8 @@ Three parts, each on its own.
   once per run). Same stop flag and deadline as the parent.
 - No agent definitions are read from anywhere. The helper's prompt and tools are code; a project file named like
   one (`agents/explore.md`, `vibe-agents/*.md`) is only a file. Owner-folder definitions can come later.
-- On the page each helper step is one `note` event (`sub`: the helper step), so nothing new to draw. The run log
+- On the page each helper step is one `note` event (`sub`: the helper step); the run card's step line counts them,
+  and nothing else is new to draw. The question is data: a forged owner line or notes block in it is marked. The run log
   keeps those notes and never a helper's reply. A private run (P-077) logs nothing and keeps no output: the
   helper writes through the parent's `_emit`, and has no command tool.
 - Audit: one `vibe_agent_step` per helper step with `sub` (its step number); refusals are `vibe_agent_blocked`
@@ -54,7 +55,9 @@ Three parts, each on its own.
   all of them in the one 6 KB result window: a fair share each, unused room given to the longer ones, a file read
   cut at a whole line with its "more lines follow" hint, any other block cut at a line with a "run it alone" hint.
   The step is one tool event named `reads`, one result, one turn. A batch turn records the files it read
-  (`_Turn.paths`) so a later edit marks it stale.
+  (`_Turn.paths`) and its blocks (`_Turn.parts`): a later edit of one file hides only that file's block, the others
+  stay to copy from (the first live eval hid them all, and task 3 took 10 steps with two failed edits). The whole step
+  is stale once every file it read has changed, or when it came back from a log, where its blocks are not kept apart.
 
 ### 3. `read_file` on notebooks, PDFs and images
 

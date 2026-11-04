@@ -725,6 +725,20 @@ def _dropped_note(n: int) -> str:
             "write, a delete, a command, ask, delegate or finish runs only that block. Send reads in a reply of their own.)")
 
 
+GONE_BLOCK = "(This file has changed since. Read it again if you need it.)"
+
+
+def _blocks_changed(t, keys) -> None:
+    """Files read by a step of several read blocks changed: only those blocks are stale, the others still hold. The
+    whole step is stale when no current block is left, or when it came back from a log (its blocks are not kept apart)."""
+    hit = frozenset(keys).intersection(t.paths)
+    if not hit:
+        return
+    t.gone = t.gone | hit
+    if not t.parts or all(k in t.gone for k, _b in t.parts):
+        t.stale = True
+
+
 def _shares(sizes: list, room: int) -> list:
     """Each part's share of `room`: as much as it needs, the room a short part leaves going to the longer ones."""
     out = [0] * len(sizes)
@@ -1045,6 +1059,9 @@ class _Turn:
     saved: str = ""             # the run whose out/ folder keeps this step's command output, when it was kept
     lines: int = 0              # that file's line count
     paths: tuple = ()           # the files a step of several read blocks read, so an edit marks it stale (P-072)
+    parts: tuple = ()           # that step's blocks as the model saw them, (file or "", text), so one can go stale alone
+    tail: str = ""              # what followed those blocks in the result (a note, a repeat warning)
+    gone: frozenset = frozenset()   # the blocks' files that changed since
 
 
 @dataclass
@@ -1460,8 +1477,9 @@ class Run:
             return
         keys = {_edit_key(p) for p in changed}
         for t in self.turns:
-            if (t.read_path and _edit_key(t.read_path) in keys) or keys.intersection(t.paths):
+            if t.read_path and _edit_key(t.read_path) in keys:
                 t.stale = True
+            _blocks_changed(t, keys)
         names = ", ".join(changed[:10]) + (f" and {len(changed) - 10} more" if len(changed) > 10 else "")
         t = self.turns[-1]
         t.after += ("\n(These files changed after the earlier run's last saved step, for example by an undo or by hand: "
@@ -1672,8 +1690,9 @@ class Run:
             cp = None
         changed = set(paths) | set((cp or {}).get("changed", []))
         for t in self.turns:
-            if (t.read_path and t.read_path in changed) or changed.intersection(t.paths):
+            if t.read_path and t.read_path in changed:
                 t.stale = True
+            _blocks_changed(t, changed)
         if cp:
             self._emit("checkpoint", step=n, id=cp["id"], parent=cp.get("parent"), label=cp["label"],
                        lines_added=cp["stat"]["lines_added"], lines_removed=cp["stat"]["lines_removed"], changed=cp.get("changed", []))
@@ -1737,7 +1756,8 @@ class Run:
     def _read_parts(self, n: int, calls: list, helper: bool = False) -> tuple:
         """Read blocks of one reply, each run as it would run alone (refusals, plugin hooks), then fitted together in one
         result window: a fair share each, a file read cut at whole lines with its own "more lines follow" hint.
-        (Result for the model, the uncut text for the page, the files read, the refusal reasons)."""
+        (Result for the model, the uncut text for the page, the files read, the refusal reasons, the blocks as
+        (file or "", text) so that one can go stale alone)."""
         done, seen = [], set()
         for c in calls:
             sig = _signature(c)
@@ -1763,11 +1783,14 @@ class Run:
             if len(text) > share:                       # not a read of lines, or one line longer than the share
                 text = _cut_part(text, share)
             texts.append(text)
-        body = "\n\n".join(h + "\n" + t for h, t in zip(heads, texts))
+        parts = tuple((_edit_key(c.args["path"]) if c.name == "read_file" and r.ok else "", h + "\n" + t)
+                      for (c, r), h, t in zip(done, heads, texts))
+        body = "\n\n".join(b for _k, b in parts)
         shown = "\n\n".join(h + "\n" + r.text for h, (_c, r) in zip(heads, done))
         summary = f"{len(done)} reads: " + "; ".join(r.summary for _c, r in done)
-        paths = tuple(_edit_key(c.args["path"]) for c, r in done if c.name == "read_file" and r.ok)
-        return Result(any(r.ok for _c, r in done), body, summary[:160]), shown, paths, [r.blocked for _c, r in done if r.blocked]
+        paths = tuple(k for k, _b in parts if k)
+        return (Result(any(r.ok for _c, r in done), body, summary[:160]), shown, paths,
+                [r.blocked for _c, r in done if r.blocked], parts)
 
     def _run_reads(self, n: int, text: str, scan: proto.Scan) -> bool:
         """Several read blocks of one reply as one step with one result (P-072). True when the run is over."""
@@ -1779,7 +1802,7 @@ class Run:
             self._end("limit", "The agent kept repeating the same step, so I stopped it.")
             return True
         t0 = _mono()
-        result, shown, paths, blocked = self._read_parts(n, calls)
+        result, shown, paths, blocked, parts = self._read_parts(n, calls)
         for reason in blocked:
             _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n, "reason": reason})
         extra = f"\n\n({scan.extra})" if scan.extra else ""
@@ -1791,7 +1814,8 @@ class Run:
                                                       "ok": result.ok, "ms": int((_mono() - t0) * 1000), "calls": len(calls)})
         text = proto.without_todo(text)
         short = text if len(text) <= 600 else (scan.note[:300] + "\n" + "\n".join(f"@@ {c.name} {_tool_arg(c)}" for c in calls))
-        self.turns.append(_Turn(n, BATCH, arg, text[:8000], short, wrapped, result.summary, result.ok, paths=paths))
+        self.turns.append(_Turn(n, BATCH, arg, text[:8000], short, wrapped, result.summary, result.ok, paths=paths,
+                                parts=parts, tail=extra + warn))
         return False
 
     def _delegate(self, n: int, call: proto.Call) -> Result:
@@ -1836,7 +1860,7 @@ class Run:
                 continue
             fails = 0
             if scan.calls:
-                res, _shown, paths, blocked = self._read_parts(n, scan.calls, helper=True)
+                res, _shown, paths, blocked, _parts = self._read_parts(n, scan.calls, helper=True)
                 name, arg = BATCH, " + ".join((c.name + " " + _tool_arg(c)).strip() for c in scan.calls)[:240]
             else:
                 c = scan.call
@@ -1888,7 +1912,7 @@ class Run:
         full) and the file map. None of the parent's turns."""
         cap = self.limits["max_context_tokens"]
         system = {"role": "system", "content": proto.delegate_prompt()}
-        first = ("THE QUESTION FROM THE AGENT YOU HELP\n" + task
+        first = ("THE QUESTION FROM THE AGENT YOU HELP\n" + proto.mark_notes_markers(proto.mark_owner_phrase(task))
                  + "\n\nTHE OWNER'S GOAL FOR THAT AGENT (context only)\n" + self.goal[:500])
         site = self._map() + f"\n\n(This is helper step {k} of {budget}." + (
             " It is the last one: use finish now.)" if k >= budget else ")")
@@ -2083,6 +2107,9 @@ class Run:
     def _result_text(t: _Turn, mode: str) -> str:
         if t.stale:
             return f"[RESULT {t.n} {t.name} {t.arg}] The file has changed since. Read it again if you need it."
+        if t.gone and t.parts and mode == "full":       # some blocks of several reads changed since (P-072)
+            body = "\n\n".join(b.split("\n", 1)[0] + "\n" + GONE_BLOCK if k and k in t.gone else b for k, b in t.parts)
+            return proto.wrap_result(t.n, t.name, t.arg, _for_model(body + t.tail), t.ok)
         if mode == "full":
             return t.result
         back = _way_back(t)                     # an older result names its way back (P-043)
@@ -2500,8 +2527,10 @@ def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
         msg = CUT_WRITE
         path = _edit_key(call.args.get("path", "")) if call else ""
         for t in turns:
-            if path and ((t.read_path and _edit_key(t.read_path) == path) or path in t.paths):
+            if path and t.read_path and _edit_key(t.read_path) == path:
                 t.stale = True
+            if path:
+                _blocks_changed(t, {path})
     else:
         msg = CUT_STEP
     return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
@@ -2527,8 +2556,9 @@ def _rebuild_one(events: list, turns: list, by_n: dict, notes: list, pid: str = 
         elif kind == "checkpoint":
             changed = set(ev.get("changed") or [])
             for t in turns:
-                if (t.read_path and t.read_path in changed) or changed.intersection(t.paths):
+                if t.read_path and t.read_path in changed:
                     t.stale = True
+                _blocks_changed(t, changed)
         elif kind == "message":
             notes.append(ev)
     for n in sorted(set(tools) - done):
