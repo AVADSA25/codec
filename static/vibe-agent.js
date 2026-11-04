@@ -59,6 +59,7 @@
         run.notes = Array.isArray(ev.notes) ? ev.notes : [];          // the project notes it read (P-046)
         run.mode = ev.mode === 'plan' ? 'plan' : 'default';           // a plan run, or a run that follows a plan (P-047)
         run.planFrom = ev.plan_from || null;
+        run.review = reviewOf(ev);                                    // a review run reads only (P-071)
         return [{ t: 'meta' }].concat(notesLine(run.notes) ? [{ t: 'note', step: 0, text: notesLine(run.notes) }] : [])
           .concat(planNote(run, ev) ? [{ t: 'note', step: 0, text: planNote(run, ev) }] : [])
           .concat(run.continues ? [{ t: 'note', step: 0, text: 'This run goes on from where the last one stopped' +
@@ -134,6 +135,12 @@
         var k = compactText(ev);
         return k ? [{ t: 'compact', head: k.head, summary: k.summary }] : [];
       }
+      case 'playbook':                                                // a playbook the run follows (P-071)
+        run.playbook = { name: String(ev.name || ''), source: ev.source || '' };
+        return [{ t: 'note', step: ev.step || 0, text: playbookNote(run, ev) }];
+      case 'findings':                                                // drawn with the report, under it
+        run.findings = findingItems(ev.items);
+        return [];
       default:
         return [];
     }
@@ -168,6 +175,7 @@
       case 'ask': return 'Asking you a question';
       case 'finish': return 'Finishing';
       case 'todo': return 'Updating its todo list';
+      case 'playbook': return 'Loading the playbook' + a;
       default: return name;
     }
   }
@@ -310,7 +318,8 @@
     { name: 'clear', needs: '', text: 'Start a new chat and project (this one stays in Projects)' },
     { name: 'agent', needs: 'agent', text: 'Agent mode: the agent reads, edits and checks files step by step' },
     { name: 'chat', needs: 'agent', text: 'Chat mode: one answer, its files written behind a checkpoint' },
-    { name: 'model', needs: 'cloud', text: 'Pick the model for the next message: /model local or /model cloud' }
+    { name: 'model', needs: 'cloud', text: 'Pick the model for the next message: /model local or /model cloud' },
+    { name: 'playbooks', needs: 'playbooks', text: 'The playbooks: read them, allow them at this Mac, or take that back' }
   ];
 
   function commandList(caps) {
@@ -366,6 +375,7 @@
         else calls.say(ch.error || modelsText(current, models));
         return true;
       }
+      case 'playbooks': calls.playbooks(); return true;
       default: return false;
     }
   }
@@ -556,6 +566,65 @@
     return 'Step ' + n + ': ' + (b ? a + ' to ' + b + ' (' + Math.max(0, Math.round(t1 - t0)) + ' s)' : 'started ' + a);
   }
 
+  // ── playbooks and the review run (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md) ──
+  var MAX_FINDINGS = 30;                                                    // as codec_vibe_agent_proto.MAX_FINDINGS
+  var LEVELS = { high: 1, medium: 1, low: 1 };
+  var PLAYBOOK_STATE = { approved: 'Allowed', 'new': 'Not allowed yet', changed: 'Changed since you allowed it: allow it again to use it',
+    invalid: 'Cannot be used' };
+  var REVIEWS = [{ playbook: 'review', label: 'Review changes' }, { playbook: 'security-review', label: 'Security review' }];
+
+  // The start event's review, or null: a review run reads the files changed since `since` and changes none.
+  function reviewOf(ev) {
+    var r = ev && ev.review;
+    if (!r || typeof r !== 'object' || typeof r.since !== 'string') return null;
+    return { since: r.since, files: typeof r.files === 'number' ? r.files : 0, playbook: String(r.playbook || 'review') };
+  }
+
+  function playbookNote(run, ev) {
+    var lines = ev.total ? ' (lines ' + ev.first + '-' + ev.last + ' of ' + ev.total + ')' : '';
+    if (run.review) return 'This run only reads: it follows the playbook ' + String(ev.name || '') + lines + ' over the changes since version ' +
+      run.review.since + ', and changes no file.';
+    return 'Following the playbook ' + String(ev.name || '') + lines + '. Its tools: ' + (ev.tools || []).join(', ') + '.';
+  }
+
+  // The findings a review's report listed, as the server read them: only known levels, cut to the server's caps.
+  function findingItems(items) {
+    return (Array.isArray(items) ? items : []).filter(function (it) {
+      return it && LEVELS[it.level] === 1 && typeof it.text === 'string' && it.text.trim();
+    }).slice(0, MAX_FINDINGS).map(function (it) {
+      return { level: it.level, path: typeof it.path === 'string' ? it.path.slice(0, 200) : '',
+        line: Number.isInteger(it.line) && it.line > 0 ? it.line : null, text: it.text.slice(0, 300) };
+    });
+  }
+
+  function findingPlace(it) { return it.path ? it.path + (it.line ? ':' + it.line : '') : ''; }
+
+  // An ended run that changed files can be reviewed; a review run cannot (it changed none). playbooks: the server's
+  // list, or null when playbooks are off here.
+  function canReview(run, playbooks) {
+    return !!(run && run.finished && !run.review && run.end && run.end.startCp && run.changed.length && Array.isArray(playbooks));
+  }
+
+  function reviewChoices(playbooks) {
+    return REVIEWS.filter(function (c) {
+      return (playbooks || []).some(function (p) { return p.name === c.playbook && p.source === 'shipped'; });
+    });
+  }
+
+  // The body of POST .../agent/review. confirm_cloud only for the cloud model and an explicit yes from its dialog.
+  function reviewRequest(checkpoint, playbook, model, confirmed, cloudId, temporary) {
+    var cloud = model === 'cloud';
+    var body = { checkpoint: checkpoint, playbook: playbook, model: cloud ? 'cloud' : 'local', confirm_cloud: cloud && confirmed === true };
+    if (cloud && cloudId) body.cloud_id = cloudId;
+    if (temporary === true) body.temporary = true;
+    return body;
+  }
+
+  function playbookState(p) {
+    var s = PLAYBOOK_STATE[p && p.state] || 'Cannot be used';
+    return p && p.state === 'invalid' && p.problem ? s + ': ' + p.problem : s;
+  }
+
   var core = { newRun: newRun, synthEnd: synthEnd, applyEvent: applyEvent, describeLive: describeLive, toolLabel: toolLabel, statusText: statusText,
     stepText: stepText, isActive: isActive, fmtElapsed: fmtElapsed, canUndoRun: canUndoRun, historyFor: historyFor,
     reportMessage: reportMessage, endCheckpoint: endCheckpoint, readAt: readAt, canContinue: canContinue, noteFits: noteFits, continueLabel: continueLabel,
@@ -568,6 +637,8 @@
     cloudList: cloudList, cloudEntry: cloudEntry, continueEntry: continueEntry, modelPick: modelPick, withCloudId: withCloudId, modelText: modelText,
     fmtTokens: fmtTokens, tokensText: tokensText, spendText: spendText,
     contextMeter: contextMeter, compactText: compactText };
+  Object.assign(core, { reviewOf: reviewOf, playbookNote: playbookNote, findingItems: findingItems, findingPlace: findingPlace,
+    canReview: canReview, reviewChoices: reviewChoices, reviewRequest: reviewRequest, playbookState: playbookState });   // P-071
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -579,7 +650,7 @@
   var VP = root.VibeProj;
   var S = { available: false, mode: 'chat', model: 'local', models: null, run: null, pid: null, card: null, timer: null,
     clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {}, compact: false, editor: null, plan: false,
-    cloudId: null, askedCloud: null };                                   // the cloud entry picked, and the one a chat yes named (P-065)
+    cloudId: null, askedCloud: null, playbooks: null, pbPanel: null };                                   // the cloud entry picked, and the one a chat yes named (P-065)
   var MODEL_KEY = 'vibeAgentModel';                                      // + ':' + project: the pick, kept per project
   var M = { open: false, at: null, items: [], sel: 0, query: null };      // the @file list under the composer (P-069)
   var RUN_HINT = 'Message the agent (it reads it at its next step). Esc stops it.';
@@ -745,6 +816,7 @@
       S.available = true;
       setupModels(info);
       loadMode();
+      loadPlaybooks();                                           // P-071: the review buttons and /playbooks need the list
     }).catch(function () { S.available = false; renderMode(); });
   }
 
@@ -1094,6 +1166,7 @@
     c.end.hidden = false;
     c.end.textContent = '';
     c.end.appendChild(el('p', 'agc-rep', end.report || statusText(r)));
+    drawFindings(c, r);                                     // a review's findings (P-071)
     if (canUsePlan(r)) drawPlan(c, r);                      // the plan's three choices (P-047)
     if (canContinue(r)) {                                   // goes on from where it stopped, with a fresh step budget
       var more = el('div', 'agc-ea');
@@ -1112,6 +1185,7 @@
       acts.appendChild(undo); acts.appendChild(keep);
       c.end.appendChild(acts);
     }
+    drawReviews(c, r);                                      // review what this run changed (P-071)
   }
 
   // The owner's message in the timeline, with a line that says where it is.
@@ -1569,10 +1643,157 @@
     c.end.appendChild(box);
   }
 
+  // ── playbooks and the review run (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md) ──
+  function loadPlaybooks() {
+    return api('GET', '/api/vibe/playbooks').then(function (d) { S.playbooks = (d && Array.isArray(d.playbooks)) ? d.playbooks : []; return S.playbooks; })
+      .catch(function () { S.playbooks = null; return null; });
+  }
+
+  // The findings list under a review's report. A path that is a project file opens it in the editor. Text only.
+  function drawFindings(c, r) {
+    if (!r.findings) return;
+    var box = el('ul', 'agc-todo');
+    box.setAttribute('aria-label', 'What the review found');
+    if (!r.findings.length) box.appendChild(el('li', null, 'The review listed no problems.'));
+    var files = mentionPaths();
+    r.findings.forEach(function (it) {
+      var li = el('li');
+      li.appendChild(el('span', 'agc-chip', it.level));
+      var place = findingPlace(it);
+      if (place && files.indexOf(it.path) !== -1 && VP.activate) {
+        var b = el('button', 'agc-link', place); b.type = 'button';
+        b.addEventListener('click', function () { VP.activate(it.path); });
+        li.appendChild(b);
+      } else if (place) li.appendChild(el('span', 'agc-chip', place));
+      li.appendChild(el('span', null, it.text));
+      box.appendChild(li);
+    });
+    c.end.appendChild(box);
+  }
+
+  function drawReviews(c, r) {
+    if (!canReview(r, S.playbooks)) return;
+    var choices = reviewChoices(S.playbooks);
+    if (!choices.length) return;
+    var row = el('div', 'agc-ea');
+    row.setAttribute('aria-label', 'Review this run');
+    choices.forEach(function (ch) {
+      var b = el('button', 'agc-btn quiet', ch.label); b.type = 'button';
+      b.title = 'A run that reads the files this run changed and lists what it finds. It changes no file.';
+      b.addEventListener('click', function () { reviewRun(r, ch, b); });
+      row.appendChild(b);
+    });
+    c.end.appendChild(row);
+  }
+
+  // A review run over the files the ended run changed, since its start. Its playbook must be approved; a cloud run
+  // asks first, like any run.
+  function reviewRun(old, choice, btn) {
+    if (S.run !== old || running() || !canReview(old, S.playbooks)) return;
+    var model = S.model === 'cloud' ? 'cloud' : 'local', cloudId = model === 'cloud' ? S.cloudId : null;
+    return loadPlaybooks().then(function (items) {
+      var pb = (items || []).filter(function (p) { return p.name === choice.playbook && p.source === 'shipped'; })[0];
+      if (!pb || pb.state !== 'approved') {
+        toast('Allow the ' + choice.playbook + ' playbook first, at this Mac.');
+        openPlaybooks();
+        return false;
+      }
+      return model === 'cloud' ? confirmCloud() : true;
+    }).then(function (ok) {
+      if (ok !== true || S.run !== old || running()) return;
+      btn.disabled = true;
+      var body = reviewRequest(old.end.startCp, choice.playbook, model, ok, cloudId, root._vibePrivate === true);
+      return api('POST', base(old.pid, '/review'), body).then(function (res) {
+        var label = res.goal || choice.label;
+        if (typeof root.addMsg === 'function') root.addMsg('user', label);
+        if (root.hist) root.hist.push({ role: 'user', content: label, plain: label });
+        var run = newRun(old.pid);
+        run.id = res.run; run.goal = label; run.model = (res.model && res.model.label) || '';
+        run.modelKind = (res.model && res.model.kind) || model;
+        run.maxSteps = (res.limits && res.limits.max_steps) || 30;
+        run.startedAt = Date.now() / 1000;
+        mount(run);
+        poll();
+        if (typeof root.doSaveSes === 'function') root.doSaveSes();
+      }).catch(function (e) { btn.disabled = false; toast('Could not start the review: ' + e.message); });
+    });
+  }
+
+  // /playbooks: each playbook, its state, Read, Allow and Remove. Allowing works only at this Mac (the
+  // server answers 403 elsewhere) and sends the hash this panel showed.
+  function openPlaybooks() {
+    var cm = $('cm');
+    if (!cm) return;
+    if (S.pbPanel && S.pbPanel.parentNode) S.pbPanel.parentNode.removeChild(S.pbPanel);
+    var box = el('section', 'agc');
+    box.setAttribute('aria-label', 'Playbooks');
+    var head = el('div', 'agc-h');
+    head.appendChild(el('div', 'agc-goal', 'Playbooks'));
+    head.appendChild(el('div', 'agc-meta', 'Guides the agent can follow for one kind of work. One reaches the agent only after ' +
+      'you allow it at this Mac, and a file that changes asks again.'));
+    var close = el('button', 'agc-stop', 'Close'); close.type = 'button';
+    close.addEventListener('click', function () { if (box.parentNode) box.parentNode.removeChild(box); if (S.pbPanel === box) S.pbPanel = null; });
+    head.appendChild(close);
+    var list = el('ol', 'agc-steps');
+    list.appendChild(el('li', 'agc-note', 'Loading...'));
+    box.appendChild(head); box.appendChild(list);
+    S.pbPanel = box;
+    cm.appendChild(box);
+    cm.scrollTop = cm.scrollHeight;
+    loadPlaybooks().then(function (items) { drawPlaybooks(list, items); });
+  }
+
+  function drawPlaybooks(list, items) {
+    list.textContent = '';
+    if (!items) { list.appendChild(el('li', 'agc-note', 'Playbooks are switched off here.')); return; }
+    if (!items.length) { list.appendChild(el('li', 'agc-note', 'There are no playbooks.')); return; }
+    items.forEach(function (p) {
+      var li = el('li', 'agc-note');
+      li.appendChild(el('div', 'agc-goal', p.name + (p.source === 'owner' ? ' (yours)' : '')));
+      li.appendChild(el('div', 'agc-chip', playbookState(p)));
+      if (p.description) li.appendChild(el('div', null, p.description));
+      if (p.tools && p.tools.length) li.appendChild(el('div', 'agc-chip', 'Tools: ' + p.tools.join(', ')));
+      var acts = el('div', 'agc-ea'), text = el('pre', 'agc-cmd');
+      text.hidden = true;
+      var read = el('button', 'agc-link', 'Read'); read.type = 'button';
+      read.addEventListener('click', function () {
+        if (!text.hidden) { text.hidden = true; return; }
+        api('GET', '/api/vibe/playbooks/' + encodeURIComponent(p.source) + '/' + encodeURIComponent(p.name)).then(function (d) {
+          text.textContent = (d && d.text) || '';
+          text.hidden = false;
+        }).catch(function (e) { toast('Could not read it: ' + e.message); });
+      });
+      acts.appendChild(read);
+      if (p.state === 'new' || p.state === 'changed') {
+        var ok = el('button', 'agc-btn', 'Allow'); ok.type = 'button';
+        ok.addEventListener('click', function () { setPlaybook(list, ok, '/api/vibe/playbooks/approve', { source: p.source, name: p.name, sha256: p.sha256 }, 'Allowed the playbook ' + p.name); });
+        acts.appendChild(ok);
+      }
+      if (p.state === 'approved' || p.state === 'changed') {
+        var no = el('button', 'agc-btn quiet', 'Remove'); no.type = 'button';
+        no.addEventListener('click', function () { setPlaybook(list, no, '/api/vibe/playbooks/revoke', { source: p.source, name: p.name }, 'The playbook ' + p.name + ' is no longer allowed'); });
+        acts.appendChild(no);
+      }
+      li.appendChild(acts); li.appendChild(text);
+      list.appendChild(li);
+    });
+  }
+
+  function setPlaybook(list, btn, url, body, done) {
+    btn.disabled = true;
+    return api('POST', url, body).then(function () {
+      toast(done);
+      return loadPlaybooks().then(function (items) { drawPlaybooks(list, items); });
+    }).catch(function (e) {
+      btn.disabled = false;
+      toast(e.status === 403 ? 'Playbooks are allowed only at this Mac.' : 'Could not change it: ' + e.message);
+    });
+  }
+
   // ── the composer: our own commands (P-069) ─────────────────────────────
   function caps() {
     return { projects: !!(VP && (!VP.available || VP.available())), agent: !!S.available,
-      cloud: !!(S.available && S.models && S.models.cloud) };
+      cloud: !!(S.available && S.models && S.models.cloud), playbooks: !!(S.available && S.playbooks) };
   }
 
   function say(text) { if (typeof root.addMsg === 'function') root.addMsg('assistant', text); else toast(text); }
@@ -1598,6 +1819,7 @@
       setMode: setMode,
       keep: function (text) { inp.value = text; },
       model: pickModel,
+      playbooks: openPlaybooks,
       stop: function () {
         if (running()) stopRun();
         else if (busy && typeof root.doStop === 'function') root.doStop();
