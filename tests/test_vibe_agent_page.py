@@ -386,6 +386,7 @@ def test_a_context_event_draws_the_meter_with_the_estimate_marked():
     assert ".agc-ctx{" in PAGE and ".agc-ctx-fill{" in PAGE and ".agc-ctx.high .agc-ctx-fill{" in PAGE
 
 
+@node
 def test_a_compact_event_draws_one_row_whose_note_opens_under_it():
     # P-049: old steps folded into the model's note. The note is model text: drawn as text only.
     ev = {"seq": 9, "type": "compact", "step": 30, "first": 1, "last": 23, "turns": 23,
