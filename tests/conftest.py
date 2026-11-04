@@ -247,6 +247,25 @@ def _isolate_backups() -> None:
 _isolate_backups()
 
 
+def _isolate_vibe_playbooks() -> None:
+    """Keep the suite out of the owner's Vibe playbooks (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md).
+
+    `codec_vibe_playbooks.OWNER_DIR` is ~/.codec/vibe-playbooks and `APPROVALS_PATH` the owner's approval file. A
+    test that approved a playbook would otherwise change what his agent runs are offered. Both point at an empty
+    temp folder here, at conftest import time like `_isolate_audit_log`; the shipped folder stays the repo's.
+    """
+    try:
+        import codec_vibe_playbooks
+    except Exception:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-playbooks-"))
+    codec_vibe_playbooks.OWNER_DIR = tmp / "vibe-playbooks"
+    codec_vibe_playbooks.APPROVALS_PATH = tmp / "vibe_playbooks_approved.json"
+
+
+_isolate_vibe_playbooks()
+
+
 def _isolate_memory_db() -> None:
     """Keep the suite off the owner's memory.db, About me and standing rules (P-026).
 
