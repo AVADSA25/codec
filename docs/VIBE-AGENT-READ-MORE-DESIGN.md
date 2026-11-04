@@ -20,7 +20,8 @@ Three parts, each on its own.
 - The engine runs a nested loop on the run's own model (`Run._delegate`). Its tools are fixed in code,
   `proto.SUB_TOOLS = (list_files, read_file, search, finish)`. Any other block a helper writes (edit_file,
   write_file, delete_file, run_check, ask, read_output, delegate) is refused by that list before anything runs,
-  whatever its prompt says. A helper cannot start a helper.
+  whatever its prompt says. A helper cannot start a helper. A run whose request sent a tools list (P-047) cuts the
+  helper's tools to it too (`Run._helper_tools`): a list only takes tools away, through a helper as well.
 - At most `proto.SUB_MAX_STEPS` (8) steps, and never more than the run has left: every helper step counts toward
   `max_steps` (`Run._sub_steps`, added in the limit check, the budget line and the end event's `steps`).
 - The answer reaches the parent as one `[RESULT n delegate ...]` of at most 1,500 characters

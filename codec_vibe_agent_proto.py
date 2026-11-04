@@ -769,9 +769,10 @@ def _plan_prompt(allowed, notes: bool, again: bool) -> str:
     return "\n".join(lines)
 
 
-def delegate_prompt() -> str:
-    """A delegate's helper's prompt (P-072). Fixed here: no file, setting or project can change it or its tools."""
-    reads = tuple(t for t in SUB_TOOLS if t != "finish")
+def delegate_prompt(tools=SUB_TOOLS) -> str:
+    """A delegate's helper's prompt (P-072). Fixed here: no file, setting or project can change it or its tools.
+    `tools`: SUB_TOOLS cut to the run's own tools (a run's tools list only takes tools away); never one added."""
+    reads = tuple(t for t in SUB_TOOLS if t != "finish" and t in tools)
     lines = [
         "You are a helper of CODEC's coding agent. You read ONE project folder to answer one question the agent gives "
         "you. You cannot change anything: you only list, read and search.",
@@ -784,7 +785,7 @@ def delegate_prompt() -> str:
         "",
         "RULES",
         f"- You have at most {SUB_MAX_STEPS} steps. Read and search only what the question needs.",
-        f"- Up to {MAX_READS} reading blocks (list_files, read_file, search) may follow each other in one reply: they "
+        f"- Up to {MAX_READS} reading blocks ({', '.join(reads)}) may follow each other in one reply: they "
         "run together and give one result.",
         _PATH_RULE,
         _DATA_RULE,

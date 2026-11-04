@@ -728,6 +728,12 @@ def _dropped_note(n: int) -> str:
 GONE_BLOCK = "(This file has changed since. Read it again if you need it.)"
 
 
+def _reads_short(text: str, note: str, calls) -> str:
+    """A reply of several read blocks as an older step shows it: as written when short, else its sentence and its
+    read lines. Never a made-up `@@ reads` line the model could copy: reads is a step name, not a tool."""
+    return text if len(text) <= 600 else note[:300] + "\n" + "\n".join(f"@@ {c.name} {_tool_arg(c)}" for c in calls)
+
+
 def _blocks_changed(t, keys) -> None:
     """Files read by a step of several read blocks changed: only those blocks are stale, the others still hold. The
     whole step is stale when no current block is left, or when it came back from a log (its blocks are not kept apart)."""
@@ -1753,6 +1759,19 @@ class Run:
         return _fail(f"{call.name} is not one of a helper's tools, so nothing was changed or run. A helper only lists, "
                      "reads and searches: use list_files, read_file or search, then finish with your answer.", "mode")
 
+    def _helper_tools(self) -> tuple:
+        """This run's helper's tools: proto.SUB_TOOLS cut to the run's own tools (a request's tools list only takes
+        tools away, P-047), finish always."""
+        return tuple(t for t in proto.SUB_TOOLS if t == "finish" or t in self.allowed)
+
+    def _helper_check(self, call: proto.Call) -> "Result | None":
+        """Why a helper's call is not run: not a helper's tool at all, or a tool this run does not have."""
+        refused = self._helper_refusal(call)
+        if refused is None and call.name not in self._helper_tools():
+            refused = _fail(f"{call.name} is not allowed in this run, so nothing was run. This helper's tools are: "
+                            + ", ".join(self._helper_tools()) + ".", "mode")
+        return refused
+
     def _read_parts(self, n: int, calls: list, helper: bool = False) -> tuple:
         """Read blocks of one reply, each run as it would run alone (refusals, plugin hooks), then fitted together in one
         result window: a fair share each, a file read cut at whole lines with its own "more lines follow" hint.
@@ -1764,7 +1783,7 @@ class Run:
             if sig in seen:                             # the same block twice runs once
                 continue
             seen.add(sig)
-            res = self._helper_refusal(c) if helper else self._refusal(c)
+            res = self._helper_check(c) if helper else self._refusal(c)
             if res is None:
                 res = self._hooked(n, c, lambda c=c: self._exec(c))
             done.append((c, res))
@@ -1813,7 +1832,7 @@ class Run:
         _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": BATCH,
                                                       "ok": result.ok, "ms": int((_mono() - t0) * 1000), "calls": len(calls)})
         text = proto.without_todo(text)
-        short = text if len(text) <= 600 else (scan.note[:300] + "\n" + "\n".join(f"@@ {c.name} {_tool_arg(c)}" for c in calls))
+        short = _reads_short(text, scan.note, calls)
         self.turns.append(_Turn(n, BATCH, arg, text[:8000], short, wrapped, result.summary, result.ok, paths=paths,
                                 parts=parts, tail=extra + warn))
         return False
@@ -1877,21 +1896,25 @@ class Run:
                         text = text[:proto.SUB_REPORT_CHARS - 4].rstrip() + " ..."
                     return Result(True, text, f"Helper answered in {k} step{'s' if k != 1 else ''}")
                 name, arg = c.name, _tool_arg(c)
-                res = self._helper_refusal(c) or self._hooked(n, c, lambda: self._exec(c))
+                res = self._helper_check(c) or self._hooked(n, c, lambda: self._exec(c))
                 paths = (_edit_key(c.args["path"]),) if c.name == "read_file" and res.ok else ()
                 blocked = [res.blocked] if res.blocked else []
             for reason in blocked:
                 _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n,
                                                                          "sub": k, "reason": reason})
-            self._sub_step(n, k, turns, reply.text, name, arg, res, paths, int((_mono() - t0) * 1000))
+            self._sub_step(n, k, turns, reply.text, name, arg, res, paths, int((_mono() - t0) * 1000),
+                           calls=scan.calls)
         return self._sub_end(turns, f"The helper used all its {budget} steps without an answer.")
 
     def _sub_step(self, n: int, k: int, turns: list, text: str, name: str, arg: str, res: Result, paths: tuple,
-                  ms: int) -> None:
+                  ms: int, calls=None) -> None:
         """One helper step: its turn in the helper's own window, one line on the run's card, one audit line."""
         said = proto.without_todo(text).strip() or "(no reply)"
         wrapped = proto.wrap_result(k, name, arg, _for_model(res.text), res.ok)
-        short = said if len(said) <= 600 else said[:300] + f"\n@@ {name} {arg}\n(content left out)"
+        if calls:                                       # several read blocks: their own lines, never "@@ reads"
+            short = _reads_short(said, calls[0].note, calls)
+        else:
+            short = said if len(said) <= 600 else said[:300] + f"\n@@ {name} {arg}\n(content left out)"
         turns.append(_Turn(k, name, arg, said[:8000], short, wrapped, res.summary, res.ok,
                            read_path=paths[0] if name == "read_file" and paths else "", paths=paths if name == BATCH else ()))
         self._emit("note", step=n, sub=k, text=f"Helper step {k}: {res.summary}"[:600])
@@ -1911,7 +1934,7 @@ class Run:
         """The helper's prompt for its step k: fixed system prompt, the question, its own steps (the newest SUB_FULL in
         full) and the file map. None of the parent's turns."""
         cap = self.limits["max_context_tokens"]
-        system = {"role": "system", "content": proto.delegate_prompt()}
+        system = {"role": "system", "content": proto.delegate_prompt(self._helper_tools())}
         first = ("THE QUESTION FROM THE AGENT YOU HELP\n" + proto.mark_notes_markers(proto.mark_owner_phrase(task))
                  + "\n\nTHE OWNER'S GOAL FOR THAT AGENT (context only)\n" + self.goal[:500])
         site = self._map() + f"\n\n(This is helper step {k} of {budget}." + (
@@ -2498,11 +2521,14 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
         return _Turn(n, "error", "", said[:2000], said[:300], proto.wrap_result(n, "error", "", output, ok=False), summary, False)
     text, call, note = _replayed_reply(reply, name, arg)
     read_path, paths = "", ()
+    short = _short_text(text, note, name, arg)
     if name == "read_file":
         read_path = call.args.get("path", "") if call else arg.split(" ")[0]
     elif name == BATCH:                                 # several read blocks (P-072): the files they read
         sc = proto.scan_reply(text, proto.TOOLS, final=True, lenient=True)
         paths = tuple(_edit_key(c.args["path"]) for c in (sc.calls or ()) if c.name == "read_file")
+        if sc.calls:                                    # as the run showed it: its read lines, never "@@ reads"
+            short = _reads_short(text, sc.note, sc.calls)
     full = output if name in READABLE else ""
     saved, lines, kept = "", 0, ev.get("out")
     if full and pid and isinstance(kept, dict) and isinstance(kept.get("lines"), int) and not isinstance(kept["lines"], bool):
@@ -2510,7 +2536,7 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
         if f is not None and f.is_file() and not f.is_symlink():
             saved, lines = owner, max(0, kept["lines"])
     pointer = _pointer(n, lines if saved else len(_lines_of(output))) if full and len(output) > MODEL_RESULT_CHARS else ""
-    return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
+    return _Turn(n, name, arg, text[:8000], short,
                  proto.wrap_result(n, name, arg, _for_model(output, pointer), ok), summary, ok, read_path=read_path,
                  full=full, saved=saved, lines=lines, paths=paths)
 

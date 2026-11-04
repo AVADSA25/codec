@@ -130,6 +130,35 @@ def test_helper_definition_files_in_the_project_change_neither_its_prompt_nor_it
     assert proto.SUB_TOOLS == ("list_files", "read_file", "search", "finish")
 
 
+def test_helper_tools_are_cut_to_the_runs_own_tools_list(scripted, audits):
+    # a run's tools list only takes tools away (P-047): its helper may not search or list when the run may not
+    pid = make_project()
+    helper = ['@@ search "color"\n', "@@ list_files\n", "@@ read_file style.css\n", "@@ finish\nstyle.css line 2\n"]
+    view, model = run_script(pid, [ASK] + helper + [DONE], scripted, tools=["read_file", "delegate", "finish"])
+    assert end_of(view)["status"] == "done"
+    assert "search is not allowed in this run" in sent(model, 2) and "list_files is not allowed in this run" in sent(model, 3)
+    assert "h1 { color: red; }" in sent(model, 4)                       # the read it has still runs
+    blocked = [x for e, x in audits if e == "vibe_agent_blocked"]
+    assert [(b["sub"], b["reason"]) for b in blocked] == [(1, "mode"), (2, "mode")]
+    prompt = model.calls[1][0]["content"]
+    assert prompt == proto.delegate_prompt(("read_file", "finish")) and "@@ search" not in prompt and "@@ list_files" not in prompt
+
+
+def test_an_older_step_of_several_reads_never_shows_a_made_up_reads_line(scripted):
+    # "reads" is a step name, not a tool: a shortened older step shows its own read lines, in the helper's window
+    # and in a step rebuilt from a run log alike
+    long = "Looking " * 90 + "\n@@ read_file style.css\n@@ read_file app.js\n"
+    pid = make_project()
+    view, model = run_script(pid, [ASK] + [long] * 5 + ["@@ finish\nstyle.css line 2\n", DONE], scripted)
+    assert end_of(view)["status"] == "done"
+    last_helper = json.dumps(model.calls[6])
+    assert "@@ reads" not in last_helper
+    assert "Look\\n@@ read_file style.css\\n@@ read_file app.js" in last_helper     # the shortened step, its own lines
+    t = va._turn_from_log(2, ("reads", "read_file style.css + read_file app.js"), long,
+                          {"type": "result", "step": 2, "ok": True, "output": "two files"})
+    assert "@@ reads" not in t.assistant_short and t.assistant_short.endswith("@@ read_file style.css\n@@ read_file app.js")
+
+
 def test_helper_private_run_leaves_no_log_and_no_kept_output(scripted):
     pid = make_project()
     runs = vp.project_dir(pid) / ".vibe" / "runs"
