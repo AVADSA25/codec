@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import threading
 import time
 from urllib.parse import parse_qs, urlparse
@@ -40,12 +41,37 @@ PER_IP_LOCK_SECONDS = 15 * 60
 GLOBAL_MAX_FAILS = 20
 GLOBAL_WINDOW_SECONDS = 60 * 60
 
+_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
 _HEADERS = {
     "Cache-Control": "no-store",
     "X-Frame-Options": "DENY",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+    "Content-Security-Policy": _CSP,
     "Referrer-Policy": "no-referrer",
 }
+# An origin the policy may name: http(s), a hostname or IPv6 literal, an optional port.
+_ORIGIN_RE = re.compile(r"^https?://(?:[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?$")
+# A native app's own redirect scheme (RFC 8252 7.1, e.g. cursor:), named as a CSP scheme source.
+_APP_SCHEME_RE = re.compile(r"[a-z][a-z0-9+.-]{0,63}")
+_NOT_APP_SCHEMES = frozenset({"http", "https", "ws", "wss", "javascript", "vbscript", "data", "blob", "file",
+                              "filesystem", "about"})
+
+
+def _form_headers(redirect_uri: str) -> dict:
+    """The consent form's headers. Chrome checks form-action on the redirect that
+    follows the POST too, so the policy also names where the 303 goes (the
+    client's registered redirect_uri): its origin, or a native app's own scheme;
+    'self' alone would block the return to claude.ai or the app."""
+    u = urlparse(redirect_uri or "")
+    scheme = (u.scheme or "").lower()
+    if scheme in ("http", "https"):
+        source = f"{scheme}://{u.netloc}".lower()
+        if not _ORIGIN_RE.match(source):
+            return _HEADERS
+    elif _APP_SCHEME_RE.fullmatch(scheme) and scheme not in _NOT_APP_SCHEMES:
+        source = f"{scheme}:"
+    else:
+        return _HEADERS
+    return {**_HEADERS, "Content-Security-Policy": _CSP.replace("form-action 'self';", f"form-action 'self' {source};")}
 
 
 def _read_pin_hash() -> str:
@@ -111,7 +137,7 @@ def _audit(event: str, level: str, **extra) -> None:
         pass
 
 
-def _page(body: str, status: int = 200) -> HTMLResponse:
+def _page(body: str, status: int = 200, headers: dict | None = None) -> HTMLResponse:
     doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Approve connection - CODEC</title>
@@ -124,7 +150,7 @@ input{{width:100%;box-sizing:border-box;font-size:16px;padding:12px;border-radiu
 .row{{display:flex;gap:12px}} button{{flex:1;font-size:16px;padding:12px;border-radius:8px;border:0;cursor:pointer}}
 .ok{{background:#d97757;color:#fff}} .no{{background:#333;color:#eee}}
 </style></head><body><main>{body}</main></body></html>"""
-    return HTMLResponse(doc, status_code=status, headers=_HEADERS)
+    return HTMLResponse(doc, status_code=status, headers=headers or _HEADERS)
 
 
 def _form(rid: str, info: dict, error: str = "") -> HTMLResponse:
@@ -141,7 +167,7 @@ skills on this Mac. After approval it returns to
 <input id="pin" name="pin" type="password" inputmode="numeric" autofocus>
 <div class="row"><button class="no" name="action" value="deny">Deny</button>
 <button class="ok" name="action" value="approve">Approve</button></div>
-</form>""")
+</form>""", headers=_form_headers(info["redirect_uri"]))
 
 
 def build_consent_routes(provider, pin_hash_getter=_read_pin_hash) -> list[Route]:

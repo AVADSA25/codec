@@ -190,3 +190,32 @@ def test_client_name_is_html_escaped(tmp_path):
     rid = _rid(_start_authorize(client, r.json()["client_id"])[0])
     page = client.get("/oauth/consent", params={"rid": rid}).text
     assert "<script>x</script>" not in page and "&lt;script&gt;" in page
+
+
+def test_the_consent_form_may_post_only_here_and_return_to_the_client(tmp_path):
+    # P-089: form-action 'self'. Chrome also checks form-action on the 303 that
+    # follows the POST, so the form page names the redirect_uri's origin too.
+    provider, client = _app(tmp_path)
+    rid = _rid(_start_authorize(client, _register(client))[0])
+    form = client.get("/oauth/consent", params={"rid": rid})
+    assert form.headers["content-security-policy"] == (
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://claude.ai; frame-ancestors 'none'")
+    wrong = client.post("/oauth/consent", data={"rid": rid, "pin": "0000", "action": "approve"})
+    assert "form-action 'self' https://claude.ai;" in wrong.headers["content-security-policy"]
+    gone = client.get("/oauth/consent", params={"rid": "nope"})
+    assert "form-action 'self'; frame-ancestors 'none'" in gone.headers["content-security-policy"]
+    assert codec_mcp_consent._form_headers("https://x.test;script-src *")["Content-Security-Policy"] == \
+        codec_mcp_consent._CSP
+
+
+def test_a_native_app_redirect_names_its_own_scheme_and_nothing_else():
+    # RFC 8252 apps return to their own scheme (cursor://..., com.example.app:/cb); a
+    # policy of 'self' alone would block the 303 back to them.
+    csp = {u: codec_mcp_consent._form_headers(u)["Content-Security-Policy"] for u in (
+        "cursor://anysphere.cursor-retrieval/oauth/callback", "com.example.app:/oauth2redirect",
+        "http://127.0.0.1:33418/callback", "javascript:alert(1)", "data:text/html,x", "file:///etc/passwd")}
+    assert "form-action 'self' cursor:;" in csp["cursor://anysphere.cursor-retrieval/oauth/callback"]
+    assert "form-action 'self' com.example.app:;" in csp["com.example.app:/oauth2redirect"]
+    assert "form-action 'self' http://127.0.0.1:33418;" in csp["http://127.0.0.1:33418/callback"]
+    for u in ("javascript:alert(1)", "data:text/html,x", "file:///etc/passwd"):
+        assert csp[u] == codec_mcp_consent._CSP, u
