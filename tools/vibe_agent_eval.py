@@ -21,6 +21,10 @@ says why the first try failed. A task passes when either try passes; the first-t
     python3 tools/vibe_agent_eval.py --bar --baseline b.json     also compare with a baseline (same model id only)
     python3 tools/vibe_agent_eval.py --compare r.json --baseline b.json     compare two result files; no model needed
     python3 tools/vibe_agent_eval.py --only 14 --compaction off --out r.json    the long run with masking alone
+    python3 tools/vibe_agent_eval.py --bar --playbooks --baseline b.json   every task with the four shipped playbooks listed (P-071)
+
+The eval never reads the owner's playbooks or approvals: without --playbooks none is approved, so the prompt is the
+one the baseline saw; with it the four shipped ones are approved in a temp file (P-071).
 
 The bar to switch the agent on by default keys to the original tasks 1 to 12 only: at least 6 of the 8 file tasks
 (1 to 8) and all 4 behaviour tasks (9 to 12). Tasks added later get ids 13 and up and name the feature they need
@@ -454,6 +458,18 @@ def features_available(cmdmod, compaction=None, switched_on=False):
             "plan_mode": True}
 
 
+def use_playbooks(vpb, work, on):
+    """P-071: point the playbook folder and the approval file at the eval's temp folder, never the owner's. With `on`,
+    approve the shipped playbooks there so every task's prompt lists them. Returns the names a run is offered."""
+    vpb.OWNER_DIR = Path(work) / "vibe-playbooks"
+    vpb.APPROVALS_PATH = Path(work) / "vibe_playbooks_approved.json"
+    if on:
+        for pb in vpb.scan():
+            if pb.source == "shipped":
+                vpb.approve(pb.source, pb.name, pb.sha256)
+    return sorted(vpb.offered())
+
+
 def count_failures(events):
     """(format failures, failed edits) of one try, from its run events: a reply the agent could not read, an edit_file that did not apply."""
     fmt = sum(1 for e in events if e.get("type") == "result" and e.get("tool") == "error")
@@ -687,6 +703,7 @@ def main(argv=None):
     ap.add_argument("--baseline", help="a result file from an earlier run on the same model; compare with it (regression rule)")
     ap.add_argument("--compare", metavar="RESULT", help="do not run anything: compare this result file with --baseline")
     ap.add_argument("--compaction", choices=("off", "on"), help="run task 14 (needs compaction): off measures masking alone (P-049)")
+    ap.add_argument("--playbooks", action="store_true", help="approve the four shipped playbooks in a temp file for every task (P-071)")
     args = ap.parse_args(argv)
     if args.compare:
         if not args.baseline:
@@ -705,9 +722,12 @@ def run_eval(args, work):
     os.environ["CODEC_VIBE_TRASH"] = os.path.join(work, "trash")
     import codec_vibe_agent as va
     import codec_vibe_agent_cmd as cmdmod
+    import codec_vibe_playbooks as vpb
     import codec_vibe_projects as vp
 
     real_cfg = va._cfg()
+    if args.playbooks:                              # P-071: on for this eval even if config.json switched them off
+        real_cfg = {**real_cfg, "vibe_agent": {**(real_cfg.get("vibe_agent") or {}), "playbooks": True}}
     llm = va._resolve_llm("local")
     try:
         require_local(llm.base_url)
@@ -730,6 +750,9 @@ def run_eval(args, work):
     va._audit = lambda *a, **k: None
     vp._audit = lambda *a, **k: None
     va._push = lambda kind: None                    # eval runs are not the owner's: no phone push (P-070)
+    vpb._audit = lambda *a, **k: None
+    playbooks = use_playbooks(vpb, work, args.playbooks)
+    print(f"PLAYBOOKS {', '.join(playbooks) if playbooks else 'none'}", flush=True)
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     wanted = {int(x) for x in args.only.split(",")} if args.only else None
 
@@ -753,6 +776,7 @@ def run_eval(args, work):
               f"{sum(1 for r in other if r['skipped'])} skipped, {sum(1 for r in other if not r['pass'] and not r['skipped'])} failed")
     if args.out:
         doc = build_document(llm, results, bar, git_info(), started_at, wanted)
+        doc["playbooks"] = playbooks
         Path(args.out).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
         print(f"WROTE {args.out}")
     code = 0

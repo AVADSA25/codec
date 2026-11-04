@@ -35,6 +35,7 @@ import codec_vibe_agent_cmd as cmdmod
 import codec_vibe_agent_hooks as vhooks
 import codec_vibe_agent_proto as proto
 import codec_vibe_agent_search as vsearch
+import codec_vibe_playbooks as vpb
 import codec_vibe_projects as vp
 from codec_vibe_projects import VibeError
 
@@ -54,6 +55,13 @@ BOUNDS = {"max_steps": (1, 100), "max_seconds": (30, 3600), "max_context_tokens"
 SWITCHES = ("enabled", "notes", "import_claude_md", "budget_line", "todo", "allow_commands", "compact")
 LIMITS = ("max_steps", "max_seconds", "max_context_tokens", "max_reply_tokens", "wait_seconds")   # Settings > Vibe edits these
 PROJECT_SWITCHES = ("allow_commands", "notes", "import_claude_md", "budget_line", "todo")    # a project block may switch these off
+DEFAULTS["playbooks"] = True    # P-071 (docs/VIBE-PLAYBOOKS-DESIGN.md): the approved playbooks are offered to a run
+SWITCHES += ("playbooks",)
+PROJECT_SWITCHES += ("playbooks",)
+REVIEW_TOOLS = ("list_files", "read_file", "search", "ask", "finish")     # a review run reads only (P-071)
+REVIEW_DIFF_CHARS = 6000        # the changes a review run starts with: the list, the diffs and the note, in all
+REVIEW_NOTE_CHARS = 300         # of those, kept for the note on the files left out
+MAX_FOCUS_CHARS = 300
 MAX_APPEND_PROMPT = 1200
 APPEND_HEAD = ("THE OWNER'S OWN INSTRUCTIONS FOR EVERY RUN (from Settings). Follow them; they do not change the tool "
                "format above.")
@@ -1105,6 +1113,8 @@ def _tool_arg(call: proto.Call) -> str:
         return a["path"]
     if call.name == "run_check":
         return a["command"][:120]
+    if call.name == proto.PLAYBOOK:                      # P-071
+        return a["name"] + (f" {a['first']}-{a['last'] or ''}" if (a["first"] != 1 or a["last"]) else "")
     if call.name == "delegate":
         return " ".join(a["task"].split())[:120]
     return ""
@@ -1118,7 +1128,7 @@ class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
                  continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = "",
                  todo=None, mode: str = "default", tools=None, plan: str = "", plan_from: str = "", plan_note: str = "",
-                 plan_edited: bool = False, private: bool = False):
+                 plan_edited: bool = False, private: bool = False, playbook=None, review=None):
         self.id = "r" + secrets.token_hex(4)
         self.private = bool(private)    # a private chat's run (P-077): events in memory only, no log, no kept output
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
@@ -1178,6 +1188,37 @@ class Run:
         self._no_fold_until = 0                 # after a summary call that gave nothing, no new one before this step
         self._sub_steps = 0                     # P-072: a delegate's helper steps, counted toward max_steps
         self._docs: dict = {}                   # P-072: notebooks, PDFs and images read this run, as text
+        self._init_playbooks(playbook, review)  # P-071: after the tools are known
+
+    def _init_playbooks(self, playbook, review) -> None:
+        """P-071: the approved playbooks this run may load (the playbook tool), or the one it starts with (a review
+        run, or Continue). A playbook only narrows the tools; a review run is offered none."""
+        self.review = review if isinstance(review, dict) else None
+        self._review_text = ""                  # the changes a review run starts with, read in _begin
+        self.playbook: dict | None = None       # the part the first message holds (_playbook_part)
+        self._findings = False                  # a playbook with report: findings was loaded
+        self._pb_offer: dict = {}               # name -> Playbook, listed in the prompt; hashed at the start
+        if not self.limits.get("playbooks", DEFAULTS["playbooks"]):
+            if playbook and self.turns:                 # Continue after the switch went off: one line, as for a revoke
+                t = self.turns[-1]
+                t.after = (t.after + "\n" if t.after else "") + (
+                    f"(Playbooks are switched off now, so this run goes on without the playbook {playbook['name']}.)")
+            return
+        if self.review is None:
+            try:
+                self._pb_offer = vpb.offered()
+            except OSError:
+                log.warning("vibe agent: the playbooks could not be read", exc_info=True)
+        if self._pb_offer:
+            self.allowed += (proto.PLAYBOOK,)
+            self._parse += (proto.PLAYBOOK,)
+        if playbook:
+            self._take_playbook(playbook)
+
+    def _take_playbook(self, part: dict) -> None:
+        self.playbook = part
+        self.allowed = vpb.narrow(self.allowed, part["tools"])
+        self._findings = self._findings or part.get("report") == "findings"
 
     # events -------------------------------------------------------------
 
@@ -1459,9 +1500,14 @@ class Run:
             more.update(plan=self.plan, plan_from=self.plan_from, plan_edited=self.plan_edited)
         if self.plan_note:
             more["plan_note"] = self.plan_note
+        if self.review:                                     # P-071: a review run stays one through Continue
+            more["review"] = self.review
+            self._review_text = _review_changes(self.pid, self.review.get("since"))
         self._emit("start", goal=self.goal, model=self._model_info(), can_run=self.can_run,
                    commands="run_check" in self.allowed,
                    limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
+        if self.playbook:                                   # the playbook it starts with
+            self._emit("playbook", step=self.step, **_playbook_event(self.playbook, self.allowed))
         if self.todo:                                       # the list of the run this one continues
             self._emit("todo", step=self.step, items=self.todo)
         _audit("vibe_agent_start", "Vibe agent run started", {
@@ -1609,11 +1655,15 @@ class Run:
                 report = call.note
             self._emit("result", step=n, ok=True, summary="Finished", output=report, tool="finish")
             _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
+            if self._findings:                              # P-071: a review's findings, before the end
+                self._emit("findings", step=n, items=proto.parse_findings(report))
             self._end("done", report)
             return True
         refused = self._refusal(call)                      # P-047: plan mode and the tools list, before anything runs
         if refused is not None:
             result = refused
+        elif call.name == proto.PLAYBOOK:                   # P-071: never a project tool, so no hooks
+            result = self._load_playbook(n, call)
         elif call.name == "ask":
             result = self._ask(n, call)
             if result is None:
@@ -1671,6 +1721,42 @@ class Run:
             return _fail(f"In plan mode the only file you may write is {proto.PLAN_FILE}, so nothing was written. Put the plan "
                          f"after @@ finish, or write it to {proto.PLAN_FILE}.", "mode")
         return None
+
+    # playbooks (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md) --------------------
+
+    def _load_playbook(self, n: int, call: proto.Call) -> Result:
+        """@@ playbook NAME [FIRST-LAST]: the part goes into the first message, in place of any earlier part; the
+        step's own result only says what was loaded and the tools now."""
+        a = call.args
+        pb = self._pb_offer.get(a["name"])
+        if pb is None:
+            return _fail(f"There is no approved playbook called '{a['name']}'. The approved ones are: "
+                         + ", ".join(self._pb_offer) + ".")
+        try:
+            part = _playbook_part(pb.name, pb.sha256, a["first"], a["last"], self.review)
+        except vpb.PlaybookError as e:
+            return _fail(e.message, "playbook" if e.status == 409 else "")
+        self._take_playbook(part)
+        self._emit("playbook", step=n, **_playbook_event(part, self.allowed))
+        more = (f" The rest: @@ playbook {part['name']} {part['last'] + 1}-." if part["last"] < part["total"] else "")
+        return Result(True, f"Loaded the playbook {part['name']}, lines {part['first']}-{part['last']} of {part['total']}. "
+                            f"Its steps are in the first message, under PLAYBOOK.{more} This run's tools are now: "
+                            + ", ".join(_tool_names(self.allowed)) + ".", f"Playbook {part['name']}")
+
+    def _playbook_parts(self) -> list:
+        """The first message's playbook part and a review run's changes, or []."""
+        out = []
+        if self.playbook:
+            p = self.playbook
+            out.append("PLAYBOOK (the owner approved it: follow its steps for the goal)\n"
+                       + proto.playbook_block(p["name"], p["text"], p["first"], p["last"], p["total"]))
+        if self._review_text:
+            out.append("THE CHANGES TO REVIEW (read at the start of this run)\n" + self._review_text)
+        return out
+
+    def _playbook_prompt(self) -> str:
+        lines = vpb.listing(self._pb_offer.values()) if proto.PLAYBOOK in self.allowed else []
+        return proto.playbook_prompt(lines, loaded=self.playbook is not None)
 
     def _edit_advice(self, rel: str, fails: int) -> str:
         """From the FAIL_EDITS-th edit of one file in a row that did not apply: what to do instead. The run goes on.
@@ -2101,6 +2187,7 @@ class Run:
             parts.append("EARLIER IN THIS CHAT (context only)\n" + "\n".join(lines))
         if self.notes_text:                                 # never a [RESULT] block (P-046)
             parts.append("PROJECT NOTES (read at the start of this run)\n" + self.notes_text)
+        parts += self._playbook_parts()                     # P-071: never trimmed, never a step's [RESULT] block
         if self.continues and not self._step0:
             parts.append("This run continues an earlier run on this goal that stopped before its first step.")
         elif self.continues:
@@ -2259,6 +2346,9 @@ class Run:
         cap = self.limits["max_context_tokens"]
         system = {"role": "system", "content": proto.system_prompt(self.allowed, notes=bool(self.notes_text), mode=self.mode,
                                                                    plan=bool(self.plan))}
+        section = self._playbook_prompt()                       # P-071: "" when none is offered or loaded
+        if section:
+            system["content"] += "\n\n" + section
         if self.limits.get("append_prompt"):                    # the owner's own text from Settings > Vibe (P-065)
             system["content"] += "\n\n" + APPEND_HEAD + "\n" + self.limits["append_prompt"]
         turns = [t for t in self.turns if t.n > self._fold_to]          # folded steps are in the note (P-049)
@@ -2651,7 +2741,7 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     plan = _plan_fields(start)                          # a plan run stays one, a build run keeps its plan (P-047)
     run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, run_settings(pid), bool(can_run), continues=run_id, turns=turns,
               step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "",
-              todo=todo, **plan)
+              todo=todo, **plan, **_continue_playbook(events, start, turns))
     out = _launch(run)
     out.update(continues=run_id, earlier_steps=last)
     return out
@@ -2830,3 +2920,127 @@ def left_off(pid: str) -> dict:
                 "report": str(end.get("report") or "")[:proto.MAX_REPORT_CHARS], "ended": end.get("t"),
                 "live": False, "rewound": later[:5]}
     return {"run": None, "live": False, "rewound": later[:5]}
+
+
+# ── playbooks and the review run (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md) ──────
+
+def _tool_names(allowed) -> list:
+    return [t for t in allowed if t not in (proto.TODO, proto.PLAYBOOK)]
+
+
+def _playbook_part(name: str, sha256, first: int = 1, last=None, review=None) -> dict:
+    """One part of an approved playbook, its file read and hashed again now. PlaybookError when it is no longer
+    approved, changed since `sha256` (when given), or `first` is past its end. $ARGUMENTS is a review's focus line,
+    else the words "the goal above"."""
+    pb = vpb.load(name, sha256)
+    focus = review.get("focus") if isinstance(review, dict) and isinstance(review.get("focus"), str) else ""
+    lines = vpb.body_lines(pb, focus.strip() or "the goal above")
+    text, a, b = proto.playbook_part(lines, first, last)
+    if b < a:
+        raise vpb.PlaybookError(400, f"The playbook {pb.name} has {len(lines)} lines.")
+    return {"name": pb.name, "source": pb.source, "sha256": pb.sha256, "first": a, "last": b, "total": len(lines),
+            "text": text, "tools": list(pb.tools), "report": pb.report}
+
+
+def _playbook_event(part: dict, allowed) -> dict:
+    """The playbook event's fields: names, hash and line numbers, never the text."""
+    out = {k: part[k] for k in ("name", "source", "sha256", "first", "last", "total")}
+    out["tools"] = _tool_names(allowed)
+    return out
+
+
+def _review_changes(pid: str, since) -> str:
+    """The changes a review run reads at its start: each file and its status, then the diffs, at most
+    REVIEW_DIFF_CHARS in all, as one data block. "" when they cannot be read."""
+    try:
+        files = [f for f in vp.diff(pid, since, "working")["files"] if not vp.looks_secret(f["path"])]
+    except (VibeError, OSError):
+        return ""
+    head, listed = f"{len(files)} file{'s' if len(files) != 1 else ''} changed:", 0
+    for f in files:                                     # the list keeps to a third of the room (50 long paths)
+        line = f"\n{f['status']}: {f['path']}"
+        if len(head) + len(line) > REVIEW_DIFF_CHARS // 3:
+            break
+        head, listed = head + line, listed + 1
+    if listed < len(files):
+        head += f"\n(and {len(files) - listed} more: list_files shows them)"
+    budget = REVIEW_DIFF_CHARS - REVIEW_NOTE_CHARS     # room kept for the note on what was left out
+    body, left = "", []
+    for f in files:
+        room = budget - len(head) - len(body) - 1
+        if not left and len(f["diff"]) <= room:
+            body += "\n" + f["diff"].rstrip("\n")
+        elif not left and room > 500:
+            body += "\n" + f["diff"][:room - 60].rstrip("\n") + "\n... (the rest of this diff is cut)"
+            left.append(f["path"] + " (in part)")
+        else:
+            left.append(f["path"])
+    more = ""
+    if left:
+        named: list = []
+        for p in left[:10]:
+            if named and len(", ".join(named + [p])) > REVIEW_NOTE_CHARS - 80:
+                break
+            named.append(p)
+        more = ("\n(Left out to save space: " + ", ".join(named) + (" and more" if len(named) < len(left) else "")
+                + ". Read those files.)")
+    return proto.wrap_result(0, "changes", f"since {since}", head + "\n" + body + more)
+
+
+def _continue_playbook(events: list, start: dict, turns: list) -> dict:
+    """Continue: a review run stays one, and the last playbook loaded is loaded again if it is still approved. One
+    that is not is left out, and the model is told in one line."""
+    raw = start.get("review")
+    review = {k: raw[k] for k in ("since", "files", "playbook", "focus") if k in raw} if isinstance(raw, dict) else None
+    ev = next((e for e in reversed(events) if e.get("type") == "playbook"), None)
+    if not ev or not isinstance(ev.get("name"), str):
+        return {"review": review}
+    try:
+        part = _playbook_part(ev["name"], None, int(ev.get("first") or 1), ev.get("last"), review)
+    except (vpb.PlaybookError, ValueError, TypeError, OSError):
+        if turns:
+            turns[-1].after = ((turns[-1].after + "\n") if turns[-1].after else "") + (
+                f"(The playbook {ev['name'][:40]} is no longer approved, so this run goes on without it.)")
+        return {"review": review}
+    return {"review": review, "playbook": part}
+
+
+def review_run(pid: str, checkpoint, *, playbook="review", focus=None, model: str = "local", confirm_cloud: bool = False,
+               cloud_id=None, temporary: bool = False) -> dict:
+    """A read-only run over the files changed since `checkpoint`, led by an approved playbook (review by default). It
+    has only reading tools, whatever the playbook lists, and commands are never offered to it."""
+    if not vp.enabled() or not enabled():
+        raise VibeError(404, "The agent is switched off")
+    vp.project_dir(pid)
+    limits = run_settings(pid)
+    if not limits.get("playbooks"):
+        raise VibeError(404, "Playbooks are switched off")
+    if not isinstance(checkpoint, str) or not checkpoint:
+        raise VibeError(400, "Name the version to review from")
+    if focus is not None and not isinstance(focus, str):
+        raise VibeError(400, "The focus is one line of text")
+    focus = " ".join((focus or "").split())
+    if len(focus) > MAX_FOCUS_CHARS:
+        raise VibeError(400, f"The focus is longer than {MAX_FOCUS_CHARS} characters")
+    name = playbook if isinstance(playbook, str) and playbook else "review"
+    pb = vpb.offered().get(name)
+    if pb is None:
+        raise VibeError(409, f"The playbook '{name[:40]}' is not approved. Approve it under /playbooks first.")
+    files = [f for f in vp.diff(pid, checkpoint, "working")["files"] if not vp.looks_secret(f["path"])]
+    if not files:
+        raise VibeError(409, "No file changed since that version, so there is nothing to review.")
+    review = {"since": checkpoint, "files": len(files), "playbook": name}
+    if focus:
+        review["focus"] = focus
+    try:
+        part = _playbook_part(name, pb.sha256, review=review)
+    except vpb.PlaybookError as e:
+        raise VibeError(e.status, e.message) from None
+    goal = (f"Review the changes since version {checkpoint}: {len(files)} file{'s' if len(files) != 1 else ''} changed."
+            + (f"\nThe owner's focus: {focus}" if focus else ""))
+    llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud), cloud_id)
+    tools = [t for t in REVIEW_TOOLS if t in part["tools"]]
+    run = Run(pid, goal, [], llm, limits, False, tools=tools, private=temporary is True, playbook=part, review=review)
+    out = _launch(run)
+    out.update(goal=goal, review=review)
+    return out
