@@ -211,6 +211,15 @@ Emitted by `codec_vibe_chat` (docs/VIBE-CHAT-ROUTE-DESIGN.md), source `codec-vib
 |---|---|
 | `vibe_chat_sent` | `route` (`own`), `messages` (turns sent), `files` (file blocks in the latest user turn, plus 1 for a `[CURRENT CODE]` block), `chars` (everything sent to the model, system prompt included), `project` (bool), `stream` (bool), `model` (`local`\|`cloud`), `workdir` (a working folder was set) |
 
+### Vibe playbook events (2026-11, P-071)
+
+Emitted by `codec_vibe_playbooks` (docs/VIBE-PLAYBOOKS-DESIGN.md), source `codec-vibe`, level info, when the owner allows a playbook at this Mac or takes that back. Never the playbook's name or text.
+
+| Event | extra fields |
+|---|---|
+| `vibe_playbook_approved` | `source` (`shipped`\|`owner`), `sha8` (last 8 hex of the approved file's SHA-256) |
+| `vibe_playbook_revoked` | `source`, `sha8` (of the approval removed) |
+
 ### Browser URL policy events (2026-10, P-101)
 
 Emitted by `codec_browser_policy.check_url`, source `codec-browser-policy`, level warning. Never the URL.

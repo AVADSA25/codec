@@ -89,6 +89,9 @@ def agent_env(tmp_path, monkeypatch, cfg):
     none = tmp_path / "no-plugins"
     monkeypatch.setattr(codec_hooks, "_registry",
                         codec_hooks.PluginRegistry(str(none / "plugins"), allowlist_path=str(none / "plugins.allowlist")))
+    import codec_vibe_playbooks as vpb                          # no approved playbook unless a test approves one (P-071)
+    monkeypatch.setattr(vpb, "OWNER_DIR", tmp_path / "vibe-playbooks")
+    monkeypatch.setattr(vpb, "APPROVALS_PATH", tmp_path / "vibe_playbooks_approved.json")
     yield audits
     for run in list(va._RUNS.values()):
         run.stop()

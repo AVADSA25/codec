@@ -1011,10 +1011,23 @@ def _agent_rel(rel: str) -> str:
     return rel
 
 
+def _not_playbooks(target: Path) -> None:
+    """The agent never writes a playbook folder or the playbook approval file (P-071), even for a project folder that
+    sits inside one. Fails closed when the check cannot run."""
+    try:
+        import codec_vibe_playbooks as vpb
+        protected = vpb.is_protected(target)
+    except Exception:
+        protected = True
+    if protected:
+        raise VibeError(400, "That path is in the owner's playbook store: the agent may not change it.")
+
+
 def agent_write(pid: str, rel: str, content: str) -> dict:
     """Write one project file. Same path, size and link rules as every other write, plus _agent_rel."""
     pdir = project_dir(pid)
     rel = _agent_rel(rel)
+    _not_playbooks(pdir / rel)
     with _lock(pid):
         existed = (pdir / rel).is_file()
         size = _write_file_locked(pdir, rel, content)
@@ -1024,6 +1037,7 @@ def agent_write(pid: str, rel: str, content: str) -> dict:
 def agent_delete(pid: str, rel: str) -> dict:
     pdir = project_dir(pid)
     rel = _agent_rel(rel)
+    _not_playbooks(pdir / rel)
     with _lock(pid):
         _no_symlinks(pdir, rel, include_last=True)
         target = pdir / rel

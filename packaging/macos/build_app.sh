@@ -135,8 +135,9 @@ cp "$ENTRY_SRC" "$CONTENTS/Resources/codec_app_main.py"
 echo "==> copying CODEC sources"
 # top-level Python modules
 find "$REPO" -maxdepth 1 -name '*.py' -exec cp {} "$CONTENTS/Resources/app/" \;
-# package directories that exist (static/ = the dashboard's /static assets)
-for d in routes skills static; do
+# package directories that exist (static/ = the dashboard's /static assets; vibe_playbooks/ = the shipped
+# Vibe playbooks, P-071)
+for d in routes skills static vibe_playbooks; do
     [ -d "$REPO/$d" ] && cp -R "$REPO/$d" "$CONTENTS/Resources/app/$d"
 done
 # The Cookbook package (P-012): codec_compare and the six skills/cookbook_*.py import it.

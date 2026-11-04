@@ -452,6 +452,8 @@ from routes.vibe_runner import router as vibe_runner_router
 from routes.vibe_agent import router as vibe_agent_router
 # Vibe chat on its own route (docs/VIBE-CHAT-ROUTE-DESIGN.md): local unless the owner confirms cloud.
 from routes.vibe_chat import router as vibe_chat_router
+# Vibe playbooks and the review run (docs/VIBE-PLAYBOOKS-DESIGN.md): approved only at this Mac.
+from routes.vibe_playbooks import router as vibe_playbooks_router
 # Notes (docs/NOTES-DESIGN.md): the owner's saved notes, Tasks > Notes.
 from routes.notes import router as notes_router
 # D3 / SR-44: schedules endpoints extracted.
@@ -540,6 +542,7 @@ app.include_router(vibe_projects_router)
 app.include_router(vibe_runner_router)
 app.include_router(vibe_agent_router)
 app.include_router(vibe_chat_router)
+app.include_router(vibe_playbooks_router)
 app.include_router(notes_router)
 app.include_router(schedules_router)
 app.include_router(prompts_router)
