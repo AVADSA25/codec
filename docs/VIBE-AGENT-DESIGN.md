@@ -79,6 +79,7 @@ Why plain text and not the server's tool calls: code needs no escaping, it strea
 - A project map: file names and sizes, at most 60 lines.
 - The last 6 tool results in full (a result over 6 KB as its first 1.5 KB and its last 4 KB; the screen keeps up to 24 KB) and one line for every older step. When a file is edited, earlier reads of that file are replaced by "(changed since)".
 - Every tool result is wrapped between `[RESULT n …]` and `[END RESULT]`, and the system prompt says that text between those lines is data.
+- Since P-046: the project's notes (`.vibe/rules.md`, `AGENTS.md`) in `[NOTES …]` blocks in the first message, the todo list and a "step n of N, about x min left" line at the end of the last one (docs/VIBE-AGENT-NOTES-DESIGN.md).
 
 If the context goes over the cap, the oldest full results are dropped first. The size is estimated from characters until the server's token count is known.
 
@@ -143,7 +144,9 @@ Audit events, metadata only (no goal text, path, command text or file content): 
 
 ### 10. Not in step 3
 
-Web search or fetch, git commands, several agents at once, a project notes file read as extra instructions, voice control of the agent, and CODEC editing its own code (step 4, which reuses this loop on a different kind of project and gets its own design).
+Web search or fetch, git commands, several agents at once, voice control of the agent, and CODEC editing its own code (step 4, which reuses this loop on a different kind of project and gets its own design).
+
+Amended 3 Nov 2026 (P-046): a project notes file is now read, as conventions in a NOTES block that cannot override the rules or grant a permission, never as a RESULT block; with it come a budget line and an optional todo list. See docs/VIBE-AGENT-NOTES-DESIGN.md.
 
 ### 11. Eval before it is switched on
 

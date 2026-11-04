@@ -14,8 +14,10 @@ tool names and statuses are.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -37,9 +39,17 @@ from codec_vibe_projects import VibeError
 log = logging.getLogger("codec_vibe_agent")
 
 DEFAULTS = {"enabled": True, "max_steps": 30, "max_seconds": 900, "max_context_tokens": 10000,
-            "max_reply_tokens": 3000, "wait_seconds": 600}
+            "max_reply_tokens": 3000, "wait_seconds": 600,
+            # P-046 (docs/VIBE-AGENT-NOTES-DESIGN.md): each one switches off on its own
+            "notes": True, "import_claude_md": False, "notes_chars": 1500, "notes_chars_cloud": 8000,
+            "budget_line": True, "todo": True}
 BOUNDS = {"max_steps": (1, 100), "max_seconds": (30, 3600), "max_context_tokens": (2000, 60000),
-          "max_reply_tokens": (300, 8000), "wait_seconds": (5, 3600)}
+          "max_reply_tokens": (300, 8000), "wait_seconds": (5, 3600),
+          "notes_chars": (200, 8000), "notes_chars_cloud": (200, 16000)}
+SWITCHES = ("enabled", "notes", "import_claude_md", "budget_line", "todo")
+NOTES_FILES = ((vp.META_DIR, "rules.md"), ("AGENTS.md",))   # the owner's rules first: no agent tool or command writes .vibe
+CLAUDE_MD = ("CLAUDE.md",)                                  # read only with import_claude_md on
+TODO_EVERY = 3              # the todo list changes at most once in this many steps
 MAX_GOAL_CHARS = 4000
 MAX_HISTORY_TURNS = 4
 MAX_HISTORY_CHARS = 1500
@@ -107,8 +117,9 @@ def settings() -> dict:
             v = raw.get(key)
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 out[key] = max(lo, min(hi, int(v)))
-        if isinstance(raw.get("enabled"), bool):
-            out["enabled"] = raw["enabled"]
+        for key in SWITCHES:
+            if isinstance(raw.get(key), bool):
+                out[key] = raw[key]
     return out
 
 
@@ -619,6 +630,76 @@ def _t_delete_file(run: "Run", path: str) -> Result:
     return Result(True, f"Deleted {done['path']}.", f"Deleted {done['path']}", changed=(done["path"],))
 
 
+# ── project notes (P-046, docs/VIBE-AGENT-NOTES-DESIGN.md) ──────────────────
+
+def _notes_bytes(pdir: Path, parts: tuple) -> tuple:
+    """(bytes, "") of one notes file, or (None, why it was not read); (None, "") when it is not there.
+
+    Never through a link (the folder on the way or the file), only a regular file of at most 1 MB."""
+    cur = pdir
+    for seg in parts[:-1]:
+        cur = cur / seg
+        if os.path.islink(cur) or not cur.is_dir():
+            return None, ""
+    try:
+        fd = os.open(cur / parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None, ""
+    except OSError:
+        return None, "a link" if os.path.islink(cur / parts[-1]) else "cannot be opened"
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            return None, "not a file"
+        if st.st_size > vp.MAX_FILE_BYTES:
+            return None, "larger than 1 MB"
+        data = f.read(vp.MAX_FILE_BYTES + 1)
+    return (None, "larger than 1 MB") if len(data) > vp.MAX_FILE_BYTES else (data, "")
+
+
+def _cut_notes(text: str, room: int) -> str:
+    """At most `room` characters of a notes file, cut at a line end when one is close."""
+    if len(text) <= room:
+        return text
+    cut = text[:room]
+    nl = cut.rfind("\n")
+    return (cut[:nl] if nl >= room * 2 // 3 else cut).rstrip()
+
+
+def read_notes(pid: str, limits: dict, kind: str = "local") -> tuple:
+    """(listing, blocks) of the project's notes files at run start: each file hashed and listed with its size, and the
+    text the model sees, at most notes_chars in all (notes_chars_cloud for a cloud run)."""
+    if not limits.get("notes", True):
+        return [], ""
+    pdir = vp.project_dir(pid)
+    room = int(limits.get("notes_chars_cloud" if kind == "cloud" else "notes_chars")
+               or DEFAULTS["notes_chars_cloud" if kind == "cloud" else "notes_chars"])
+    files = NOTES_FILES + ((CLAUDE_MD,) if limits.get("import_claude_md") else ())
+    listing, blocks = [], []
+    for parts in files:
+        label = "/".join(parts)
+        data, why = _notes_bytes(pdir, parts)
+        if data is None:
+            if why:
+                listing.append({"path": label, "skipped": why})
+            continue
+        entry = {"path": label, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        try:
+            text = data.decode("utf-8").replace("\r\n", "\n").strip()
+        except UnicodeDecodeError:
+            listing.append({**entry, "skipped": "not text"})
+            continue
+        shown = _cut_notes(text, room) if room > 0 else ""
+        room -= len(shown)
+        entry.update(shown=len(shown), cut=len(shown) < len(text))
+        if text and not shown:
+            entry["skipped"] = "no room left"
+        listing.append(entry)
+        if shown:
+            blocks.append(proto.notes_block(label, shown, len(text) - len(shown)))
+    return listing, "\n\n".join(blocks)
+
+
 # ── one run ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -679,10 +760,18 @@ def _signature(call: proto.Call) -> str:
 
 class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
-                 continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = ""):
+                 continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = "",
+                 todo=None):
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
         self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
+        if limits.get("todo", DEFAULTS["todo"]):
+            self.allowed += (proto.TODO,)
+        self.todo: list = proto.clean_todo(todo) if proto.TODO in self.allowed else []    # P-046
+        self._todo_step: int | None = None      # the step the list last changed at, in this run
+        self._todo_refused = 0                  # the step whose todo block came too soon
+        self.notes: list = []                   # the notes files read at the start (path, size, sha256)
+        self.notes_text = ""                    # their NOTES blocks, as the first message holds them
         self.status = "running"
         self.finished = False
         self.continues, self._step0, self._left_out = continues, step0, left_out     # Continue (P-044)
@@ -923,8 +1012,16 @@ class Run:
         if self.continues:
             self._changed_since_continued()
         more = {"continues": self.continues, "earlier_steps": self._step0} if self.continues else {}
+        try:
+            self.notes, self.notes_text = read_notes(self.pid, self.limits, self.llm.kind)     # hashed once, at the start
+        except (OSError, VibeError):
+            log.warning("vibe agent: could not read the project notes", exc_info=True)
+        if self.notes:
+            more["notes"] = self.notes
         self._emit("start", goal=self.goal, model={"kind": self.llm.kind, "label": self.llm.label}, can_run=self.can_run,
                    limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
+        if self.todo:                                       # the list of the run this one continues
+            self._emit("todo", step=self.step, items=self.todo)
         _audit("vibe_agent_start", "Vibe agent run started", {
             "project": self.pid, "run": self.id, "model": self.llm.kind, "goal_chars": len(self.goal)})
 
@@ -992,6 +1089,8 @@ class Run:
             scan = proto.scan_reply(reply.text, self.allowed, final=True, lenient=reply.normal_end)
             if scan.note:
                 self._emit("note", step=n, text=scan.note[:600])
+            if scan.todo:
+                self._take_todo(n, scan.todo)
             if reply.cut and scan.state != "complete":
                 self._cuts += 1
                 if self._cuts >= 2:
@@ -1011,10 +1110,37 @@ class Run:
             if done:
                 return
 
+    def _take_todo(self, n: int, items: list) -> None:
+        """A todo block of step n becomes the list, unless the list changed less than TODO_EVERY steps ago (P-046).
+        Either way it costs no step: the reply's tool block is read as usual."""
+        if self._todo_step is not None and n - self._todo_step < TODO_EVERY:
+            self._todo_refused = n
+            return
+        self.todo, self._todo_step = items, n
+        self._emit("todo", step=n, items=items)
+
+    def _todo_text(self, n: int) -> str:
+        """The list as the last message of step n shows it, or "" when there is none."""
+        if not self.todo:
+            return ""
+        nxt = n if self._todo_step is None else max(n, self._todo_step + TODO_EVERY)
+        head = ("TODO LIST (yours" + (f", from step {self._todo_step - self._step0}" if self._todo_step is not None else "")
+                + ("; you can change it now" if nxt <= n else f"; you can change it at step {nxt - self._step0}") + "):")
+        rows = [f"- [{'x' if it['done'] else ' '}] {it['text']}" for it in self.todo]
+        late = (["(The todo block in your last reply was not taken: the list changes at most once every "
+                 f"{TODO_EVERY} steps.)"] if self._todo_refused and self._todo_refused == n - 1 else [])
+        return proto.mark_owner_phrase("\n".join([head] + rows + late))
+
+    def _budget_text(self, n: int) -> str:
+        """One line on the budget left, at the end of the last message (P-046)."""
+        own, top = n - self._step0, self.limits["max_steps"]
+        mins = max(1, math.ceil(max(0.0, self.deadline - _mono()) / 60))
+        return f"(This is step {own} of {top}, about {mins} min left." + (" This is the last step.)" if own >= top else ")")
+
     def _bad_reply(self, n: int, text: str, message: str) -> None:
         wrapped = proto.wrap_result(n, "error", "", message, ok=False)
         self._emit("result", step=n, ok=False, summary=message.split("\n", 1)[0][:160], output=message[:DISPLAY_CHARS], tool="error")
-        said = text.strip() or "(no reply)"
+        said = proto.without_todo(text).strip() or "(no reply)"
         self.turns.append(_Turn(n, "error", "", said[:2000], said[:300], wrapped, message.split("\n", 1)[0][:160], False))
         _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "error", "ok": False, "ms": 0})
 
@@ -1071,6 +1197,7 @@ class Run:
         kept = {"out": {"lines": lines}} if saved else {}       # so a continued run finds the file (P-043)
         self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(result.text + advice)[:DISPLAY_CHARS], tool=call.name, **kept)
         _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": call.name, "ok": result.ok, "ms": ms})
+        text = proto.without_todo(text)                     # the engine shows the todo list itself (P-046)
         short = text if len(text) <= 600 else (call.note[:300] + "\n" + f"@@ {call.name} {arg}\n(content left out)")
         self.turns.append(_Turn(n, call.name, arg, text[:8000], short, wrapped, result.summary, result.ok,
                                 read_path=call.args.get("path", "") if call.name == "read_file" else "",
@@ -1266,6 +1393,8 @@ class Run:
         if self.history:
             lines = [f"{m['role']}: {m['content']}" for m in self.history]
             parts.append("EARLIER IN THIS CHAT (context only)\n" + "\n".join(lines))
+        if self.notes_text:                                 # never a [RESULT] block (P-046)
+            parts.append("PROJECT NOTES (read at the start of this run)\n" + self.notes_text)
         if self.continues and not self._step0:
             parts.append("This run continues an earlier run on this goal that stopped before its first step.")
         elif self.continues:
@@ -1283,7 +1412,8 @@ class Run:
         shown = files[:MAP_LINES]
         more = f"\n... and {len(files) - len(shown)} more (list_files shows them)" if len(files) > len(shown) else ""
         # The map comes after the owner's note (P-044) and file names are data: one cannot pass for the owner's line.
-        return proto.mark_owner_phrase(f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more)
+        return proto.mark_notes_markers(proto.mark_owner_phrase(      # nor for a [NOTES] block (P-046)
+            f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more))
 
     @staticmethod
     def _result_text(t: _Turn, mode: str) -> str:
@@ -1301,9 +1431,13 @@ class Run:
 
     def _messages(self) -> list:
         cap = self.limits["max_context_tokens"]
-        system = {"role": "system", "content": proto.system_prompt(self.allowed)}
+        system = {"role": "system", "content": proto.system_prompt(self.allowed, notes=bool(self.notes_text))}
         modes = ["full" if i >= len(self.turns) - FULL_RESULTS else "short" for i in range(len(self.turns))]
         site = self._map()
+        for extra in (self._todo_text(self.step),                       # the list survives shortening (P-046)
+                      self._budget_text(self.step) if self.limits.get("budget_line", True) else ""):
+            if extra:
+                site += "\n\n" + extra
         first = self._first_user()
         shrink = None
         while True:
@@ -1501,6 +1635,7 @@ def _short_text(text: str, note: str, name: str, arg: str) -> str:
 def _replayed_reply(text: str, name: str, arg: str):
     """(assistant text, scanned call or None) for a logged step. A log without the reply text (written before P-040,
     or when the redaction patterns could not load) gets the tool line back instead."""
+    text = proto.without_todo(text)                     # as the run kept it (P-046)
     if not text.strip():
         text = f"@@ {name} {arg}".rstrip()
     scan = proto.scan_reply(text, proto.TOOLS, final=True, lenient=True)
@@ -1517,7 +1652,7 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
     summary = str(ev.get("summary") or "")[:160]
     name, arg = tool if tool else (str(ev.get("tool") or "error"), "")
     if name == "error":
-        said = reply.strip() or "(no reply)"
+        said = proto.without_todo(reply).strip() or "(no reply)"       # as _bad_reply kept it (P-046)
         return _Turn(n, "error", "", said[:2000], said[:300], proto.wrap_result(n, "error", "", output, ok=False), summary, False)
     text, call, note = _replayed_reply(reply, name, arg)
     read_path = ""
@@ -1636,8 +1771,10 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     resume = str(end.get("report") or end.get("status") or "")[:300] if end else "CODEC was restarted."
     cps = [e["id"] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("id"), str)]
     base = cps[-1] if cps else start.get("start_checkpoint")
+    todo = next((e.get("items") for e in reversed(events) if e.get("type") == "todo"), None)     # P-046
     run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), continues=run_id, turns=turns,
-              step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "")
+              step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "",
+              todo=todo)
     out = _launch(run)
     out.update(continues=run_id, earlier_steps=last)
     return out

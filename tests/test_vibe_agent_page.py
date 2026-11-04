@@ -336,3 +336,31 @@ def test_only_a_short_queued_message_is_sent_and_esc_stops_the_run():
     assert "e.key === 'Escape' && !e.isComposing && running()" in init and "stopRun()" in init
     assert "run.ownerStop = true;" in SRC[SRC.index("function stopRun() {"):SRC.index("function adopt(pid) {")]
     assert SRC.count("'/message'") == 1 and SRC.count("'/continue'") == 1
+
+
+@node
+def test_the_notes_a_run_read_are_listed_with_their_size():
+    notes = [{"path": ".vibe/rules.md", "size": 120, "sha256": "a" * 64, "shown": 118, "cut": False},
+             {"path": "AGENTS.md", "size": 2048, "sha256": "b" * 64, "shown": 1490, "cut": True},
+             {"path": "CLAUDE.md", "skipped": "a link"}]
+    out = run("(function () { var r = A.newRun('p'); var eff = A.applyEvent(r, E); return [r.notes.length, eff.map(function (x) { return x.text || x.t; })]; })()",
+              f"const E = {json.dumps(dict(EVENTS[0], notes=notes))};")
+    assert out[0] == 3
+    assert out[1][1] == ("Project notes read: .vibe/rules.md (120 B), AGENTS.md (2.0 KB, the first 1490 characters), "
+                         "CLAUDE.md (not read: a link).")
+    assert run("A.notesLine([])") == "" and run("A.applyEvent(A.newRun('p'), E).length", f"const E = {json.dumps(EVENTS[0])};") == 1
+
+
+@node
+def test_a_todo_event_becomes_a_checklist():
+    items = [{"text": "read the page", "done": True}, {"text": "add the form", "done": False}, {"text": "", "done": True}, "x"]
+    out = run("(function () { var r = A.newRun('p'); var eff = A.applyEvent(r, E); return [r.todo, eff]; })()",
+              f"const E = {json.dumps({'seq': 2, 'type': 'todo', 'step': 1, 'items': items})};")
+    want = [{"text": "read the page", "done": True}, {"text": "add the form", "done": False}]
+    assert out == [want, [{"t": "todo", "items": want}]]
+    assert run("A.describeLive(T)", 'const T = "Plan.\\n@@ todo\\n- [ ] a\\n@@ read_file index.html\\n";') == "Plan. Reading index.html..."
+    assert run("A.describeLive(T)", 'const T = "Plan.\\n@@ todo\\n- [ ] a";') == "Plan. Updating its todo list..."
+    draw = SRC[SRC.index("function drawTodo(items) {"):SRC.index("function drawEnd(end) {")]
+    assert "box.disabled = true" in draw and "el('span', null, it.text)" in draw and "c.todo.textContent = '';" in draw
+    assert "else if (eff.t === 'todo') drawTodo(eff.items);" in SRC
+    assert ".agc-todo{" in PAGE and ".agc-todo li.done span{" in PAGE

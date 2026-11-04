@@ -29,7 +29,7 @@
     return { pid: pid, id: null, status: 'running', goal: '', model: '', maxSteps: 30, step: 0, since: 0, startedAt: 0,
       startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
       ranCommands: false, end: null, finished: false, offset: 0, modelKind: 'local', continues: null, continuable: false,
-      ownerStop: false };
+      ownerStop: false, notes: [], todo: [] };
   }
 
   function addUnique(list, items) {
@@ -51,11 +51,16 @@
         run.modelKind = (ev.model && ev.model.kind) || run.modelKind;
         run.continues = ev.continues || null;
         run.offset = ev.continues ? (ev.earlier_steps || 0) : 0;      // a continued run counts its own steps from 1
-        return [{ t: 'meta' }].concat(run.continues ? [{ t: 'note', step: 0, text: 'This run goes on from where the last one stopped' +
+        run.notes = Array.isArray(ev.notes) ? ev.notes : [];          // the project notes it read (P-046)
+        return [{ t: 'meta' }].concat(notesLine(run.notes) ? [{ t: 'note', step: 0, text: notesLine(run.notes) }] : [])
+          .concat(run.continues ? [{ t: 'note', step: 0, text: 'This run goes on from where the last one stopped' +
             (run.offset ? ' (' + run.offset + (run.offset === 1 ? ' step' : ' steps') + ' done before).' : '.') }] : [])
           .concat(run.canRun ? [] : [{ t: 'note', step: 0, text: 'Commands are off for this run: it was started away from this Mac.' }]);
       case 'message':
         return [{ t: 'message', id: ev.id, text: ev.text || '', at: readAt(run, ev.step) }];
+      case 'todo':                                                    // the agent's own list (P-046)
+        run.todo = todoItems(ev.items);
+        return [{ t: 'todo', items: run.todo }];
       case 'note':
         run.live = ''; run.liveStep = 0;
         return [{ t: 'live', text: '' }, { t: 'note', step: ev.step, text: ev.text }];
@@ -117,9 +122,10 @@
     var at = text.search(/(^|\n)[ \t]*@@/);
     var sentence = (at === -1 ? text : text.slice(0, at)).replace(/\s+/g, ' ').trim();
     var tool = '';
-    if (at !== -1) {
-      var m = /@@[ \t]*([A-Za-z_]+):?[ \t]*([^\n]*)/.exec(text.slice(at));
-      if (m) tool = toolLabel(m[1].toLowerCase(), (m[2] || '').trim());
+    if (at !== -1) {                                // the tool after a todo block, once it is written (P-046)
+      var re = /@@[ \t]*([A-Za-z_]+):?[ \t]*([^\n]*)/g, rest = text.slice(at), m, pick = null;
+      while ((m = re.exec(rest))) { pick = m; if (m[1].toLowerCase() !== 'todo') break; }
+      if (pick) tool = toolLabel(pick[1].toLowerCase(), (pick[2] || '').trim());
     }
     var out = sentence.slice(-LIVE_CHARS);
     return tool ? (out ? out + ' ' : '') + tool + '...' : out;
@@ -138,6 +144,7 @@
       case 'run_check': return 'Running' + (arg ? ' ' + arg : ' a check');
       case 'ask': return 'Asking you a question';
       case 'finish': return 'Finishing';
+      case 'todo': return 'Updating its todo list';
       default: return name;
     }
   }
@@ -185,6 +192,25 @@
     var e = run.end || {};
     var text = e.report || (STATUS_TEXT[run.status] || '');
     return text + (run.changed.length ? '\n[Files changed: ' + run.changed.join(', ') + ']' : '');
+  }
+
+  // The project notes a run read at its start, each with its size, or why it was not read (P-046).
+  function fmtSize(n) {
+    n = Math.max(0, n || 0);
+    return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  }
+  function notesLine(notes) {
+    var parts = (notes || []).filter(function (f) { return f && typeof f.path === 'string' && f.path; }).map(function (f) {
+      if (f.skipped && !f.shown) return f.path + ' (not read: ' + f.skipped + ')';
+      return f.path + ' (' + fmtSize(f.size) + (f.cut ? ', the first ' + f.shown + ' characters' : '') + ')';
+    });
+    return parts.length ? 'Project notes read: ' + parts.join(', ') + '.' : '';
+  }
+
+  // The agent's todo list, as the server sends it: text and done only, at most 12 items.
+  function todoItems(items) {
+    return (Array.isArray(items) ? items : []).filter(function (i) { return i && typeof i.text === 'string' && i.text.trim(); })
+      .slice(0, 12).map(function (i) { return { text: i.text, done: i.done === true }; });
   }
 
   // A run read from its log after a dashboard restart has no end event: the server says it is over and calls it interrupted.
@@ -384,7 +410,8 @@
     commandList: commandList, parseCommand: parseCommand, helpText: helpText, modelChoice: modelChoice, runCommand: runCommand,
     runRequest: runRequest, mentionAt: mentionAt, mentionMatches: mentionMatches, insertMention: insertMention,
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
-    selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle };
+    selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
+    notesLine: notesLine, todoItems: todoItems };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -814,6 +841,26 @@
     S.card.steps.appendChild(el('li', 'agc-note', eff.text));
   }
 
+  // The agent's todo list as a checklist under the card's head (P-046). Its boxes show the state; they cannot be clicked.
+  function drawTodo(items) {
+    var c = S.card;
+    if (!c) return;
+    if (!c.todo) {
+      c.todo = el('ul', 'agc-todo');
+      c.todo.setAttribute('aria-label', 'The agent\'s todo list');
+      c.root.insertBefore(c.todo, c.steps);
+    }
+    c.todo.textContent = '';
+    c.todo.hidden = !items.length;
+    items.forEach(function (it) {
+      var li = el('li', it.done ? 'done' : null);
+      var box = el('input'); box.type = 'checkbox'; box.checked = it.done; box.disabled = true;
+      box.setAttribute('aria-label', it.done ? 'Done' : 'Not done yet');
+      li.appendChild(box); li.appendChild(el('span', null, it.text));
+      c.todo.appendChild(li);
+    });
+  }
+
   function drawEnd(end) {
     var c = S.card, r = S.run;
     c.end.hidden = false;
@@ -875,6 +922,7 @@
       else if (eff.t === 'approval') drawApproval(eff);
       else if (eff.t === 'decision') drawDecision(eff);
       else if (eff.t === 'note') drawNote(eff);
+      else if (eff.t === 'todo') drawTodo(eff.items);
       else if (eff.t === 'message') drawMessage(eff);
       else if (eff.t === 'live') { c.live.textContent = eff.text; c.live.hidden = !eff.text; }
       else if (eff.t === 'end') { drawEnd(eff.end); drawAllowed(); }
