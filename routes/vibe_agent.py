@@ -56,12 +56,18 @@ async def run(pid: str, request: Request):
     from routes._shared import _is_remote_request
     return await _call(va.start_run, pid, body.get("goal"), model=body.get("model") or "local",
                        confirm_cloud=body.get("confirm_cloud") is True, history=body.get("history"),
-                       can_run=not _is_remote_request(request))
+                       can_run=not _is_remote_request(request), temporary=body.get("temporary") is True)
 
 
 @router.get("/api/vibe/projects/{pid}/agent/runs")
 async def runs(pid: str):
     return await _call(va.list_runs, pid)
+
+
+@router.get("/api/vibe/projects/{pid}/agent/left-off")
+async def left_off(pid: str):
+    """Where you left off (P-077): the last run's own report, read from its log. Before /{run_id} on purpose."""
+    return await _call(va.left_off, pid)
 
 
 async def _mac_only(request: Request):
