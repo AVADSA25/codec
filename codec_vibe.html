@@ -180,6 +180,11 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 .agc-diff{flex:1 1 100%;min-width:0;max-width:100%;overflow-x:auto}
 .agc-dfile{font:600 var(--fs-12) var(--mn);color:var(--tx2);margin:6px 0 2px;overflow-wrap:anywhere}
 .agc-note{padding:2px 8px 2px 36px;font-size:var(--fs-12);color:var(--tx2);overflow-wrap:anywhere}
+.agc-todo{list-style:none;margin:0;padding:8px 12px;border-bottom:1px solid var(--bd);display:grid;gap:2px;font-size:var(--fs-12);color:var(--tx)}
+.agc-todo[hidden]{display:none}
+.agc-todo li{display:flex;align-items:flex-start;gap:6px;overflow-wrap:anywhere;min-width:0}
+.agc-todo li.done span{color:var(--tx2);text-decoration:line-through}
+.agc-todo input{margin:2px 0 0;flex-shrink:0;accent-color:var(--ac)}
 .agc-you{padding:4px 8px 4px 36px;display:grid;gap:2px}
 .agc-ea+.agc-ea{margin-top:8px}
 .agc-yt{font-size:var(--fs-13);color:var(--tx);overflow-wrap:anywhere}
@@ -384,7 +389,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <script src="/static/vendor/monaco/vs/loader.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
 <script src="/static/vibe-projects.js?v=7b7e069e"></script>
-<script src="/static/vibe-agent.js?v=5bb56694"></script>
+<script src="/static/vibe-agent.js?v=4f07b47d"></script>
 <script src="/static/vibe-chat.js?v=59a0d4f4"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests

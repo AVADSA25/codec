@@ -44,6 +44,9 @@ _WRITE_BLOCKED_SEGMENTS = {META_DIR, ".git", "node_modules", ".ssh", ".gnupg", "
 # workflows, tool settings). The owner may edit them; the agent's file tools may not (owner decision D-23,
 # docs/VIBE-SANDBOX-NARROW-DESIGN.md). Matched as any path segment, case-insensitively.
 _AGENT_BLOCKED_SEGMENTS = {".vscode", ".idea", ".husky", ".devcontainer", ".github", ".mcp.json", ".claude"}
+# The owner's project notes files at the project root: the agent reads them, never changes them (P-046,
+# docs/VIBE-AGENT-NOTES-DESIGN.md). Matched case-insensitively; the owner's own edits are unchanged.
+_AGENT_NOTES_FILES = {"agents.md", "claude.md"}
 # Folders a scan skips (listing, checkpoints).
 _SCAN_IGNORED_DIRS = {META_DIR, ".git", "node_modules", "__pycache__", ".venv", "venv", ".next", ".cache",
                       ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",      # what test runs leave behind
@@ -1002,6 +1005,9 @@ def _agent_rel(rel: str) -> str:
         if seg.casefold() in _AGENT_BLOCKED_SEGMENTS:
             raise VibeError(400, f"The agent may not change '{seg}': editors and tools run code or take settings "
                                  "from it later. The owner can edit it in the editor.")
+    if rel.casefold() in _AGENT_NOTES_FILES:
+        raise VibeError(400, f"'{rel}' is the owner's project notes file: the agent reads it but may not change it. "
+                             "Say in your report what should change in it.")
     return rel
 
 
