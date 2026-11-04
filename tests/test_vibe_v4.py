@@ -80,12 +80,12 @@ def _cp(pid, cid) -> dict:
     return next(c for c in _cps(pid) if c["id"] == cid)
 
 
-def _rows(sid="s1"):
+def _rows(sid="sess0001"):
     return rv.vibe_db().execute("SELECT id, role, content, checkpoint_id, archived FROM vibe_messages WHERE session_id=? "
                                 "ORDER BY id", (sid,)).fetchall()
 
 
-def _save(client, messages, sid="s1", **over):
+def _save(client, messages, sid="sess0001", **over):
     body = {"session_id": sid, "title": "Site", "language": "html", "code": "", "messages": messages, "full_sync": True}
     body.update(over)
     r = client.post("/api/vibe/save", json=body)
@@ -93,7 +93,7 @@ def _save(client, messages, sid="s1", **over):
     return r.json()
 
 
-def _chat(client, sid="s1"):
+def _chat(client, sid="sess0001"):
     """A project with two chat answers, each behind its own checkpoint, saved as a four-row chat."""
     pid = vp.create_project("Site", [{"path": "index.html", "content": "<h1>one</h1>\n"}])["id"]
     a = vp.apply_blocks(pid, [{"path": "index.html", "content": "<h1>two</h1>\n"}], "make two")["checkpoint"]["id"]
@@ -113,8 +113,8 @@ def test_an_older_vibe_db_is_copied_once_0600_before_the_two_columns_are_added(d
     old = sqlite3.connect(db)
     old.execute("CREATE TABLE vibe_sessions (id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT)")
     old.execute("CREATE TABLE vibe_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, timestamp TEXT)")
-    old.execute("INSERT INTO vibe_sessions VALUES ('s1', 'Old', 'python', 'x = 1', 't', 't')")
-    old.executemany("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES ('s1', ?, ?, 't')",
+    old.execute("INSERT INTO vibe_sessions VALUES ('sess0001', 'Old', 'python', 'x = 1', 't', 't')")
+    old.executemany("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES ('sess0001', ?, ?, 't')",
                     [("user", "hello"), ("assistant", "hi")])
     old.commit()
     old.close()
@@ -160,7 +160,7 @@ def test_rewind_restores_the_answers_files_hides_the_later_rows_and_undo_brings_
     pid, a, b, msgs = _chat(client)
     before = _disk(pid)
     count = len(_cps(pid))
-    r = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a})
+    r = client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a})
     assert r.status_code == 200, r.text
     assert r.json()["hidden"] == 2 and r.json()["restored_to"] == a
     rows = _rows()
@@ -168,8 +168,8 @@ def test_rewind_restores_the_answers_files_hides_the_later_rows_and_undo_brings_
     assert _disk(pid) == _cp(pid, a)["files"], "the files are the answer's checkpoint"
     rec = _cps(pid)[-1]
     assert len(_cps(pid)) == count + 1 and rec["kind"] == "restore" and rec["label"].startswith("Rewound: ")
-    assert rec["rewind"] == {"session": "s1", "rows": [rows[2][0], rows[3][0]]}
-    s = client.get("/api/vibe/session/s1").json()
+    assert rec["rewind"] == {"session": "sess0001", "rows": [rows[2][0], rows[3][0]]}
+    s = client.get("/api/vibe/session/sess0001").json()
     assert [m["content"] for m in s["messages"]] == ["make two", "Two.\n[Files written: index.html]"]
     assert s["messages"][1]["checkpoint_id"] == a and s["hidden"] == 2
     assert s["rewind"] == {"checkpoint": rec["id"], "hidden": 2}
@@ -178,31 +178,31 @@ def test_rewind_restores_the_answers_files_hides_the_later_rows_and_undo_brings_
     _save(client, msgs[:2], project_id=pid)                         # the page saves what it shows
     assert len(_rows()) == 4, "a save never touches hidden rows"
 
-    r = client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rec["id"]})
+    r = client.post("/api/vibe/session/sess0001/rewind/undo", json={"checkpoint": rec["id"]})
     assert r.status_code == 200, r.text
     assert r.json()["shown"] == 2
     assert _disk(pid) == before, "file hashes equal to before the rewind"
-    s = client.get("/api/vibe/session/s1").json()
+    s = client.get("/api/vibe/session/sess0001").json()
     assert [m["content"] for m in s["messages"]] == [m["content"] for m in msgs] and s["hidden"] == 0 and s["rewind"] is None
     assert [r[0] for r in _rows()] == [r[0] for r in rows], "the rows come back in their place"
     assert _cps(pid)[-1]["unrewind"] == rec["id"]
     assert not any(c.get("rewound") for c in client.get(f"/api/vibe/projects/{pid}/checkpoints").json())
-    assert client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rec["id"]}).status_code == 409
+    assert client.post("/api/vibe/session/sess0001/rewind/undo", json={"checkpoint": rec["id"]}).status_code == 409
 
 
 def test_rewind_refuses_a_row_that_does_not_hold_that_checkpoint(client):
     pid, a, b, _ = _chat(client)
-    assert client.post("/api/vibe/session/s1/rewind", json={"index": 3, "checkpoint": a}).status_code == 409
-    assert client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": "x"}).status_code == 400
+    assert client.post("/api/vibe/session/sess0001/rewind", json={"index": 3, "checkpoint": a}).status_code == 409
+    assert client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": "x"}).status_code == 400
     assert all(r[4] == 0 for r in _rows()) and _disk(pid) == _cp(pid, b)["files"]
 
 
 def test_undo_rewind_is_not_offered_once_the_chat_went_on(client):
     pid, a, _, msgs = _chat(client)
-    rid = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).json()["checkpoint"]["id"]
+    rid = client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a}).json()["checkpoint"]["id"]
     _save(client, msgs[:2] + [{"role": "user", "content": "something else"}], project_id=pid)
-    assert client.get("/api/vibe/session/s1").json()["rewind"] is None
-    r = client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rid})
+    assert client.get("/api/vibe/session/sess0001").json()["rewind"] is None
+    r = client.post("/api/vibe/session/sess0001/rewind/undo", json={"checkpoint": rid})
     assert r.status_code == 409 and "went on" in r.json()["error"]
     assert sum(r[4] for r in _rows()) == 2, "the hidden rows stay saved"
 
@@ -216,7 +216,7 @@ def test_rewind_to_an_agent_runs_end_restores_it_and_the_later_run_is_marked_rew
     _save(client, [{"role": "user", "content": "Write a"}, {"role": "assistant", "content": "Wrote a.", "checkpoint_id": end_a},
                    {"role": "user", "content": "Write b"}, {"role": "assistant", "content": "Wrote b.", "checkpoint_id": end_b}],
           project_id=pid)
-    assert client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": end_a}).status_code == 200
+    assert client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": end_a}).status_code == 200
     assert _disk(pid) == _cp(pid, end_a)["files"] and "b.txt" not in _disk(pid)
     runs = {r["goal"]: r for r in client.get(f"/api/vibe/projects/{pid}/agent/runs").json()}
     assert runs["Write b"]["rewound"] is True and runs["Write a"]["rewound"] is False
@@ -230,24 +230,24 @@ def test_rewind_to_an_agent_runs_end_restores_it_and_the_later_run_is_marked_rew
 def test_a_rewind_that_would_hide_more_rows_than_its_record_keeps_changes_nothing(client, monkeypatch):
     pid, a, b, _ = _chat(client)
     monkeypatch.setattr(vp, "MAX_REWIND_ROWS", 1)
-    r = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a})
+    r = client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a})
     assert r.status_code == 409 and "at most 1" in r.json()["error"]
     assert all(x[4] == 0 for x in _rows()) and _disk(pid) == _cp(pid, b)["files"] and _cps(pid)[-1]["id"] == b
 
 
 def test_with_projects_switched_off_rewind_and_undo_answer_404_and_rename_leaves_the_project(client, monkeypatch):
     pid, a, b, _ = _chat(client)
-    rid = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).json()["checkpoint"]["id"]
+    rid = client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a}).json()["checkpoint"]["id"]
     before = (_disk(pid), len(_cps(pid)), _rows())
     monkeypatch.setenv("VIBE_PROJECTS_ENABLED", "false")
-    assert client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).status_code == 404
-    assert client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rid}).status_code == 404
-    assert client.get("/api/vibe/session/s1").json()["rewind"] is None
-    r = client.post("/api/vibe/session/s1/rename", json={"title": "Offline name"})
+    assert client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a}).status_code == 404
+    assert client.post("/api/vibe/session/sess0001/rewind/undo", json={"checkpoint": rid}).status_code == 404
+    assert client.get("/api/vibe/session/sess0001").json()["rewind"] is None
+    r = client.post("/api/vibe/session/sess0001/rename", json={"title": "Offline name"})
     assert r.status_code == 200 and vp.project_info(pid)["title"] == "Site", "project.json is not written"
     assert (_disk(pid), len(_cps(pid)), _rows()) == before, "no file, checkpoint or row changed while switched off"
     monkeypatch.delenv("VIBE_PROJECTS_ENABLED")
-    assert client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rid}).status_code == 200
+    assert client.post("/api/vibe/session/sess0001/rewind/undo", json={"checkpoint": rid}).status_code == 200
 
 
 def test_a_reloaded_chat_answer_gets_its_chips_and_revert_from_its_checkpoint(client):
@@ -280,20 +280,20 @@ def test_fork_holds_exactly_that_checkpoints_files_and_the_history_up_to_it(clie
 def test_rename_changes_the_shown_name_only(client):
     pid, *_ = _chat(client)
     folder = vp.project_dir(pid)
-    r = client.post("/api/vibe/session/s1/rename", json={"title": "  My   shop  "})
+    r = client.post("/api/vibe/session/sess0001/rename", json={"title": "  My   shop  "})
     assert r.status_code == 200 and r.json()["title"] == "My shop"
     assert vp.project_info(pid)["id"] == pid and vp.project_info(pid)["title"] == "My shop" and folder.is_dir()
     assert [s["title"] for s in client.get("/api/vibe/sessions").json()] == ["My shop"]
-    _save(client, [{"role": "user", "content": "x"}], sid="s2", title="Single")
-    assert client.post("/api/vibe/session/s2/rename", json={"title": "Solo"}).json()["title"] == "Solo"
-    assert client.post("/api/vibe/session/s2/rename", json={"title": " "}).status_code == 400
+    _save(client, [{"role": "user", "content": "x"}], sid="sess0002", title="Single")
+    assert client.post("/api/vibe/session/sess0002/rename", json={"title": "Solo"}).json()["title"] == "Solo"
+    assert client.post("/api/vibe/session/sess0002/rename", json={"title": " "}).status_code == 400
     assert client.post("/api/vibe/session/nope/rename", json={"title": "x"}).status_code == 404
 
 
 def test_export_is_a_markdown_file_of_the_visible_conversation(client):
     pid, a, _, _ = _chat(client)
-    client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a})
-    r = client.get("/api/vibe/session/s1/export")
+    client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a})
+    r = client.get("/api/vibe/session/sess0001/export")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
     assert r.headers["content-disposition"].startswith('attachment; filename="site-') and ".md" in r.headers["content-disposition"]
     text = r.text
@@ -308,10 +308,10 @@ def test_rewind_fork_rename_and_purge_answer_409_while_a_run_holds_the_project(c
     pid, a, b, _ = _chat(client)
     vp.agent_claim(pid, "r1")
     try:
-        assert client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).status_code == 409
+        assert client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a}).status_code == 409
         assert client.post(f"/api/vibe/projects/{pid}/fork", json={"checkpoint": a}).status_code == 409
-        assert client.post("/api/vibe/session/s1/rename", json={"title": "x"}).status_code == 409
-        assert client.delete("/api/vibe/session/s1").status_code == 409
+        assert client.post("/api/vibe/session/sess0001/rename", json={"title": "x"}).status_code == 409
+        assert client.delete("/api/vibe/session/sess0001").status_code == 409
     finally:
         vp.agent_release(pid, "r1")
     assert len(_rows()) == 4 and all(r[4] == 0 for r in _rows()) and _disk(pid) == _cp(pid, b)["files"]
@@ -341,9 +341,9 @@ def test_a_private_chat_writes_no_row_and_its_run_no_log(client, scripted):
 
 def test_purge_writes_the_trash_file_first_then_deletes_every_row(client, audits):
     pid, a, _, msgs = _chat(client)
-    client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a})
-    assert client.delete("/api/vibe/session/s1").status_code == 200
-    files = list((Path(os.environ["CODEC_VIBE_TRASH"]) / "sessions").glob("s1-*.json"))
+    client.post("/api/vibe/session/sess0001/rewind", json={"index": 1, "checkpoint": a})
+    assert client.delete("/api/vibe/session/sess0001").status_code == 200
+    files = list((Path(os.environ["CODEC_VIBE_TRASH"]) / "sessions").glob("sess0001-*.json"))
     assert len(files) == 1 and stat.S_IMODE(files[0].stat().st_mode) == 0o600
     assert stat.S_IMODE(files[0].parent.stat().st_mode) == 0o700
     data = json.loads(files[0].read_text())
@@ -361,7 +361,7 @@ def test_purge_deletes_nothing_when_the_trash_file_cannot_be_written(client, tmp
     _chat(client)
     (tmp_path / "blocker").write_text("a file where the trash folder would be")
     monkeypatch.setenv("CODEC_VIBE_TRASH", str(tmp_path / "blocker" / "trash"))
-    r = client.delete("/api/vibe/session/s1")
+    r = client.delete("/api/vibe/session/sess0001")
     assert r.status_code == 500 and "nothing was deleted" in r.json()["error"]
     assert len(_rows()) == 4
 
@@ -372,30 +372,30 @@ def _age(sid, when):
 
 
 def test_retention_is_off_by_default_and_deletes_nothing(client, audits):
-    _save(client, [{"role": "user", "content": "old"}], sid="old")
-    _age("old", "2020-01-01T00:00:00")
+    _save(client, [{"role": "user", "content": "old"}], sid="oldchat01")
+    _age("oldchat01", "2020-01-01T00:00:00")
     assert rv.retention_sweep() == {"ran": False, "days": 0, "sessions": 0, "messages": 0, "skipped": 0}
-    assert [s["id"] for s in client.get("/api/vibe/sessions").json()] == ["old"]
+    assert [s["id"] for s in client.get("/api/vibe/sessions").json()] == ["oldchat01"]
     assert not any(e == "vibe_retention_sweep" for e, _ in audits)
     for bad in (0, -3, True, "30", 1.5, 99999):
         assert rv.retention_days({"vibe": {"retention_days": bad}}) == 0, bad
 
 
 def test_the_retention_sweep_trashes_idle_chats_first_and_writes_one_audit_line(client, audits, vcfg):
-    _save(client, [{"role": "user", "content": "old"}, {"role": "assistant", "content": "reply"}], sid="old")
-    _save(client, [{"role": "user", "content": "new"}], sid="new")
+    _save(client, [{"role": "user", "content": "old"}, {"role": "assistant", "content": "reply"}], sid="oldchat01")
+    _save(client, [{"role": "user", "content": "new"}], sid="newchat01")
     held = make_project()
-    _save(client, [{"role": "user", "content": "busy"}], sid="held", project_id=held)
-    _age("old", "2020-01-01T00:00:00")
-    _age("held", "2020-01-01T00:00:00")
+    _save(client, [{"role": "user", "content": "busy"}], sid="heldchat1", project_id=held)
+    _age("oldchat01", "2020-01-01T00:00:00")
+    _age("heldchat1", "2020-01-01T00:00:00")
     vcfg["vibe"] = {"retention_days": 30}
     vp.agent_claim(held, "r1")
     try:
         listed = [s["id"] for s in client.get("/api/vibe/sessions").json()]       # the sweep runs when the page lists
     finally:
         vp.agent_release(held, "r1")
-    assert sorted(listed) == ["held", "new"]
-    trash = list((Path(os.environ["CODEC_VIBE_TRASH"]) / "sessions").glob("old-*.json"))
+    assert sorted(listed) == ["heldchat1", "newchat01"]
+    trash = list((Path(os.environ["CODEC_VIBE_TRASH"]) / "sessions").glob("oldchat01-*.json"))
     assert len(trash) == 1 and json.loads(trash[0].read_text())["reason"] == "retention"
     sweeps = [x for e, x in audits if e == "vibe_retention_sweep"]
     assert sweeps == [{"days": 30, "sessions": 1, "messages": 2, "skipped": 1}], "counts only"
