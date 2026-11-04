@@ -167,6 +167,31 @@ def test_restore_refuses_a_damaged_history_that_points_outside(tmp_path):
     assert e.value.status == 404
 
 
+def test_a_checkpoint_made_before_build_folders_were_ignored_still_restores():
+    """tests/fixtures/vibe_checkpoint_before_ignore.json was written by the code before dist, build, target and
+    coverage joined the ignore list (P-077): its newest checkpoint holds files in all four."""
+    import hashlib
+    import json
+    from pathlib import Path
+    fx = json.loads((Path(__file__).parent / "fixtures" / "vibe_checkpoint_before_ignore.json").read_text())
+    pid = fx["project"]["id"]
+    pdir = vp.vibe_root() / pid
+    (pdir / ".vibe" / "objects").mkdir(parents=True)
+    (pdir / ".vibe" / "project.json").write_text(json.dumps(fx["project"]))
+    (pdir / ".vibe" / "checkpoints.jsonl").write_text("".join(json.dumps(c) + "\n" for c in fx["checkpoints"]))
+    for sha, text in fx["objects"].items():
+        (pdir / ".vibe" / "objects" / sha).write_text(text)
+    old = fx["checkpoints"][-1]
+    assert {p.split("/")[0] for p in old["files"]} >= {"dist", "build", "target", "coverage"}
+    (pdir / "index.html").write_text("<h1>changed since</h1>\n")       # the working files moved on
+    assert all(seg in vp._SCAN_IGNORED_DIRS for seg in ("dist", "build", "target", "coverage"))
+    assert [f["path"] for f in vp.list_files(pid)] == ["index.html"], "build output is no longer versioned"
+
+    vp.restore(pid, old["id"])
+    for rel, sha in old["files"].items():
+        assert hashlib.sha256((pdir / rel).read_bytes()).hexdigest() == sha, rel
+
+
 # ── apply ────────────────────────────────────────────────────────────────
 
 def test_apply_writes_everything_behind_a_checkpoint_before_and_after():

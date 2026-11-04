@@ -94,6 +94,25 @@ async def checkpoints(pid: str, limit: int = 100):
     return await _run(vp.list_checkpoints, pid, limit)
 
 
+@router.get("/api/vibe/projects/{pid}/checkpoints/{cid}/changes")
+async def checkpoint_changes(pid: str, cid: str):
+    """The chips and the Revert link of a reloaded answer come from the checkpoint its row stores (P-077)."""
+    return await _run(vp.checkpoint_changes, pid, cid)
+
+
+@router.post("/api/vibe/projects/{pid}/fork")
+async def fork(pid: str, request: Request):
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _run(vp.fork_project, pid, body.get("checkpoint"))
+
+
+@router.get("/api/vibe/projects/{pid}/unversioned")
+async def unversioned(pid: str):
+    return await _run(vp.unversioned, pid)
+
+
 @router.get("/api/vibe/projects/{pid}/diff")
 async def diff(pid: str, request: Request):
     q = request.query_params
