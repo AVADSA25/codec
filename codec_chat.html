@@ -1666,6 +1666,9 @@ function parseScaffold(raw){
 }
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
+// A chat id is one path segment (genId's and the voice call's ids): never '/', '.', '%' or '..',
+// so a link like #session=../api/screenshot cannot make the page fetch another route (P-089).
+var _CHAT_ID_RE=/^[A-Za-z0-9_-]{1,80}$/;
 
 function startNewSession(){if(typeof setPick==='function')setPick(null);_pickAgent=null;_discardFrom=null;_verPending=null;_savedRows=[];sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
@@ -1712,8 +1715,9 @@ function _chatFromHash(){
   }
   if(h!=='#new'&&h.indexOf('#session=')!==0)return false;
   try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
-  var want=h==='#new'?'':decodeURIComponent(h.slice(9));
-  if(want){loadSession(want)}else{startNewSession();_takeDraft()}
+  var want='';
+  if(h!=='#new'){try{want=decodeURIComponent(h.slice(9))}catch(e){}}
+  if(want&&_CHAT_ID_RE.test(want)){loadSession(want)}else{startNewSession();_takeDraft()}
   return true;
 }
 // A draft handed over by Home's "Draft reply" (P3.1), through sessionStorage, never the URL.
@@ -1729,9 +1733,9 @@ window.addEventListener('hashchange',_chatFromHash);
 (function bootSession(){
   if(_chatFromHash())return;
   var saved=_lsGet('codec-chat-session');
-  if(!saved){startNewSession();return}
+  if(!saved||!_CHAT_ID_RE.test(saved)){startNewSession();return}
   // Optimistically load \u2014 if the session is empty/missing, we'll start fresh
-  fetch('/api/qchat/session/'+saved).then(function(r){
+  fetch('/api/qchat/session/'+encodeURIComponent(saved)).then(function(r){
     return r.ok?r.json():[];
   }).then(function(data){
     if(data&&data.length>0){
@@ -1775,13 +1779,14 @@ async function saveMessages(msgs){
 
 
 async function loadSession(sid){
+  if(!_CHAT_ID_RE.test(String(sid||'')))return;
   if(temporaryChat)_setTemporary(false);  // opening a saved chat leaves temporary mode
   if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}_discardFrom=null;_verPending=null;_savedRows=[];sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
   try{
-    var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
+    var r=await fetch('/api/qchat/session/'+encodeURIComponent(sid));var data=await r.json();
     for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp,false,m.attachments);chatHist.push({role:m.role,content:m.content||''});_savedRows.push(_rowCopy(m))}
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).

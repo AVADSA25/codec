@@ -10,6 +10,7 @@ import time
 
 import pytest
 
+import codec_hooks
 import codec_llm
 import codec_vibe_agent as va
 import codec_vibe_projects as vp
@@ -84,6 +85,10 @@ def agent_env(tmp_path, monkeypatch, cfg):
     monkeypatch.setattr(va, "_push", lambda kind: None)        # no test reaches codec_push unless it asks (P-070)
     import codec_cloud_models as ccm                            # a cloud run's card reads this month's spend (P-065)
     monkeypatch.setattr(ccm, "SPEND_PATH", str(tmp_path / "cloud_spend.json"))
+    # No test loads ~/.codec/plugins (P-067): an empty registry on a temp folder, never scanned, so nothing is written.
+    none = tmp_path / "no-plugins"
+    monkeypatch.setattr(codec_hooks, "_registry",
+                        codec_hooks.PluginRegistry(str(none / "plugins"), allowlist_path=str(none / "plugins.allowlist")))
     yield audits
     for run in list(va._RUNS.values()):
         run.stop()

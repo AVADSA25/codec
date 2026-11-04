@@ -20,11 +20,16 @@ import time
 log = logging.getLogger("codec_cookbook.download")
 
 DL_DIR = os.path.expanduser("~/.codec/cookbook/downloads")
+# Where snapshot_download puts files (the default Hugging Face cache, the folder
+# codec_models.discover_local reads). bytes_on_disk() measures progress there.
+HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 
 # Self-contained child: writes {repo,state,pid,...} to argv[2] via tmp+replace.
+# argv[3], when given, is the revision (commit) to download.
 _CHILD = r"""
 import sys, json, os, time, tempfile
 repo, sf = sys.argv[1], sys.argv[2]
+rev = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
 def w(state, **kw):
     d = {"repo": repo, "state": state, "pid": os.getpid(), "updated_at": time.time()}
     d.update(kw)
@@ -35,7 +40,7 @@ def w(state, **kw):
 w("running", started_at=time.time())
 try:
     from huggingface_hub import snapshot_download
-    p = snapshot_download(repo)
+    p = snapshot_download(repo, revision=rev)
     w("done", path=p, finished_at=time.time())
 except Exception as e:
     w("error", error=str(e)[:500], finished_at=time.time())
@@ -76,9 +81,10 @@ def _write_initial(repo: str, pid: int | None = None) -> None:
     os.replace(tmp, sf)
 
 
-def start(repo: str) -> dict:
-    """Begin (or report) a download of `repo`. Idempotent: if a job is already
-    running, returns its current status instead of spawning a duplicate."""
+def start(repo: str, revision: str | None = None) -> dict:
+    """Begin (or report) a download of `repo` (at `revision` when given, a
+    commit pin). Idempotent: if a job is already running, returns its current
+    status instead of spawning a duplicate."""
     if not repo:
         return {"state": "error", "error": "no repo given"}
     cur = status(repo)
@@ -87,8 +93,11 @@ def start(repo: str) -> dict:
     os.makedirs(DL_DIR, exist_ok=True)
     _write_initial(repo)
     try:
+        argv = [sys.executable, "-c", _CHILD, repo, _status_file(repo)]
+        if revision:
+            argv.append(str(revision))
         proc = subprocess.Popen(
-            [sys.executable, "-c", _CHILD, repo, _status_file(repo)],
+            argv,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,   # detach: survives the parent skill call
         )
@@ -128,3 +137,23 @@ def list_downloads() -> list[dict]:
     except OSError:
         pass
     return out
+
+
+def bytes_on_disk(repo: str) -> int:
+    """Bytes of `repo` in the Hugging Face cache so far: every file in its
+    blobs/ folder, partial `.incomplete` files included, links not followed.
+    0 when nothing is there yet. Never raises."""
+    blobs = os.path.join(HF_CACHE, "models--" + repo.replace("/", "--"), "blobs")
+    total = 0
+    try:
+        names = os.listdir(blobs)
+    except OSError:
+        return 0
+    for fn in names:
+        path = os.path.join(blobs, fn)
+        try:
+            if os.path.isfile(path) and not os.path.islink(path):
+                total += os.path.getsize(path)
+        except OSError:
+            continue
+    return total

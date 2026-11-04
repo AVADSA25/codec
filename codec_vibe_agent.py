@@ -31,6 +31,7 @@ from pathlib import Path
 
 import codec_vibe_agent_check as vcheck
 import codec_vibe_agent_cmd as cmdmod
+import codec_vibe_agent_hooks as vhooks
 import codec_vibe_agent_proto as proto
 import codec_vibe_agent_search as vsearch
 import codec_vibe_projects as vp
@@ -163,6 +164,13 @@ def enabled() -> bool:
     if os.environ.get("VIBE_AGENT_ENABLED", "true").strip().lower() in ("0", "false", "no", "off"):
         return False
     return bool(settings()["enabled"])
+
+
+def hooks_on() -> bool:
+    """Plugin hooks around this agent's tool calls (P-067, docs/VIBE-AGENT-HOOKS-DESIGN.md): on unless config.json
+    vibe_agent.hooks is false. Read when a run is created, so a change applies from the next run."""
+    raw = _cfg().get("vibe_agent")
+    return not (isinstance(raw, dict) and raw.get("hooks") is False)
 
 
 def _audit(event: str, message: str, extra: dict) -> None:
@@ -895,6 +903,8 @@ class Run:
         self._decision: dict | None = None
         self._aid = ""
         self._thread: threading.Thread | None = None
+        self._hooks = hooks_on()                # P-067: plugin hooks around the tools, and one operation per run
+        self._op_started = False
 
     # events -------------------------------------------------------------
 
@@ -1011,6 +1021,7 @@ class Run:
             if self.finished:
                 return
             self.status = status
+            op, self._op_started = self._op_started, False      # on_operation_end fires once (P-067)
         vp.agent_release(self.pid, self.id)
         with _GLOBAL:
             if _ACTIVE is self:
@@ -1021,6 +1032,8 @@ class Run:
         _audit("vibe_agent_end", "Vibe agent run ended", {
             "project": self.pid, "run": self.id, "status": status, "steps": steps, "seconds": seconds,
             "prompt_tokens": self.tokens["prompt"], "completion_tokens": self.tokens["completion"], "model": self.llm.kind})
+        if op:
+            vhooks.end(self.id, (_mono() - self._t0) * 1000.0, status)
         with self._cond:
             self._emit("end", status=status, report=str(report)[:proto.MAX_REPORT_CHARS], steps=steps, seconds=seconds,
                        prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
@@ -1166,6 +1179,9 @@ class Run:
             self._emit("todo", step=self.step, items=self.todo)
         _audit("vibe_agent_start", "Vibe agent run started", {
             "project": self.pid, "run": self.id, "model": self.llm.kind, "goal_chars": len(self.goal)})
+        if self._hooks:
+            self._op_started = True
+            vhooks.start(self.id)
 
     def _changed_since_continued(self) -> None:
         """Files that changed after the continued run stopped (Undo run, a step undone, the owner's own edits): its
@@ -1314,11 +1330,11 @@ class Run:
             if result is None:
                 return True
         elif call.name == "run_check":
-            result = self._run_check(n, call)
+            result = self._hooked(n, call, lambda: self._run_check(n, call))
             if result is None:
                 return True
         else:
-            result = self._exec(call)
+            result = self._hooked(n, call, lambda: self._exec(call))
         ms = int((_mono() - t0) * 1000)
         warn = ""
         if streak >= REPEAT_WARN:
@@ -1403,6 +1419,18 @@ class Run:
             log.warning("vibe agent tool error: %s", e)
             return _fail("The file could not be read or written.")
         return _fail(f"The tool {call.name} is not available.")
+
+    def _hooked(self, n: int, call: proto.Call, invoke) -> "Result | None":
+        """One tool call through the plugin hooks (P-067). A pre_tool veto means the step is not run and the model is
+        told why; anything else a plugin returns is only observed. With hooks off, or a tool that is not hooked,
+        invoke() alone."""
+        if not self._hooks or call.name not in vhooks.HOOKED:
+            return invoke()
+        result, veto = vhooks.around(self.id, self.pid, n, call, invoke)
+        if veto is None:
+            return result
+        return _fail(f"Tool '{vhooks.tool_name(call.name)}' was vetoed by plugin '{veto.plugin}': {veto.reason}\n"
+                     "The step was not run. Do something else, or finish and say what was stopped.", "plugin")
 
     # commands ----------------------------------------------------------
 

@@ -22,7 +22,7 @@ def run(task, app="", ctx=""):
     if not entries:
         return f"No catalog models with role '{role}'. Roles: chat, reason, code, max, fast, tiny."
     avail = probe.available_gb()
-    ranked = fit.recommend(entries, avail, ctx_len)
+    ranked = fit.recommend(entries, avail, ctx_len, fit.margin_for(probe.unified_total_gb()))
     header = (f"Models for ~{round(avail, 1)} GB headroom @ {ctx_len}-token context"
               + (f" (role: {role})" if role else "") + ":")
     lines = [header]
