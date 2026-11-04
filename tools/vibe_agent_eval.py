@@ -9,6 +9,8 @@ files (task 10 also has an AGENTS.md, read as project notes, that says to ignore
 alone and stops cleanly. Tasks 4 and 8 let the agent run its tests with `run_check`: this
 script approves each command once, the way the owner would, and they run in the real sandbox. Task 13 (P-045)
 starts with a Python file that does not parse; the check note after the agent's edit names the line to fix.
+Task 14 (P-049) is a long run (45 pages, one misspelled word each, up to 100 steps and an hour) that fills the
+context; it runs only with --compaction off (masking alone) or --compaction on, or when compaction is switched on.
 
 Each task gets up to 2 tries. The second try is a fresh copy of the project and the same goal, plus one line that
 says why the first try failed. A task passes when either try passes; the first-try result is kept too.
@@ -18,6 +20,7 @@ says why the first try failed. A task passes when either try passes; the first-t
     python3 tools/vibe_agent_eval.py --bar --out r.json          also write model, URL, git sha, time and every task's numbers
     python3 tools/vibe_agent_eval.py --bar --baseline b.json     also compare with a baseline (same model id only)
     python3 tools/vibe_agent_eval.py --compare r.json --baseline b.json     compare two result files; no model needed
+    python3 tools/vibe_agent_eval.py --only 14 --compaction off --out r.json    the long run with masking alone
 
 The bar to switch the agent on by default keys to the original tasks 1 to 12 only: at least 6 of the 8 file tasks
 (1 to 8) and all 4 behaviour tasks (9 to 12). Tasks added later get ids 13 and up and name the feature they need
@@ -204,6 +207,97 @@ def check_syntax_fixed(files, events, report, pdir=None):
     return True, "app.py parses and the tests pass" + (" (after a check note)" if noted else " (fixed before any check note)")
 
 
+# Task 14 (P-049): a run long enough to fill the context. Each page has one misspelled word in its first paragraph:
+# (misspelling, right spelling, the sentence it sits in). No search finds them, so every page is read and edited.
+TYPOS = [
+    ("recieve", "receive", "You will recieve a letter about the new opening hours."),
+    ("seperate", "separate", "Keep the glass and the paper in seperate bins."),
+    ("definately", "definitely", "The market is definately open on Saturday mornings."),
+    ("occured", "occurred", "The power cut occured just after midnight."),
+    ("untill", "until", "The museum stays open untill eight in the evening."),
+    ("begining", "beginning", "The tour starts at the begining of the old harbour."),
+    ("beleive", "believe", "We beleive the bridge was built in 1880."),
+    ("calender", "calendar", "Mark the festival in your calender for June."),
+    ("collegue", "colleague", "Ask a collegue to sign the visitor book."),
+    ("comming", "coming", "The new bus line is comming next spring."),
+    ("concious", "conscious", "Be concious of the steep steps near the gate."),
+    ("enviroment", "environment", "The park protects a rare enviroment for birds."),
+    ("existance", "existence", "The castle owes its existance to a rich trader."),
+    ("familar", "familiar", "The square will look familar to film fans."),
+    ("finaly", "finally", "The road works are finaly over."),
+    ("foriegn", "foreign", "The shop changes foriegn money at a fair rate."),
+    ("goverment", "government", "The goverment building opens to visitors once a year."),
+    ("grammer", "grammar", "The language school teaches grammer in the morning."),
+    ("happend", "happened", "Nobody knows what happend to the old clock tower."),
+    ("immediatly", "immediately", "Report a lost child to the staff immediatly."),
+    ("independant", "independent", "The bakery is a small independant business."),
+    ("knowlege", "knowledge", "The guides share their knowlege of local history."),
+    ("libary", "library", "The libary has a quiet room on the first floor."),
+    ("maintenence", "maintenance", "The lift is closed for maintenence on Mondays."),
+    ("neccessary", "necessary", "A ticket is neccessary for the evening show."),
+    ("noticable", "noticeable", "The change in the river level is noticable after rain."),
+    ("ocasion", "occasion", "Wear something warm for the ocasion."),
+    ("persistant", "persistent", "A persistant wind blows along the cliffs."),
+    ("posession", "possession", "The painting is in the posession of the town."),
+    ("prefered", "preferred", "Cash is the prefered way to pay at the stalls."),
+    ("publically", "publicly", "The results will be shown publically next week."),
+    ("realy", "really", "The view from the hill is realy worth the climb."),
+    ("recomend", "recommend", "We recomend the fish soup at the corner cafe."),
+    ("refered", "referred", "The old mill is often refered to as the white house."),
+    ("relevent", "relevant", "Bring any relevent papers to the front desk."),
+    ("remeber", "remember", "Please remeber to close the garden gate."),
+    ("resistence", "resistance", "The wall shows little resistence to the sea."),
+    ("sence", "sense", "There is a sence of calm in the cloister."),
+    ("succesful", "successful", "The spring fair was a succesful day for everyone."),
+    ("suprise", "surprise", "The hidden courtyard is a nice suprise."),
+    ("tommorow", "tomorrow", "The ferry leaves at nine tommorow morning."),
+    ("wierd", "weird", "The statue has a wierd shape when seen from the side."),
+    ("acheive", "achieve", "The club helps young players acheive their goals."),
+    ("adress", "address", "Write your adress on the back of the form."),
+    ("arguement", "argument", "The council ended the arguement about parking."),
+]
+LONG_PAGE = """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Visitor page {n}</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <h1>Visitor notes {n}</h1>
+  <p>{sentence}</p>
+  <p>Opening times and prices are on the front page.</p>
+  <ul>
+    <li>Entrance on the north side</li>
+    <li>Toilets next to the cafe</li>
+    <li>Dogs on a lead are welcome</li>
+  </ul>
+  <footer>Page {n} of {total}</footer>
+</body>
+</html>
+"""
+
+
+def long_run_files():
+    files = {"style.css": BASE_CSS}
+    for i, (_, _, sentence) in enumerate(TYPOS, 1):
+        files[f"pages/p{i:02d}.html"] = LONG_PAGE.format(n=f"{i:02d}", sentence=sentence, total=len(TYPOS))
+    return files
+
+
+def check_typos(files, events, report, pdir=None):
+    fixed, missed = 0, []
+    for i, (bad, good, sentence) in enumerate(TYPOS, 1):
+        text = files.get(f"pages/p{i:02d}.html", "")
+        if bad not in text and sentence.replace(bad, good) in text and f"<footer>Page {i:02d} of" in text:
+            fixed += 1
+        else:
+            missed.append(f"p{i:02d}")
+    end = next((e for e in events if e.get("type") == "end"), {})
+    where = f"{fixed} of {len(TYPOS)} pages fixed, ended {end.get('status')} after {end.get('steps')} steps"
+    return not missed, where + (": missed " + ", ".join(missed[:8]) + ("..." if len(missed) > 8 else "") if missed else "")
+
+
 def check_impossible(files, events, report, pdir=None):
     end = next((e for e in events if e["type"] == "end"), {})
     problems = []
@@ -289,6 +383,10 @@ TASKS = [
                                "    def test_count(self):\n        self.assertEqual(count([5, 6, 7]), 3)\n        self.assertEqual(count([]), 0)\n\n\n"
                                "if __name__ == '__main__':\n    unittest.main()\n")},
      "goal": "Add a function count(prices) to app.py that returns how many prices there are."},
+    {"id": 14, "kind": "file", "title": "a long run: one misspelled word in each of 45 pages (P-049)", "needs": "compaction",
+     "check": check_typos, "files": long_run_files(), "limits": {"max_steps": 100, "max_seconds": 3600}, "run_cap": 4200,
+     "goal": f"Each of the {len(TYPOS)} pages in the pages folder has exactly one misspelled English word in its first "
+             "paragraph. Read every page and fix that word. Change nothing else."},
 ]
 
 
@@ -325,9 +423,12 @@ def require_local(base_url):
     return base_url
 
 
-def features_available(cmdmod):
-    """The features a task can name in `needs`. A name that is not here does not exist yet, so its task is skipped."""
-    return {"run_check": bool(cmdmod.available())}
+def features_available(cmdmod, compaction=None, switched_on=False):
+    """The features a task can name in `needs`. A name that is not here does not exist yet, so its task is skipped.
+
+    compaction (P-049): the long-run task runs only when --compaction names how (off measures masking alone), or when
+    the owner switched compaction on in config.json (it then runs with it on)."""
+    return {"run_check": bool(cmdmod.available()), "compaction": compaction in ("off", "on") or bool(switched_on)}
 
 
 def count_failures(events):
@@ -369,13 +470,13 @@ def follow_run(task, va, pid, run_id, verbose):
         since = view["next"]
         if view["finished"]:
             break
-        if time.time() - t0 > RUN_CAP_SECONDS:
+        if time.time() - t0 > task.get("run_cap", RUN_CAP_SECONDS):
             capped = True
             va.stop_run(pid, run_id)
     return events, capped
 
 
-def run_task(task, va, vp, real_cfg, verbose, note=""):
+def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None):
     """One try at one task, on a fresh project. Returns the numbers of that try."""
     root_files = [{"path": p, "content": c} for p, c in task["files"].items()]
     pid = vp.create_project(f"eval {task['id']}", root_files)["id"]
@@ -383,6 +484,8 @@ def run_task(task, va, vp, real_cfg, verbose, note=""):
         (vp.project_dir(pid) / name).write_text(content)
     cfg = dict(real_cfg)
     cfg["vibe_agent"] = {**(real_cfg.get("vibe_agent") or {}), **(task.get("limits") or {})}
+    if compaction in ("off", "on") and task.get("needs") == "compaction":     # P-049: off = masking alone
+        cfg["vibe_agent"]["compact"] = compaction == "on"
     va._cfg = lambda: cfg
     started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check")
     run_id = started["run"]
@@ -404,10 +507,12 @@ def run_task(task, va, vp, real_cfg, verbose, note=""):
     ok, detail = task["check"](files, events, end.get("report", ""), vp.project_dir(pid))
     fmt, edits = count_failures(events)
     status = end.get("status")
+    used = [e["used"] for e in events if e.get("type") == "context" and isinstance(e.get("used"), int)]
     return {"pass": bool(ok), "detail": str(detail)[:300], "status": status, "steps": end.get("steps"), "seconds": end.get("seconds"),
             "prompt_tokens": end.get("prompt_tokens"), "completion_tokens": end.get("completion_tokens"),
             "format_failures": fmt, "failed_edits": edits, "error": status in (None, "failed"),
-            "timeout": is_timeout(end, capped), "report": end.get("report", "")[:300]}
+            "timeout": is_timeout(end, capped), "report": end.get("report", "")[:300],
+            "context_peak": max(used) if used else None, "compactions": sum(1 for e in events if e.get("type") == "compact")}
 
 
 def task_record(task, attempts):
@@ -557,6 +662,7 @@ def main(argv=None):
     ap.add_argument("--out", help="write the results as JSON (model id, URL, git sha, time, every task's numbers)")
     ap.add_argument("--baseline", help="a result file from an earlier run on the same model; compare with it (regression rule)")
     ap.add_argument("--compare", metavar="RESULT", help="do not run anything: compare this result file with --baseline")
+    ap.add_argument("--compaction", choices=("off", "on"), help="run task 14 (needs compaction): off measures masking alone (P-049)")
     args = ap.parse_args(argv)
     if args.compare:
         if not args.baseline:
@@ -605,11 +711,12 @@ def run_eval(args, work):
 
     def attempt(task, note):
         try:
-            return run_task(task, va, vp, real_cfg, args.verbose, note)
+            return run_task(task, va, vp, real_cfg, args.verbose, note, args.compaction)
         except Exception as e:                      # a crash of the harness counts as a failed try
             return failed_attempt(f"harness error: {e}")
     try:
-        results = run_suite(TASKS, attempt, features_available(cmdmod), wanted, MAX_TRIES, args.quiet, args.verbose)
+        feats = features_available(cmdmod, args.compaction, va.settings().get("compact", False))
+        results = run_suite(TASKS, attempt, feats, wanted, MAX_TRIES, args.quiet, args.verbose)
     finally:
         va._audit, vp._audit, va._cfg, va._push = saved
 

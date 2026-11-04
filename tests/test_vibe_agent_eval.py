@@ -123,6 +123,31 @@ def test_task_13_the_syntax_error_task_is_outside_the_bar_and_its_check_reads_th
     assert ok and "after a check note" in detail
 
 
+def test_task_14_the_long_run_is_outside_the_bar_skipped_by_default_and_its_check_reads_every_page():
+    task = next(t for t in ev.TASKS if t["id"] == 14)
+    assert task["needs"] == "compaction" and 14 not in ev.BAR_IDS and len(ev.TYPOS) == 45
+    assert task["limits"] == {"max_steps": 100, "max_seconds": 3600} and task["run_cap"] > 3600
+    assert len({bad for bad, _, _ in ev.TYPOS}) == 45 and all(s.count(bad) == 1 and bad != good for bad, good, s in ev.TYPOS)
+
+    class Cmd:
+        @staticmethod
+        def available():
+            return True
+    assert not ev.features_available(Cmd)["compaction"]              # no flag, switch off: SKIPPED
+    assert ev.features_available(Cmd, "off")["compaction"] and ev.features_available(Cmd, None, True)["compaction"]
+    files = task["files"]
+    end = [{"type": "end", "status": "limit", "steps": 100}]
+    ok, detail = task["check"](files, end, "", None)
+    assert not ok and detail.startswith("0 of 45 pages fixed, ended limit after 100 steps")
+    fixed = {k: v for k, v in files.items()}
+    for i, (bad, good, _) in enumerate(ev.TYPOS, 1):
+        fixed[f"pages/p{i:02d}.html"] = files[f"pages/p{i:02d}.html"].replace(bad, good)
+    assert task["check"](fixed, end, "", None) == (True, "45 of 45 pages fixed, ended limit after 100 steps")
+    broken = dict(fixed, **{"pages/p07.html": fixed["pages/p07.html"].replace("<footer>", "<div>")})
+    ok, detail = task["check"](broken, end, "", None)
+    assert not ok and "missed p07" in detail                         # the rest of the page must stay as it was
+
+
 # ── two tries ──
 
 def test_second_try_sees_the_failure_and_either_try_passes_the_task():
