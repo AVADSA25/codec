@@ -641,7 +641,9 @@ def apply_blocks(pid: str, blocks: list[dict], label: str = "AI change") -> dict
 def list_checkpoints(pid: str, limit: int = 100) -> list[dict]:
     pdir = project_dir(pid)
     cps = _load_checkpoints(pdir)
-    return [_public(c) for c in reversed(cps)][:max(1, min(int(limit), 500))]
+    spans = _rewound_spans(cps)
+    return [dict(_public(c), rewound=True) if _in_spans(c["seq"], spans) else _public(c)
+            for c in reversed(cps)][:max(1, min(int(limit), 500))]
 
 
 def _find(cps: list[dict], cid: str) -> dict:
@@ -667,7 +669,7 @@ def _undo_target(cps: list[dict]) -> dict | None:
     return stack[-1] if stack else None
 
 
-def _restore_locked(pid: str, pdir: Path, target: dict, label: str, extra: dict) -> dict:
+def _restore_locked(pid: str, pdir: Path, target: dict, label: str, extra: dict, *, force: bool = False) -> dict:
     files = target["files"]
     for rel in files:
         safe_rel(rel)       # a damaged history must not be able to write outside the project
@@ -684,7 +686,7 @@ def _restore_locked(pid: str, pdir: Path, target: dict, label: str, extra: dict)
             except OSError:
                 pass
             _prune_empty_dirs(pdir, (pdir / rel).parent)
-    rec = _snapshot_locked(pid, pdir, label, "restore", extra=extra)
+    rec = _snapshot_locked(pid, pdir, label, "restore", extra=extra, force=force)
     if rec is None:    # restored to the state we were already in
         rec = (_load_checkpoints(pdir) or [None])[-1]
     _audit("vibe_restore", "Vibe restored a checkpoint", {
@@ -728,6 +730,211 @@ def undo_last_ai(pid: str) -> dict:
                               {"restored_to": parent["id"], "undid": ai["id"]})
         out["undid"] = ai["id"]
         return out
+
+
+# ── rewind, fork, rename (docs/VIBE-V4-DESIGN.md, P-077) ─────────────────
+# A rewind is a restore tagged with the chat and the vibe.db rows it hid; Undo rewind restores the state just before
+# it. Nothing is rewritten: both are new checkpoints, and the rows are hidden in vibe.db, never deleted.
+
+MAX_REWIND_ROWS = 5000
+UNVERSIONED_WALK_CAP = 20_000
+
+
+def _row_ids(rows) -> list[int]:
+    return [r for r in (rows if isinstance(rows, list) else [])
+            if isinstance(r, int) and not isinstance(r, bool) and r > 0][:MAX_REWIND_ROWS]
+
+
+def _rewinds(cps: list[dict]) -> list[dict]:
+    """Rewind checkpoints that were not undone, oldest first."""
+    undone = {c.get("unrewind") for c in cps if isinstance(c.get("unrewind"), str)}
+    return [c for c in cps if c.get("kind") == "restore" and isinstance(c.get("rewind"), dict) and c["id"] not in undone]
+
+
+def _rewound_spans(cps: list[dict]) -> list[tuple[int, int]]:
+    """(target seq, rewind seq) of every rewind in effect: what lies strictly between was rewound."""
+    seq = {c["id"]: c["seq"] for c in cps}
+    return [(seq.get(c.get("restored_to"), 0), c["seq"]) for c in _rewinds(cps)]
+
+
+def _in_spans(seq, spans: list[tuple[int, int]]) -> bool:
+    return isinstance(seq, int) and any(lo < seq < hi for lo, hi in spans)
+
+
+def rewound_checkpoints(pid: str) -> set[str]:
+    """Ids of the checkpoints a rewind in effect went back over (an agent run that started there was rewound)."""
+    cps = _load_checkpoints(project_dir(pid))
+    spans = _rewound_spans(cps)
+    return {c["id"] for c in cps if _in_spans(c["seq"], spans)}
+
+
+def rewind(pid: str, cid: str, session: str, rows) -> dict:
+    """Restore cid for a chat rewind: always a new 'restore' checkpoint, carrying the chat and the rows it hid."""
+    if not isinstance(session, str) or not session.strip():
+        raise VibeError(400, "Bad session id")
+    pdir = project_dir(pid)
+    with _lock(pid):
+        _refuse_during_agent_run(pid)
+        target = _find(_load_checkpoints(pdir), cid)
+        return _restore_locked(pid, pdir, target, "Rewound: " + (target["label"] or target["id"])[:180],
+                               {"restored_to": target["id"], "rewind": {"session": session[:80], "rows": _row_ids(rows)}},
+                               force=True)
+
+
+def undo_rewind(pid: str, rewind_id: str, session: str) -> dict:
+    """Put the files back as they were just before a rewind of this chat. Returns the rows it hid, as "rows"."""
+    pdir = project_dir(pid)
+    with _lock(pid):
+        _refuse_during_agent_run(pid)
+        cps = _load_checkpoints(pdir)
+        rec = _find(cps, rewind_id)
+        rw = rec.get("rewind")
+        if rec.get("kind") != "restore" or not isinstance(rw, dict) or rw.get("session") != session:
+            raise VibeError(404, "That is not a rewind of this chat")
+        if rec not in _rewinds(cps):
+            raise VibeError(409, "That rewind was already undone")
+        if not rec.get("parent"):
+            raise VibeError(409, "Nothing to go back to")
+        before = _find(cps, rec["parent"])
+        out = _restore_locked(pid, pdir, before, "Undid rewind", {"restored_to": before["id"], "unrewind": rewind_id},
+                              force=True)
+    out["rows"] = _row_ids(rw.get("rows"))
+    return out
+
+
+def rewind_state(pid: str, session: str) -> dict | None:
+    """The newest rewind of this chat that Undo rewind can still take back, or None."""
+    try:
+        cps = _load_checkpoints(project_dir(pid))
+    except VibeError:
+        return None
+    for c in reversed(_rewinds(cps)):
+        if c["rewind"].get("session") == session:
+            return {"checkpoint": c["id"], "restored_to": c.get("restored_to"), "rows": _row_ids(c["rewind"].get("rows")),
+                    "newest": c is cps[-1]}      # a later checkpoint means the work went on after the rewind
+    return None
+
+
+def checkpoint_changes(pid: str, cid: str) -> dict:
+    """What one checkpoint changed, per file, and the checkpoint that goes back to before it. An agent run's
+    checkpoint counts from the run's start checkpoint, so its chips show the whole run."""
+    pdir = project_dir(pid)
+    cps = _load_checkpoints(pdir)
+    rec = _find(cps, cid)
+    run = rec.get("run") if isinstance(rec.get("run"), str) and rec.get("run") else None
+    base = next((c for c in cps if c.get("run") == run), None) if run else None
+    if base is None and rec.get("parent"):
+        base = next((c for c in cps if c["id"] == rec["parent"]), None)
+    if base is rec:          # a run that changed nothing: its report stores the start checkpoint itself
+        base = None
+        changes: list[dict] = []
+    else:
+        changes = _changes(pdir, base["files"] if base else {}, rec["files"])
+    return {"checkpoint": _public(rec), "before": base["id"] if base else None, "changed": changes, "run": run}
+
+
+def fork_project(pid: str, cid: str) -> dict:
+    """A new project with exactly the files of checkpoint cid and the history up to it. The original is unchanged."""
+    src = project_dir(pid)
+    root = vibe_root()
+    with _lock(pid):
+        _refuse_during_agent_run(pid)
+        cps = _load_checkpoints(src)
+        target = _find(cps, cid)
+        history = cps[:cps.index(target) + 1]
+        for c in history:
+            for rel in c["files"]:
+                safe_rel(rel)       # a damaged history must not be able to write outside the new project
+        title = (str(_read_meta(src).get("title") or pid)[:72] + " (copy)")
+        for _ in range(20):
+            new = f"{_slug(title)}-{secrets.token_hex(3)}"
+            if not (root / new).exists():
+                break
+        else:
+            raise VibeError(500, "Could not name the project")
+        dest = root / new
+        dest.mkdir(mode=0o700)
+        try:
+            _objects(dest).mkdir(parents=True, mode=0o700)
+            for sha in sorted({h for c in history for h in c["files"].values()}):
+                data = _blob(src, sha)
+                if hashlib.sha256(data).hexdigest() != sha:
+                    raise VibeError(500, "A stored file version is damaged")
+                _store_blob(dest, sha, data)
+            with open(_cp_path(dest), "w", encoding="utf-8") as f:
+                for c in history:
+                    f.write(json.dumps(c, ensure_ascii=False, separators=(",", ":")) + "\n")
+            with _lock(new):
+                for rel, sha in target["files"].items():
+                    _write_bytes_locked(dest, rel, _blob(dest, sha))
+            # Last: until project.json exists the folder is not a project, so a failed copy is never listed.
+            _write_json_atomic(_meta_path(dest), {"id": new, "title": title, "created_at": _now(), "updated_at": _now(),
+                                                  "forked_from": {"project": pid, "checkpoint": cid}})
+        except Exception:
+            shutil.rmtree(dest, ignore_errors=True)
+            raise
+    _audit("vibe_project_fork", "Vibe project copied from a checkpoint",
+           {"project": new, "from": pid, "checkpoint": cid, "files": len(target["files"])})
+    return project_info(new)
+
+
+def rename_project(pid: str, title) -> dict:
+    """The shown name only: the id and the folder stay."""
+    title = re.sub(r"\s+", " ", title.strip())[:80] if isinstance(title, str) else ""
+    if not title:
+        raise VibeError(400, "Write the new name first")
+    pdir = project_dir(pid)
+    with _lock(pid):
+        _refuse_during_agent_run(pid)
+        meta = _read_meta(pdir)
+        meta["title"] = title
+        _write_json_atomic(_meta_path(pdir), meta)
+    return {"id": pid, "title": title}
+
+
+def unversioned(pid: str) -> dict:
+    """Files in the folder that no checkpoint keeps: inside an ignored folder (by its name), over 1 MB, or links.
+    .vibe and .git are left out of the count. The walk stops after UNVERSIONED_WALK_CAP entries."""
+    pdir = project_dir(pid)
+    folders: dict[str, int] = {}
+    large = links = seen = 0
+    capped = False
+    for dirpath, dirnames, filenames in os.walk(str(pdir), followlinks=False):
+        keep = []
+        for d in dirnames:
+            full, low = os.path.join(dirpath, d), d.lower()
+            if os.path.islink(full):
+                links += 1
+            elif low in (META_DIR, ".git"):
+                pass
+            elif low in _SCAN_IGNORED_DIRS:
+                n = 0
+                for _dp, _dn, fn in os.walk(full, followlinks=False):
+                    n += len(fn)
+                    seen += len(fn) + 1
+                    if seen > UNVERSIONED_WALK_CAP:
+                        capped = True
+                        break
+                folders[low] = folders.get(low, 0) + n
+            else:
+                keep.append(d)
+        dirnames[:] = [] if capped else keep
+        for name in filenames:
+            seen += 1
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                links += 1
+            elif not _ignored_name(name):
+                try:
+                    if os.path.getsize(full) > MAX_FILE_BYTES:
+                        large += 1
+                except OSError:
+                    pass
+        if capped or seen > UNVERSIONED_WALK_CAP:
+            capped = True
+            break
+    return {"count": sum(folders.values()) + large + links, "folders": folders, "large": large, "links": links,
+            "capped": capped}
 
 
 # ── commands the owner has allowed for this project (docs/VIBE-AGENT-DESIGN.md, section 7) ──
