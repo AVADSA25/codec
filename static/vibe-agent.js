@@ -32,7 +32,7 @@
       startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
       ranCommands: false, end: null, finished: false, offset: 0, modelKind: 'local', continues: null, continuable: false,
       ownerStop: false, notes: [], todo: [], mode: 'default', planFrom: null, planReady: false,
-      modelId: '', tokens: null, spent: null, cap: null, commands: true };
+      modelId: '', tokens: null, spent: null, cap: null, commands: true, subs: {} };
   }
 
   function addUnique(list, items) {
@@ -72,6 +72,7 @@
         return [{ t: 'todo', items: run.todo }];
       case 'note':
         run.live = ''; run.liveStep = 0;
+        if (ev.sub > 0) run.subs[ev.step] = Math.max(run.subs[ev.step] || 0, ev.sub);   // a helper's steps count (P-072)
         return [{ t: 'live', text: '' }, { t: 'note', step: ev.step, text: ev.text }];
       case 'text': {
         if (ev.step !== run.liveStep) { run.live = ''; run.liveStep = ev.step; }
@@ -176,6 +177,8 @@
       case 'finish': return 'Finishing';
       case 'todo': return 'Updating its todo list';
       case 'playbook': return 'Loading the playbook' + a;
+      case 'reads': return 'Reading several' + (arg ? ': ' + arg : '');
+      case 'delegate': return 'Asking a read-only helper' + (arg ? ': ' + arg : '');
       default: return name;
     }
   }
@@ -183,6 +186,7 @@
   function statusText(run) { return STATUS_TEXT[run.status] || run.status; }
   function stepText(run) {
     var own = Math.max(0, run.step - (run.offset || 0));
+    for (var k in run.subs || {}) own += run.subs[k];               // a delegate helper's steps count toward the limit
     if (run.finished) return own + (own === 1 ? ' step' : ' steps');
     return own ? 'Step ' + Math.min(own, run.maxSteps) + ' of ' + run.maxSteps : 'Starting';
   }

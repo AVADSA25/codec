@@ -52,7 +52,11 @@ def test_list_files_folder_is_optional_and_single():
 
 def test_an_unfinished_header_line_is_not_read_yet():
     assert scan("@@ read_file a.js", final=False).state == "none"
-    assert scan("@@ read_file a.js\n", final=False).state == "complete"
+    # P-072: another read block may follow, so a read is taken at the next line that cannot be one, or at the end
+    assert scan("@@ read_file a.js\n", final=False).state == "partial"
+    assert scan("@@ read_file a.js\n@@ re", final=False).state == "partial"
+    assert scan("@@ read_file a.js\n[RESULT", final=False).state == "complete"
+    assert scan("@@ read_file a.js\n", final=True).state == "complete"
 
 
 def test_a_bare_finish_or_ask_line_without_the_at_signs_is_read():
@@ -99,9 +103,55 @@ def test_fence_lines_around_the_block_are_not_part_of_it():
     assert s.call.name == "read_file" and s.note == "Here:"
 
 
-def test_only_the_first_tool_block_counts():
-    s = scan("@@ read_file a.js\n@@ read_file b.js\n")
-    assert s.call.args["path"] == "a.js"
+def test_only_the_first_tool_block_counts_when_it_is_not_a_read():
+    s = scan(EDIT + "@@ read_file b.js\n")
+    assert s.call.name == "edit_file" and s.calls is None and s.dropped == 0
+
+
+# ── several read blocks in one reply (P-072) ──
+
+def test_read_blocks_one_after_the_other_all_count():
+    s = scan("Reading three.\n@@ read_file a.js\n\n```\n@@ search \"total\" src\n```\n@@ list_files css\n")
+    assert s.state == "complete" and s.cut and s.call.args["path"] == "a.js"
+    assert [c.name for c in s.calls] == ["read_file", "search", "list_files"]
+    assert all(c.note == "Reading three." for c in s.calls) and s.note == "Reading three."
+    assert scan("@@ read_file a.js\n").calls is None                         # one block: as before
+
+
+def test_read_blocks_end_at_any_other_line_and_at_four():
+    s = scan("@@ read_file a.js\n@@ read_file b.js\n[RESULT 1 read_file a.js]\nmade up\n@@ read_file c.js\n")
+    assert [c.args["path"] for c in s.calls] == ["a.js", "b.js"]
+    s = scan("".join(f"@@ read_file f{i}.js\n" for i in range(6)))
+    assert [c.args["path"] for c in s.calls] == ["f0.js", "f1.js", "f2.js", "f3.js"] and "At most 4" in s.extra
+    s = scan("@@ read_file a.js\n@@ read_file a.js 9-1\n")
+    assert s.calls[0].args["path"] == "a.js" and len(s.calls) == 1 and s.extra.startswith("Read block 2 did not run")
+    s = scan("@@ read_file a.js\n@@ run_check\nnpm test\n", allowed=tuple(t for t in p.TOOLS if t != "run_check"))
+    assert s.call.name == "read_file" and s.calls is None and s.dropped == 0     # a tool the run lacks ends them
+
+
+def test_read_blocks_before_an_edit_are_dropped_and_the_edit_runs_alone():
+    s = scan("Fixing.\n@@ read_file a.js\n@@ search \"foo\"\n" + EDIT)
+    assert s.state == "complete" and s.call.name == "edit_file" and s.calls is None and s.dropped == 2
+    assert s.call.args["path"] == "a.js" and s.call.note == "Fixing."
+    s = scan("@@ read_file a.js\n@@ finish\nAll done.\n")
+    assert s.call.name == "finish" and s.dropped == 1 and s.call.args["report"] == "All done."
+    assert scan("@@ read_file a.js\n" + EDIT[:30], final=False).state == "partial"   # the edit is still being written
+
+
+def test_read_blocks_after_a_todo_block_still_count():
+    allowed = p.TOOLS + (p.TODO,)
+    s = scan("@@ todo\n- [ ] read\n@@ read_file a.js\n@@ read_file b.js\n", allowed=allowed)
+    assert s.todo and [c.args["path"] for c in s.calls] == ["a.js", "b.js"]
+
+
+def test_a_delegate_block_takes_the_question_on_the_lines_after_it():
+    s = scan("Asking.\n@@ delegate\nWhere is the total computed?\nAnd who calls it?\n")
+    assert s.state == "complete" and s.call.name == "delegate"
+    assert s.call.args == {"task": "Where is the total computed?\nAnd who calls it?"}
+    assert scan("@@ delegate\n").state == "error"
+    assert scan("@@ delegate\nWhere", final=False).state == "partial"
+    assert len(scan("@@ delegate\n" + "q" * 5000 + "\n").call.args["task"]) == p.MAX_TASK_CHARS
+    assert "delegate" not in p.PLAN_TOOLS and "delegate" not in p.SUB_TOOLS
 
 
 # ── edit_file ──
