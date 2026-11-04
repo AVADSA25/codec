@@ -22,6 +22,8 @@
   var LIVE_CHARS = 220;
   var HISTORY_TURNS = 4;
   var MAX_NOTE = 300;                                                       // as codec_vibe_agent_proto.MAX_NOTE_CHARS
+  var MAX_PLAN = 4000;                                                      // as codec_vibe_agent_proto.MAX_PLAN_CHARS (P-047)
+  var MAX_PLAN_NOTE = 600;                                                  // as codec_vibe_agent_proto.MAX_PLAN_NOTE_CHARS
 
   // ── what a run looks like, from its events ─────────────────────────────
 
@@ -29,7 +31,7 @@
     return { pid: pid, id: null, status: 'running', goal: '', model: '', maxSteps: 30, step: 0, since: 0, startedAt: 0,
       startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
       ranCommands: false, end: null, finished: false, offset: 0, modelKind: 'local', continues: null, continuable: false,
-      ownerStop: false, notes: [], todo: [] };
+      ownerStop: false, notes: [], todo: [], mode: 'default', planFrom: null, planReady: false };
   }
 
   function addUnique(list, items) {
@@ -52,7 +54,10 @@
         run.continues = ev.continues || null;
         run.offset = ev.continues ? (ev.earlier_steps || 0) : 0;      // a continued run counts its own steps from 1
         run.notes = Array.isArray(ev.notes) ? ev.notes : [];          // the project notes it read (P-046)
+        run.mode = ev.mode === 'plan' ? 'plan' : 'default';           // a plan run, or a run that follows a plan (P-047)
+        run.planFrom = ev.plan_from || null;
         return [{ t: 'meta' }].concat(notesLine(run.notes) ? [{ t: 'note', step: 0, text: notesLine(run.notes) }] : [])
+          .concat(planNote(run, ev) ? [{ t: 'note', step: 0, text: planNote(run, ev) }] : [])
           .concat(run.continues ? [{ t: 'note', step: 0, text: 'This run goes on from where the last one stopped' +
             (run.offset ? ' (' + run.offset + (run.offset === 1 ? ' step' : ' steps') + ' done before).' : '.') }] : [])
           .concat(run.canRun ? [] : [{ t: 'note', step: 0, text: 'Commands are off for this run: it was started away from this Mac.' }]);
@@ -178,6 +183,36 @@
   // What Continue adds to the chat, so a reload still finds the run (see unreported()).
   function continueLabel(goal) { return 'Continue: ' + String(goal || '').trim(); }
   function isActive(run) { return !!run && !run.finished && !!ACTIVE[run.status]; }
+
+  // ── plan mode (P-047, docs/VIBE-AGENT-PLAN-MODE-DESIGN.md) ──
+  // The line a run's card starts with when it plans, or follows a plan; '' for any other run.
+  function planNote(run, ev) {
+    if (run.mode === 'plan') return 'Plan mode: the agent reads the project and writes a plan. It changes no file except PLAN.md.';
+    if (ev && ev.plan) return ev.plan_edited ? 'This run follows your version of the plan.' : 'This run follows the plan you chose.';
+    return '';
+  }
+
+  // The plan card's choices are offered when the server says so: a plan run that ended done and is the project's newest.
+  function canUsePlan(run) { return !!(run && run.finished && run.mode === 'plan' && run.planReady && run.status === 'done'); }
+
+  // The owner's text for a choice: his own version of the plan (build) or what should change (again).
+  function planTextFits(decision, text) {
+    var t = String(text || '').trim();
+    return t.length > 0 && t.length <= (decision === 'again' ? MAX_PLAN_NOTE : MAX_PLAN);
+  }
+
+  // The body of POST .../agent/{run}/plan. 'build' with no text builds the plan as written. confirm_cloud is true only
+  // for the cloud model and an explicit yes from its dialog.
+  function planRequest(decision, text, model, confirmed) {
+    var cloud = model === 'cloud', again = decision === 'again', t = String(text || '').trim();
+    var body = { decision: again ? 'again' : 'build', model: cloud ? 'cloud' : 'local', confirm_cloud: cloud && confirmed === true };
+    if (again) body.note = t;
+    else if (t) body.plan = t;
+    return body;
+  }
+
+  // What a choice adds to the chat, so a reload still finds the new run (see unreported()).
+  function planLabel(decision, goal) { return (decision === 'again' ? 'Plan again: ' : 'Build the plan: ') + String(goal || '').trim(); }
 
   function fmtElapsed(seconds) {
     var s = Math.max(0, Math.floor(seconds || 0));
@@ -447,7 +482,8 @@
     runRequest: runRequest, mentionAt: mentionAt, mentionMatches: mentionMatches, insertMention: insertMention,
     composerKey: composerKey, projectFromQuery: projectFromQuery, checkCommand: checkCommand, afterRunChips: afterRunChips,
     selectionBlock: selectionBlock, clock: clock, stepTitle: stepTitle,
-    notesLine: notesLine, todoItems: todoItems,
+    notesLine: notesLine, todoItems: todoItems, planNote: planNote, canUsePlan: canUsePlan, planTextFits: planTextFits,
+    planRequest: planRequest, planLabel: planLabel,
     contextMeter: contextMeter, compactText: compactText };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
@@ -459,7 +495,7 @@
 
   var VP = root.VibeProj;
   var S = { available: false, mode: 'chat', model: 'local', models: null, run: null, pid: null, card: null, timer: null,
-    clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {}, compact: false, editor: null };
+    clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {}, compact: false, editor: null, plan: false };
   var M = { open: false, at: null, items: [], sel: 0, query: null };      // the @file list under the composer (P-069)
   var RUN_HINT = 'Message the agent (it reads it at its next step). Esc stops it.';
   var KEY = 'vibeAgentMode';
@@ -531,6 +567,12 @@
     if (chat) { chat.classList.toggle('sel', S.mode === 'chat'); chat.setAttribute('aria-pressed', S.mode === 'chat' ? 'true' : 'false'); }
     if (agent) { agent.classList.toggle('sel', S.mode === 'agent'); agent.setAttribute('aria-pressed', S.mode === 'agent' ? 'true' : 'false'); }
     if (sel) sel.hidden = !(S.available && S.models && S.models.cloud);   // chat and agent share the choice (D-22)
+    var plan = $('amPlan');                                  // Plan first: the next agent run plans before it builds (P-047)
+    if (plan) {
+      plan.hidden = !(S.available && S.mode === 'agent');
+      plan.classList.toggle('sel', S.plan);
+      plan.setAttribute('aria-pressed', S.plan ? 'true' : 'false');
+    }
     var vi = $('vi');
     if (vi) {
       if (!vi.dataset.chatHint) vi.dataset.chatHint = vi.placeholder;
@@ -571,6 +613,13 @@
     var chat = $('amChat'), agent = $('amAgent'), sel = $('amModel');
     if (chat) chat.addEventListener('click', function () { setMode('chat'); });
     if (agent) agent.addEventListener('click', function () { setMode('agent'); });
+    if (agent && !$('amPlan')) {                                  // P-047: built here, next to Agent
+      var plan = el('button', 'amb', 'Plan first');
+      plan.type = 'button'; plan.id = 'amPlan'; plan.hidden = true; plan.setAttribute('aria-pressed', 'false');
+      plan.title = 'The next agent run reads the project and writes a plan. Nothing changes until you choose to build it.';
+      plan.addEventListener('click', function () { S.plan = !S.plan; renderMode(); });
+      agent.parentNode.insertBefore(plan, agent.nextSibling);
+    }
     if (sel) sel.addEventListener('change', function () { S.model = sel.value === 'cloud' ? 'cloud' : 'local'; });
     var vi = $('vi');
     if (vi) vi.addEventListener('keydown', function (e) {        // Esc in the composer stops a working agent (P-044)
@@ -935,6 +984,7 @@
     c.end.hidden = false;
     c.end.textContent = '';
     c.end.appendChild(el('p', 'agc-rep', end.report || statusText(r)));
+    if (canUsePlan(r)) drawPlan(c, r);                      // the plan's three choices (P-047)
     if (canContinue(r)) {                                   // goes on from where it stopped, with a fresh step budget
       var more = el('div', 'agc-ea');
       var go = el('button', 'agc-btn', 'Continue'); go.type = 'button';
@@ -1054,6 +1104,7 @@
       var cut = synthEnd(run, d);
       if (cut) effects = effects.concat(applyEvent(run, cut));
       if (d.finished) run.continuable = !!d.continuable;          // the server says whether Continue can work
+      if (d.finished) run.planReady = !!d.plan_ready;             // and whether the plan card's choices can (P-047)
       draw(effects);
       if (raw && S.card === card && card.raw) drawReplies(card, d.replies);
       if (run.finished) return finished(run);
@@ -1165,6 +1216,7 @@
   // Start a run on a goal. inp is the composer, or null for a queued message (put back if the owner says no).
   function startRun(text, inp) {
     var model = S.model === 'cloud' ? 'cloud' : 'local';       // fixed now: a /model or a list change while asking does not count
+    var plan = S.plan === true;                                 // Plan first, fixed now too (P-047)
     var go = model === 'cloud' ? confirmCloud() : Promise.resolve(true);
     return go.then(function (ok) {
       if (ok !== true) { if (!inp) backToComposer(text); return; }
@@ -1177,8 +1229,10 @@
         if (!pm) { if (root.addMsg) root.addMsg('assistant', 'The agent needs project mode, which is not available here.'); return; }
         S.pid = VP.id();
         var body = runRequest(text, model, ok, earlier);         // confirm_cloud only after the dialog's yes
+        if (plan) body.mode = 'plan';
         if (root._vibePrivate === true) body.temporary = true;   // a private chat: the run keeps no log (P-077)
         return api('POST', base(S.pid, '/run'), body).then(function (res) {
+          if (plan) { S.plan = false; renderMode(); }           // plan mode is chosen per run
           var run = newRun(S.pid);
           run.id = res.run; run.goal = text; run.model = (res.model && res.model.label) || ''; run.maxSteps = (res.limits && res.limits.max_steps) || 30;
           run.startedAt = Date.now() / 1000;
@@ -1228,7 +1282,8 @@
     var m = h[h.length - 1];
     if (!m || m.role !== 'user') return false;
     var said = String(m.plain || m.content || '').trim().slice(0, 200);
-    return said === String(last.goal || '').trim().slice(0, 200) || said === continueLabel(last.goal).slice(0, 200);
+    return said === String(last.goal || '').trim().slice(0, 200) || said === continueLabel(last.goal).slice(0, 200) ||
+      said === planLabel('build', last.goal).slice(0, 200) || said === planLabel('again', last.goal).slice(0, 200);
   }
 
   // Continue: a new run goes on from where this one stopped, with a fresh step budget. A cloud run asks again,
@@ -1256,6 +1311,94 @@
         poll();
         if (typeof root.doSaveSes === 'function') root.doSaveSes();
       }).catch(function (e) { btn.disabled = false; toast('Could not continue: ' + e.message); });
+    });
+  }
+
+  // The plan card (P-047): build it as written, change it first, or plan again with a line on what should change.
+  // The plan and the owner's text go in as text; nothing starts before a click.
+  function drawPlan(c, run) {
+    var box = el('div', 'agc-plan');
+    box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'What to do with this plan');
+    var row = el('div', 'agc-ea');
+    var build = el('button', 'agc-btn', 'Build this plan'), edit = el('button', 'agc-btn quiet', 'Change it first'),
+      again = el('button', 'agc-btn quiet', 'Plan again');
+    build.title = 'Start a run that follows this plan';
+    edit.title = 'Edit the plan, then build your version';
+    again.title = 'Say what should change; the agent writes a new plan';
+    [build, edit, again].forEach(function (b) { b.type = 'button'; row.appendChild(b); });
+    var editForm = el('form', 'agc-pf'); editForm.hidden = true;
+    var area = el('textarea', 'agc-pe'); area.setAttribute('aria-label', 'Your version of the plan'); area.maxLength = MAX_PLAN;
+    var editRow = el('div', 'agc-ea');
+    var mine = el('button', 'agc-btn', 'Build my version'); mine.type = 'submit';
+    var back1 = el('button', 'agc-btn quiet', 'Cancel'); back1.type = 'button';
+    editRow.appendChild(mine); editRow.appendChild(back1);
+    editForm.appendChild(area); editForm.appendChild(editRow);
+    var againForm = el('form', 'agc-qf agc-pa'); againForm.hidden = true;
+    var line = el('input'); line.type = 'text'; line.maxLength = MAX_PLAN_NOTE; line.placeholder = 'What should change?';
+    line.setAttribute('aria-label', 'What should change in the plan');
+    var send = el('button', 'agc-btn', 'Send'); send.type = 'submit';
+    var back2 = el('button', 'agc-btn quiet', 'Cancel'); back2.type = 'button';
+    againForm.appendChild(line); againForm.appendChild(send); againForm.appendChild(back2);
+    box.appendChild(row); box.appendChild(editForm); box.appendChild(againForm);
+    var all = [build, edit, again, area, mine, back1, line, send, back2];
+    function show(form) {
+      row.hidden = !!form; editForm.hidden = form !== editForm; againForm.hidden = form !== againForm;
+      if (form === editForm) { area.value = (run.end && run.end.report) || ''; area.focus({ preventScroll: true }); }
+      if (form === againForm) line.focus({ preventScroll: true });
+    }
+    function choose(decision, text) {
+      if (decision === 'again' || text) {
+        if (!planTextFits(decision, text)) {
+          toast(decision === 'again' ? 'Say in 1 to ' + MAX_PLAN_NOTE + ' characters what should change.'
+            : 'The plan must have 1 to ' + MAX_PLAN + ' characters.');
+          return;
+        }
+      }
+      usePlan(run, decision, text, all, box);
+    }
+    build.addEventListener('click', function () { choose('build', ''); });
+    edit.addEventListener('click', function () { show(editForm); });
+    again.addEventListener('click', function () { show(againForm); });
+    back1.addEventListener('click', function () { show(null); });
+    back2.addEventListener('click', function () { show(null); });
+    editForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = area.value.trim();
+      if (!text) { toast('The plan must have 1 to ' + MAX_PLAN + ' characters.'); return; }     // an emptied box builds nothing
+      choose('build', text === String((run.end && run.end.report) || '').trim() ? '' : text);   // unchanged: as written
+    });
+    againForm.addEventListener('submit', function (e) { e.preventDefault(); choose('again', line.value); });
+    c.end.appendChild(box);
+  }
+
+  // A choice on the plan card starts a new run, as Continue does: a cloud model asks first, and commands follow this
+  // page's own place (the server decides from the request).
+  function usePlan(old, decision, text, controls, box) {
+    if (S.run !== old || running() || !canUsePlan(old)) return;
+    var model = S.model === 'cloud' ? 'cloud' : 'local';
+    var go = model === 'cloud' ? confirmCloud() : Promise.resolve(true);
+    return go.then(function (ok) {
+      if (ok !== true || S.run !== old || running()) return;
+      controls.forEach(function (n) { n.disabled = true; });
+      return api('POST', base(old.pid, '/' + old.id + '/plan'), planRequest(decision, text, model, ok)).then(function (res) {
+        box.hidden = true;
+        old.planReady = false;
+        var label = planLabel(decision, old.goal);
+        if (typeof root.addMsg === 'function') root.addMsg('user', label);
+        if (root.hist) root.hist.push({ role: 'user', content: label, plain: label });
+        var run = newRun(old.pid);
+        run.id = res.run; run.goal = old.goal; run.model = (res.model && res.model.label) || '';
+        run.modelKind = (res.model && res.model.kind) || model;
+        run.maxSteps = (res.limits && res.limits.max_steps) || 30;
+        run.mode = res.mode === 'plan' ? 'plan' : 'default';
+        run.startedAt = Date.now() / 1000;
+        mount(run);
+        poll();
+        if (typeof root.doSaveSes === 'function') root.doSaveSes();
+      }).catch(function (e) {
+        controls.forEach(function (n) { n.disabled = false; });
+        toast('Could not start it: ' + e.message);
+      });
     });
   }
 

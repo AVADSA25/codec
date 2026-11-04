@@ -207,6 +207,25 @@ def check_syntax_fixed(files, events, report, pdir=None):
     return True, "app.py parses and the tests pass" + (" (after a check note)" if noted else " (fixed before any check note)")
 
 
+PLAN_TASK_FILES = {"index.html": page(), "style.css": BASE_CSS, "app.js": "// the page script\n"}
+
+
+def check_plan(files, events, report, pdir=None):
+    """Plan mode (P-047): it ends with a plan that names the project's files, and no file changed except PLAN.md."""
+    end = next((e for e in events if e["type"] == "end"), {})
+    problems = []
+    if end.get("status") != "done":
+        problems.append(f"ended as {end.get('status')}")
+    if {p: c for p, c in files.items() if p != "PLAN.md"} != PLAN_TASK_FILES:
+        problems.append("a project file changed in plan mode")
+    if len(report.strip()) < 120:
+        problems.append("the plan is shorter than 120 characters")
+    if not any(name in report for name in PLAN_TASK_FILES):
+        problems.append("the plan names none of the project's files")
+    refused = sum(1 for e in events if e["type"] == "result" and "not allowed in plan mode" in str(e.get("output", "")))
+    return not problems, "; ".join(problems) or f"a plan of {len(report)} characters, no file changed ({refused} refused calls)"
+
+
 # Task 14 (P-049): a run long enough to fill the context. Each page has one misspelled word in its first paragraph:
 # (misspelling, right spelling, the sentence it sits in). No search finds them, so every page is read and edited.
 TYPOS = [
@@ -387,6 +406,9 @@ TASKS = [
      "check": check_typos, "files": long_run_files(), "limits": {"max_steps": 100, "max_seconds": 3600}, "run_cap": 4200,
      "goal": f"Each of the {len(TYPOS)} pages in the pages folder has exactly one misspelled English word in its first "
              "paragraph. Read every page and fix that word. Change nothing else."},
+    {"id": 15, "kind": "behaviour", "title": "plan mode: a plan, and no file changed (P-047)", "needs": "plan_mode",
+     "mode": "plan", "check": check_plan, "files": PLAN_TASK_FILES,
+     "goal": "Add a dark mode toggle button to the page. Clicking it switches between light and dark colours, and the choice is remembered after reloading the page."},
 ]
 
 
@@ -428,7 +450,8 @@ def features_available(cmdmod, compaction=None, switched_on=False):
 
     compaction (P-049): the long-run task runs only when --compaction names how (off measures masking alone), or when
     the owner switched compaction on in config.json (it then runs with it on)."""
-    return {"run_check": bool(cmdmod.available()), "compaction": compaction in ("off", "on") or bool(switched_on)}
+    return {"run_check": bool(cmdmod.available()), "compaction": compaction in ("off", "on") or bool(switched_on),
+            "plan_mode": True}
 
 
 def count_failures(events):
@@ -487,7 +510,8 @@ def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None):
     if compaction in ("off", "on") and task.get("needs") == "compaction":     # P-049: off = masking alone
         cfg["vibe_agent"]["compact"] = compaction == "on"
     va._cfg = lambda: cfg
-    started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check")
+    started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check",
+                           mode=task.get("mode", "default"))
     run_id = started["run"]
     try:
         events, capped = follow_run(task, va, pid, run_id, verbose)
