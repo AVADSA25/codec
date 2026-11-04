@@ -642,6 +642,7 @@ def _config() -> dict:
 
 def _run_prompt(sched: dict, context: str = ""):
     import codec_llm
+    import codec_models
     from codec_config import get_llm_api_key
     config = _config()
     user = str(sched.get("prompt") or "")
@@ -653,7 +654,7 @@ def _run_prompt(sched: dict, context: str = ""):
                                           "Answer directly and completely, with no preamble."},
              {"role": "user", "content": user}],
             base_url=config.get("llm_base_url", "http://localhost:8083/v1"),
-            model=config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
+            model=codec_models.resolve("chat", config),
             api_key=get_llm_api_key() or "", max_tokens=4000, temperature=0.4, timeout=300,
             extra_kwargs=config.get("llm_kwargs") or {}, raise_on_error=True)
     except Exception as e:
@@ -712,9 +713,10 @@ def _speak_on_mac(text: str) -> None:
     import tempfile
     config = _config()
     try:
+        import codec_models
         import codec_tts
         spoken = codec_tts.speak(config.get("tts_url", "http://localhost:8085/v1/audio/speech"), words, "speak",
-                                 {"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                                 {"model": codec_models.resolve("tts", config),
                                   "voice": config.get("tts_voice", "am_adam"),
                                   "speed": float(config.get("tts_speed", 1.0))}, cfg=config, timeout=120)
         if not spoken.audio:

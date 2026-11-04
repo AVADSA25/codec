@@ -1126,7 +1126,7 @@ async def _warmup_vision():
         import codec_models
         # P-013: one server holds one model. Warming another vision model on the
         # chat model's server unloaded the chat model at every start: send nothing.
-        model = codec_models.vision_model(config, vision_url, "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        model = codec_models.vision_model(config, vision_url, codec_models.default_for("vision"))
         base, loaded = codec_models.local_server_model(config)
         if model != loaded and codec_models.same_server(vision_url, base):
             log.info("[WARMUP] Vision warm-up skipped: the chat model's server holds another model")

@@ -5,7 +5,7 @@ reference clip, so the voice is the one the owner picked. Anything wrong (no cli
 not audio) falls back once to the Kokoro request the caller already built, so speech never stops.
 Without `tts_clone` every request is exactly what it was.
 
-    "tts_clone": {"enabled_for": ["speak"], "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+    "tts_clone": {"enabled_for": ["speak"], "model": "<hub id of Qwen3-TTS-12Hz-1.7B-Base-bf16>",
                   "ref_audio": "~/.codec/voices/codec-02/reference.wav",
                   "ref_text_file": "~/.codec/voices/codec-02/reference.txt"}
 
@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 import requests
+
+import codec_models
 
 log = logging.getLogger("codec.tts")
 
@@ -189,7 +191,7 @@ def warm_up(url: Optional[str] = None, cfg: Optional[dict] = None, purpose: Opti
     `purpose` None tries "speak", then "live", whichever is enabled. Meant for a background thread. True when the clone answered."""
     cfg = cfg if cfg is not None else load_config()
     url = url or cfg.get("tts_url") or "http://localhost:8085/v1/audio/speech"
-    kokoro = {"model": cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16"), "voice": cfg.get("tts_voice", "am_adam"),
+    kokoro = {"model": codec_models.resolve("tts", cfg), "voice": cfg.get("tts_voice", "am_adam"),
               "speed": float(cfg.get("tts_speed", 1.0))}
     for which in ([purpose] if purpose else ["speak", "live"]):
         if clone_settings(cfg, which):

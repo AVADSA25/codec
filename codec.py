@@ -34,7 +34,7 @@ if _BREW not in os.environ.get("PATH", ""):
 from codec_config import (
     cfg as _cfg,
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS,
-    WHISPER_URL,
+    WHISPER_URL, STT_MODEL,
     TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
     WAKE_FOLLOWUP_SEC, WAKE_PHRASES,
     get_gemini_api_key,
@@ -808,7 +808,7 @@ def wake_word_listener():
                 with open(tmp.name, "rb") as f:
                     r = req_wake.post(WHISPER_URL,
                         files={"file": ("wake.wav", f, "audio/wav")},
-                        data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
+                        data={"model": STT_MODEL, "language": "en"},
                         timeout=10)
                 if r.status_code == 200:
                     text = r.json().get("text", "").lower().strip()

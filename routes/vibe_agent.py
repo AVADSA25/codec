@@ -80,8 +80,12 @@ async def commands(pid: str, request: Request):
 
 
 @router.get("/api/vibe/projects/{pid}/agent/{run_id}")
-async def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0):
-    return await _call(va.get_run, pid, run_id, since, wait)
+async def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0, replies: int = -1):
+    view = await _call(va.get_run, pid, run_id, since, wait)
+    if replies >= 0 and isinstance(view, dict):        # the Raw replies switch asks by name (P-069); never by default
+        got = await _call(va.run_replies, pid, run_id, replies)
+        view["replies"] = got if isinstance(got, list) else []
+    return view
 
 
 @router.post("/api/vibe/projects/{pid}/agent/{run_id}/stop")

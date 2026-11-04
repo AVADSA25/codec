@@ -9,6 +9,8 @@ import tempfile
 import base64
 import requests
 
+import codec_models
+
 def run(task, app="", ctx=""):
     try:
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
@@ -16,7 +18,8 @@ def run(task, app="", ctx=""):
         with open(tmp.name, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
         r = requests.post("http://localhost:8083/v1/chat/completions", json={
-            "model": "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
+            # The built-in vision default, config not read, as before (P-057 keeps the id it sends).
+            "model": codec_models.default_for("vision"),
             "messages": [{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
                 {"type": "text", "text": "Describe everything visible on this screen. What apps are open? What text is visible? Be concise but complete."}

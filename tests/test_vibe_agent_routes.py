@@ -1,6 +1,7 @@
 """Vibe coding agent, step 3a: the HTTP routes (routes/vibe_agent.py) on top of a scripted model."""
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -320,3 +321,25 @@ def test_message_route_works_from_the_tunnel_and_checks_its_text(client, scripte
     assert [e["text"] for e in events if e["type"] == "message"] == ["y" * 300]
     assert "The owner says: " + "y" * 300 in model.calls[1][-1]["content"]
     assert client.post(url, json={"text": "late"}).status_code == 409
+
+
+def test_raw_replies_come_only_when_asked_by_name(client, scripted):
+    pid = make_project()
+    token = "Bearer " + "k9" * 15                   # a secret shape, built here so that no key-like text sits in the repo
+    write = f"I will add the notes.\n@@ write_file notes.txt\n<<<<<<< CONTENT\nAuthorization: {token}\n>>>>>>> END\n"
+    replies = ["Hmm.\n@@ read_file style.css\n", write, "@@ finish\nAdded notes.txt.\n"]
+    scripted(replies)
+    run_id = start(client, pid).json()["run"]
+    last, events = finish_view(client, pid, run_id)
+    url = f"/api/vibe/projects/{pid}/agent/{run_id}"
+    plain = client.get(url).json()
+    assert "replies" not in last and "replies" not in plain                       # the default view never carries them
+    assert all(e["type"] != "reply" for e in events + plain["events"])
+    every = client.get(url, params={"replies": 0}).json()
+    assert [r["step"] for r in every["replies"]] == [1, 2, 3] and every["events"] == plain["events"]
+    assert every["replies"][0]["text"] == replies[0] and every["replies"][0]["redacted"] is False
+    assert every["replies"][1]["redacted"] is True and every["replies"][1]["chars"] == len(write)
+    assert "<REDACTED:bearer_token>" in every["replies"][1]["text"] and token not in json.dumps(every)
+    assert [r["step"] for r in client.get(url, params={"replies": 2}).json()["replies"]] == [3]
+    assert client.get(url, params={"replies": "x"}).status_code == 422
+    assert client.get(f"/api/vibe/projects/{pid}/agent/r00000000", params={"replies": 0}).status_code == 404
