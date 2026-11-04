@@ -506,6 +506,9 @@ function toggleVibeMic(){
 var ed = null;
 var hist = [];
 var _vibePrivate = false;   // a private chat (P-077): nothing of it goes to vibe.db, an agent run keeps no log
+// True from a rewind or its undo until ldSes has the chat again: vibe.db then holds other rows than hist, and a save
+// (full sync) would copy hidden messages back or delete the ones the undo showed again (P-077).
+var _vibeResync = false;
 var sesId = Date.now().toString(36) + Math.random().toString(36).substr(2,5);
 var thinkTmr = null;
 
@@ -1236,6 +1239,7 @@ function ldSes(sid) {
         hist.push({role: m.role, content: m.content || '', checkpoint: m.checkpoint || null});
       }
     }
+    _vibeResync = false;                          // hist is vibe.db's visible rows again
     if (pid && d.rewind) document.getElementById('cm').appendChild(_rewindNote(d.rewind));
     else if (d.hidden) addOut('sy', d.hidden + (d.hidden === 1 ? ' message is' : ' messages are') + ' hidden by a rewind; they stay saved');
     document.getElementById('cm').scrollTop = 999999;
@@ -1365,6 +1369,7 @@ async function rewindTo(index, cid, btn) {
     await VibeProj.flush();
     await doSaveSes();
     var d = await _vibePost('/api/vibe/session/' + encodeURIComponent(sesId) + '/rewind', {index: index, checkpoint: cid});
+    _vibeResync = true;
     await ldSes(sesId);
     _toast('Rewound' + (d.hidden ? ': ' + d.hidden + (d.hidden === 1 ? ' message hidden' : ' messages hidden') : ''));
   } catch (e) {
@@ -1398,6 +1403,7 @@ async function undoRewind(cid, btn) {
   try {
     if (window.VibeProj) await VibeProj.flush();
     var d = await _vibePost('/api/vibe/session/' + encodeURIComponent(sesId) + '/rewind/undo', {checkpoint: cid});
+    _vibeResync = true;
     await ldSes(sesId);
     _toast('Undid the rewind' + (d.shown ? ': ' + d.shown + (d.shown === 1 ? ' message' : ' messages') + ' back' : ''));
   } catch (e) {
@@ -1419,6 +1425,7 @@ function openForked(info) {
 function nS() {
   cS();
   _setPrivate(false);
+  _vibeResync = false;
   sesId = Date.now().toString(36) + Math.random().toString(36).substr(2,5);
   hist = [];
   if (window.VibeProj) VibeProj.detach();
@@ -1431,6 +1438,7 @@ function nS() {
 
 function doSaveSes() {
   if (_vibePrivate) return Promise.resolve(null);      // a private chat writes nothing to vibe.db (P-077)
+  if (_vibeResync) return Promise.resolve(null);       // the chat is being reloaded after a rewind or its undo
   var code = ed ? ed.getValue() : '';
   var inProject = window.VibeProj && VibeProj.on();
   var title = inProject ? VibeProj.title() : document.getElementById('fn').value;

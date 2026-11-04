@@ -121,7 +121,7 @@ async def vibe_session(sid: str):
                         "ORDER BY id ASC", (sid,)).fetchall()
     hidden = conn.execute("SELECT COUNT(*) FROM vibe_messages WHERE session_id=? AND archived<>0", (sid,)).fetchone()[0]
     rewind = None
-    if session and session[4]:
+    if session and session[4] and vp.enabled():
         st = await asyncio.to_thread(vp.rewind_state, session[4], sid)
         if _undo_blocked(conn, sid, st) is None:
             rewind = {"checkpoint": st["checkpoint"], "hidden": len(st["rows"])}
@@ -225,6 +225,11 @@ async def _body(request: Request):
 
 def _err(e: vp.VibeError) -> JSONResponse:
     return JSONResponse({"error": e.message}, status_code=e.status)
+
+
+def _projects_off() -> JSONResponse:
+    """VIBE_PROJECTS_ENABLED=false: the same 404 every project route gives (routes/vibe_projects.py)."""
+    return JSONResponse({"error": "Vibe projects are switched off"}, status_code=404)
 
 
 def _project_of(conn, sid: str):
@@ -349,6 +354,8 @@ async def vibe_rewind(sid: str, request: Request):
     index, cid = body.get("index"), body.get("checkpoint")
     if not isinstance(index, int) or isinstance(index, bool) or index < 0 or _cid(cid) is None:
         return JSONResponse({"error": "Send the message index and its checkpoint"}, status_code=400)
+    if not vp.enabled():       # it writes project files: the projects kill switch applies, as on every project route
+        return _projects_off()
     conn = vibe_db()
     pid = _project_of(conn, sid)
     if not pid:
@@ -358,6 +365,8 @@ async def vibe_rewind(sid: str, request: Request):
     if index >= len(rows) or rows[index][1] != cid:
         return JSONResponse({"error": "The chat changed since the page showed it. Reload it and try again."}, status_code=409)
     hide = [r[0] for r in rows[index + 1:]]
+    if len(hide) > vp.MAX_REWIND_ROWS:      # the rewind record keeps at most this many ids, and Undo needs all of them
+        return JSONResponse({"error": f"A rewind can hide at most {vp.MAX_REWIND_ROWS} later messages"}, status_code=409)
     try:
         out = await asyncio.to_thread(vp.rewind, pid, cid, sid, hide)
     except vp.VibeError as e:
@@ -372,6 +381,8 @@ async def vibe_rewind_undo(sid: str, request: Request):
     body = await _body(request)
     if body is None:
         return JSONResponse({"error": "Send a JSON object"}, status_code=400)
+    if not vp.enabled():
+        return _projects_off()
     conn = vibe_db()
     pid = _project_of(conn, sid)
     if not pid:
@@ -408,7 +419,7 @@ async def vibe_rename(sid: str, request: Request):
     if conn.execute("SELECT 1 FROM vibe_sessions WHERE id=?", (sid,)).fetchone() is None:
         return JSONResponse({"error": "No such chat"}, status_code=404)
     pid = _project_of(conn, sid)
-    if pid:
+    if pid and vp.enabled():        # projects switched off: the chat's own title only, project.json is not written
         try:
             title = (await asyncio.to_thread(vp.rename_project, pid, title))["title"]
         except vp.VibeError as e:

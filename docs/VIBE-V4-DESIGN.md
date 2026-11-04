@@ -60,6 +60,10 @@ never touched by a save. This keeps row ids stable, so hidden rows come back in 
 
 Rewind, undo rewind, fork, rename and purge answer 409 while an agent run holds the project (`agent_claim`). Every file
 write goes through the existing paths: `_restore_locked` (rewind, undo), `_write_bytes_locked` and `safe_rel` (fork).
+With `VIBE_PROJECTS_ENABLED=false`, rewind and undo rewind answer 404 like every project route, and rename changes the
+chat's title only (no `project.json` write). A rewind that would hide more than 5,000 rows (what its record keeps)
+answers 409. The page saves nothing between a rewind (or its undo) and the reload that follows it, so a save in that
+moment cannot copy hidden rows back or delete the rows the undo showed again.
 
 ## Retention
 

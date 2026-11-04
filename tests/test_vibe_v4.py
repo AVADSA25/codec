@@ -227,6 +227,29 @@ def test_rewind_to_an_agent_runs_end_restores_it_and_the_later_run_is_marked_rew
     assert [c["path"] for c in changes["changed"]] == ["a.txt"], "a run's chips count from its start"
 
 
+def test_a_rewind_that_would_hide_more_rows_than_its_record_keeps_changes_nothing(client, monkeypatch):
+    pid, a, b, _ = _chat(client)
+    monkeypatch.setattr(vp, "MAX_REWIND_ROWS", 1)
+    r = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a})
+    assert r.status_code == 409 and "at most 1" in r.json()["error"]
+    assert all(x[4] == 0 for x in _rows()) and _disk(pid) == _cp(pid, b)["files"] and _cps(pid)[-1]["id"] == b
+
+
+def test_with_projects_switched_off_rewind_and_undo_answer_404_and_rename_leaves_the_project(client, monkeypatch):
+    pid, a, b, _ = _chat(client)
+    rid = client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).json()["checkpoint"]["id"]
+    before = (_disk(pid), len(_cps(pid)), _rows())
+    monkeypatch.setenv("VIBE_PROJECTS_ENABLED", "false")
+    assert client.post("/api/vibe/session/s1/rewind", json={"index": 1, "checkpoint": a}).status_code == 404
+    assert client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rid}).status_code == 404
+    assert client.get("/api/vibe/session/s1").json()["rewind"] is None
+    r = client.post("/api/vibe/session/s1/rename", json={"title": "Offline name"})
+    assert r.status_code == 200 and vp.project_info(pid)["title"] == "Site", "project.json is not written"
+    assert (_disk(pid), len(_cps(pid)), _rows()) == before, "no file, checkpoint or row changed while switched off"
+    monkeypatch.delenv("VIBE_PROJECTS_ENABLED")
+    assert client.post("/api/vibe/session/s1/rewind/undo", json={"checkpoint": rid}).status_code == 200
+
+
 def test_a_reloaded_chat_answer_gets_its_chips_and_revert_from_its_checkpoint(client):
     pid, a, b, _ = _chat(client)
     d = client.get(f"/api/vibe/projects/{pid}/checkpoints/{b}/changes").json()
@@ -427,6 +450,20 @@ def test_the_page_skips_every_save_in_a_private_chat_and_saves_before_a_rewind()
     assert "_setPrivate(true);" in _fn(PAGE, "function nPS() {") and 'onclick="nPS()"' in PAGE
     agent = (REPO / "static" / "vibe-agent.js").read_text(encoding="utf-8")
     assert "if (root._vibePrivate === true) body.temporary = true;" in agent
+
+
+def test_the_page_does_not_save_while_it_reloads_after_a_rewind_or_its_undo():
+    """Between the rewind (or undo) answer and ldSes, hist is not vibe.db's visible rows: a full sync then would copy
+    the hidden messages back, or delete the ones the undo showed again."""
+    save = _fn(PAGE, "function doSaveSes() {")
+    assert save.index("if (_vibeResync) return Promise.resolve(null);") < save.index("fetch('/api/vibe/save'")
+    for head, url in (("async function rewindTo(index, cid, btn) {", "/rewind'"),
+                      ("async function undoRewind(cid, btn) {", "/rewind/undo'")):
+        f = _fn(PAGE, head)
+        assert f.index(url) < f.index("_vibeResync = true;") < f.index("await ldSes(sesId);"), head
+    ld = _fn(PAGE, "function ldSes(sid) {")
+    assert ld.index("hist.push(") < ld.index("_vibeResync = false;"), "cleared once hist holds the rows again"
+    assert "_vibeResync = false;" in _fn(PAGE, "function nS() {")
 
 
 def test_the_page_stores_the_checkpoint_and_draws_reloaded_answers_from_it():
