@@ -256,12 +256,26 @@ OLD_PROMPTS = {(True, True, True): "511c257125ac8161", (True, True, False): "fb6
                (False, False, True): "3e5b82628de4bc52", (False, False, False): "5c9ed1257d8ef66a"}
 
 
+OLD_ONE_BLOCK = ("You work in small steps. Each reply is ONE short sentence about what you do next, then exactly ONE "
+                 "tool block. The tool runs and you get its result, then you continue.")
+
+
+def _before_p072(text):
+    """The prompt without what P-072 added (the read blocks rule, the delegate line and its rule, the first lines'
+    "or up to 4 reading blocks"), each found exactly once: so nothing else in it moved."""
+    for piece in ("\n" + proto.READS_RULE, "\n" + proto.DELEGATE_RULE, "\n" + "\n".join(proto._TOOL_LINES["delegate"])):
+        assert text.count(piece) == 1, piece
+        text = text.replace(piece, "")
+    assert text.count(proto._ONE_BLOCK) == 1
+    return text.replace(proto._ONE_BLOCK, OLD_ONE_BLOCK)
+
+
 def test_the_default_prompt_is_byte_for_byte_the_old_one():
     base = tuple(t for t in proto.TOOLS if t != "run_check")
     for cmd_on, todo, notes in itertools.product([True, False], repeat=3):
         allowed = (proto.TOOLS if cmd_on else base) + ((proto.TODO,) if todo else ())
         text = proto.system_prompt(allowed, notes=notes)
-        assert hashlib.sha256(text.encode()).hexdigest()[:16] == OLD_PROMPTS[(cmd_on, todo, notes)]
+        assert hashlib.sha256(_before_p072(text).encode()).hexdigest()[:16] == OLD_PROMPTS[(cmd_on, todo, notes)]
         assert proto.system_prompt(allowed, notes=notes, mode="default", plan=False) == text
 
 

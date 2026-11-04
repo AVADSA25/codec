@@ -162,7 +162,8 @@ def test_a_reply_without_server_numbers_is_marked_estimated(local, monkeypatch, 
     assert events(view, "usage")[0]["estimated"] is True and end_of(view)["estimated"] is True
     assert end_of(view)["prompt_tokens"] > 0 and end_of(view)["completion_tokens"] > 0
     # a step whose tool call is complete stops reading the stream before the server's numbers come: estimated too
-    view, _ = run_script(pid, ["@@ list_files\n", FINISH], scripted)
+    # (P-072: a read block is complete at the first line after it that cannot start another block)
+    view, _ = run_script(pid, ["@@ list_files\nThe files:\n", FINISH], scripted)
     assert [u["estimated"] for u in events(view, "usage")] == [True, True] and end_of(view)["estimated"] is True
 
 
@@ -179,7 +180,7 @@ def test_a_cloud_run_shows_this_months_spend_and_cap(scripted, clouds):
 def test_each_reply_leaves_one_usage_line_with_source_vibe(scripted, local, tmp_path, monkeypatch):
     log = tmp_path / "reply_stats.jsonl"
     monkeypatch.setattr(codec_usage, "REPLY_LOG", str(log))
-    run_script(make_project(), ["Looking.\n@@ list_files\n", FINISH], scripted)
+    run_script(make_project(), ["Looking.\n@@ list_files\nHere they are.\n", FINISH], scripted)
     lines = [json.loads(x) for x in log.read_text().splitlines()]
     assert len(lines) == 2 and all(ln["source"] == "vibe" and ln["model"] == "local-qwen" and ln["cloud"] is False
                                    for ln in lines)

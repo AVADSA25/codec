@@ -26,7 +26,9 @@ from vibe_agent_fakes import agent_env, cfg, end_of, make_project, run_script, s
 
 MARK = "vibe-run-test-p066-" + secrets.token_hex(4)
 CATASTROPHIC = ("(a+)+$", "a" * 100_000 + "!")        # 100 KB line: Python's re backtracks for ever on it
-OLD_PROMPT_CHARS = {True: 2283, False: 1910}          # system_prompt() before P-066, with and without run_check
+# system_prompt() before P-066, with and without run_check, plus the 384 characters P-072 added later (the read
+# blocks rule, the delegate line and its rule), so this stays a check of P-066's own text
+OLD_PROMPT_CHARS = {True: 2283 + 384, False: 1910 + 384}
 
 
 @pytest.fixture(autouse=True)

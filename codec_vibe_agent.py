@@ -14,6 +14,7 @@ tool names and statuses are.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -84,6 +85,15 @@ CUT_SLACK = 200             # how much earlier the tail may start, so that it st
 OUT_DIR = "out"             # .vibe/runs/<run>/out/<step>.txt: a command's output, copied by the engine (P-043)
 SPILL_RUN_BYTES = 8 * 1024 * 1024   # once one run keeps this much of such files it starts no new copy (one more file at most)
 READABLE = ("run_check", "search", "list_files", "ask")    # the results read_output gives back
+BATCH = "reads"             # the step name of several read blocks run from one reply (P-072)
+SUB_FULL = 3                # newest helper results its window shows in full (P-072)
+DOC_CACHE = 8               # notebooks, PDFs and images a run keeps converted (P-072)
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+               ".webp": "image/webp"}
+VISION_TOKENS = 700
+VISION_PROMPT = ("Describe this image for a programmer working on the project that holds it: what it shows, its "
+                 "layout, colours and sizes as far as you can tell, and every piece of text in it, word for word. "
+                 "Plain sentences, no guesses about anything you cannot see.")
 READ_LINES = 300
 LIST_ENTRIES = 200
 MAP_LINES = 60
@@ -459,6 +469,8 @@ def _way_back(t) -> str:
         return f"@@ read_file {shlex.quote(path)}{rng} reads it again"
     if t.name == "read_output" and t.ok:
         return f"@@ read_output {t.arg} shows it again"
+    if t.name == BATCH and t.ok:                        # several read blocks (P-072): read them again, as they are now
+        return "send its read blocks again to read them as they are now"
     if t.name in READABLE and (t.full or t.saved):
         return f"@@ read_output {t.n} shows it again"
     return ""
@@ -540,13 +552,210 @@ def _t_list_files(run: "Run", folder: str) -> Result:
     return Result(True, head + ":\n" + "\n".join(lines) + more, head)
 
 
-def _t_read_file(run: "Run", path: str, first: int, last) -> Result:
-    content, bad = _read_text(run.pid, path)
+# ── notebooks, PDFs and images as text (P-072, docs/VIBE-AGENT-READ-MORE-DESIGN.md) ──
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _doc_kind(path: str) -> str:
+    low = str(path).lower()
+    if low.endswith(".ipynb"):
+        return "notebook"
+    if low.endswith(".pdf"):
+        return "pdf"
+    return "image" if any(low.endswith(ext) for ext in IMAGE_TYPES) else ""
+
+
+def _nb_text(value) -> str:
+    if isinstance(value, list):
+        return "".join(x for x in value if isinstance(x, str))
+    return value if isinstance(value, str) else ""
+
+
+def _nb_lines(text: str) -> list:
+    text = _ANSI_RE.sub("", text.replace("\r\n", "\n")).rstrip("\n")
+    return text.split("\n") if text else []
+
+
+def notebook_lines(text: str) -> "list | None":
+    """A notebook's JSON as lines: each cell's kind and source, then its text outputs (stream text, plain-text results,
+    errors without colour codes). Image, HTML and other outputs are named, never shown. None when it is not a
+    notebook's JSON (nbformat 4, or 3 with worksheets)."""
+    try:
+        nb = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(nb, dict):
+        return None
+    cells = nb.get("cells")
+    if cells is None and isinstance(nb.get("worksheets"), list):
+        cells = [c for ws in nb["worksheets"] if isinstance(ws, dict) for c in (ws.get("cells") or [])]
+    if not isinstance(cells, list):
+        return None
+    out: list = []
+    for i, cell in enumerate(cells, 1):
+        if not isinstance(cell, dict):
+            continue
+        out.append(f"[cell {i}: {str(cell.get('cell_type') or 'cell')[:20]}]")
+        out += _nb_lines(_nb_text(cell.get("source", cell.get("input"))))
+        for o in cell.get("outputs") or []:
+            if not isinstance(o, dict):
+                continue
+            kind = o.get("output_type")
+            if kind in ("error", "pyerr"):
+                head = "error"
+                body = "\n".join([f"{o.get('ename') or 'Error'}: {o.get('evalue') or ''}"]
+                                 + [str(x) for x in (o.get("traceback") or []) if isinstance(x, str)])
+            elif kind == "stream":
+                head, body = str(o.get("name") or "stream")[:20], _nb_text(o.get("text"))
+            else:
+                data = o.get("data") if isinstance(o.get("data"), dict) else {}
+                body = _nb_text(data.get("text/plain")) or _nb_text(o.get("text"))
+                other = sorted(str(k)[:40] for k in data if k != "text/plain")
+                if not body:
+                    out.append(f"[output {i}: {', '.join(other) or 'no text'}, left out]")
+                    continue
+                head = "result" + (f"; {', '.join(other)} left out" if other else "")
+            out.append(f"[output {i}: {head}]")
+            out += _nb_lines(body)
+    return out
+
+
+def _file_bytes(full: Path) -> "bytes | None":
+    """A project file's bytes, never through a link, at most 1 MB. None when it cannot be read so."""
+    try:
+        fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_size > vp.MAX_FILE_BYTES:
+            return None
+        data = f.read(vp.MAX_FILE_BYTES + 1)
+    return None if len(data) > vp.MAX_FILE_BYTES else data
+
+
+def _pdf_lines(path: str):
+    """(lines, pages, None) of a PDF's text through the P-033 helper (pdftotext when installed, PDFKit otherwise; never a
+    command in the agent's sandbox), or (None, 0, Result)."""
+    import subprocess
+    import codec_pdftext
+    try:
+        text = codec_pdftext.extract_text(path)
+    except codec_pdftext.PdfTextError as e:
+        return None, 0, _fail(str(e))
+    except subprocess.TimeoutExpired:
+        return None, 0, _fail("Reading that PDF took too long.")
+    except Exception:
+        log.warning("vibe agent: a PDF could not be read", exc_info=True)
+        return None, 0, _fail("That PDF could not be read.")
+    pages = str(text or "").replace("\r\n", "\n").split("\f")
+    while len(pages) > 1 and not pages[-1].strip():
+        pages.pop()
+    if not any(p.strip() for p in pages):
+        return None, 0, Result(True, "That PDF has no text to read: it may be scanned pages.", "PDF without text")
+    if len(pages) == 1:
+        return pages[0].rstrip("\n").split("\n"), 1, None
+    lines: list = []
+    for k, page in enumerate(pages, 1):
+        lines += [f"[page {k}]"] + page.strip("\n").split("\n")
+    return lines, len(pages), None
+
+
+def _describe_image(b64: str, mime: str, timeout: float) -> str:
+    """The one place an image goes to a model: codec_vision, the vision path the owner's setting decides (P-020: the
+    local model unless vision_provider is "gemini"; P-013: the model the server holds). "" when it gives nothing."""
+    import codec_vision
+    return codec_vision.describe_sync(b64, VISION_PROMPT, mime=mime, max_tokens=VISION_TOKENS, timeout=timeout)
+
+
+def _doc_lines(run: "Run", path: str) -> tuple:
+    """(lines, label, None) of a notebook, PDF or image the agent may read, or (None, "", Result). The same checks as
+    any read come first (path, secret names, links, 1 MB); the converted text is kept for the run, keyed by the file's
+    hash, so reading on asks the PDF helper or the vision model once."""
+    kind = _doc_kind(path)
+    try:
+        info = vp.read_file(run.pid, path)
+    except VibeError as e:
+        if e.status == 404:
+            return None, "", _fail("No such file. Use list_files to see the files.")
+        return None, "", _path_failure(e, path)
+    if info.get("too_large"):
+        return None, "", _fail("That file is larger than 1 MB.")
+    rel = info["path"]
+    if kind == "notebook":
+        if info.get("binary"):
+            return None, "", _fail("That file is not text.")
+        data = info["content"].encode("utf-8")
+    else:
+        data = _file_bytes(vp.project_dir(run.pid) / rel)
+        if data is None:
+            return None, "", _fail("The file could not be read.")
+    key = (rel, hashlib.sha256(data).hexdigest())
+    if key in run._docs:
+        return run._docs[key] + (None,)
+    if kind == "notebook":
+        lines = notebook_lines(info["content"])
+        label = " (notebook shown as cells, images left out; edit_file works on its JSON text)"
+        if lines is None:                               # not a notebook's JSON: read as the text it is
+            lines, label = _nb_lines(info["content"]), ""
+    elif kind == "pdf":
+        lines, pages, bad = _pdf_lines(str(vp.project_dir(run.pid) / rel))
+        if bad:
+            return None, "", bad
+        label = " (PDF text" + (f", {pages} pages" if pages > 1 else "") + ")"
+    else:
+        timeout = max(10.0, min(120.0, run.deadline - _mono()))
+        mime = IMAGE_TYPES[next(ext for ext in IMAGE_TYPES if rel.lower().endswith(ext))]
+        desc = proto.strip_think(str(_describe_image(base64.b64encode(data).decode("ascii"), mime, timeout) or "")).strip()
+        if not desc:
+            return None, "", _fail("The vision model gave no description of that image. It may be off, or it may read "
+                                   "text only.")
+        lines, label = desc.replace("\r\n", "\n").split("\n"), " (image: the vision model's description of it)"
+    run._docs[key] = (lines, label)
+    while len(run._docs) > DOC_CACHE:
+        run._docs.pop(next(iter(run._docs)))
+    return lines, label, None
+
+
+# ── several read blocks in one reply share one result (P-072) ──
+
+def _dropped_note(n: int) -> str:
+    return (f"(The {n} read block{'s' if n != 1 else ''} before this one in your reply did not run: a reply with an edit, a "
+            "write, a delete, a command, ask, delegate or finish runs only that block. Send reads in a reply of their own.)")
+
+
+def _shares(sizes: list, room: int) -> list:
+    """Each part's share of `room`: as much as it needs, the room a short part leaves going to the longer ones."""
+    out = [0] * len(sizes)
+    left = max(0, room)
+    order = sorted(range(len(sizes)), key=lambda i: sizes[i])
+    for k, i in enumerate(order):
+        out[i] = min(sizes[i], left // (len(order) - k))
+        left -= out[i]
+    return out
+
+
+def _cut_part(text: str, room: int) -> str:
+    """At most `room` characters of one part, cut at a line end, with the way to the rest."""
+    tail = "\n(The rest of this block is left out to share the result window: send it in a reply of its own to see it all.)"
+    cut = text[:max(0, room - len(tail))]
+    nl = cut.rfind("\n")
+    return (cut[:nl] if nl >= len(cut) // 2 else cut) + tail
+
+
+def _t_read_file(run: "Run", path: str, first: int, last, room: "int | None" = None) -> Result:
+    """`room`: the characters this read may fill, when it shares the result window with other reads (P-072)."""
+    label = ""
+    if _doc_kind(path):                                 # a notebook, a PDF or an image, as text (P-072)
+        lines, label, bad = _doc_lines(run, path)
+    else:
+        content, bad = _read_text(run.pid, path)
+        lines = [] if bad else content.replace("\r\n", "\n").split("\n")
+        if lines and lines[-1] == "":
+            lines.pop()
     if bad:
         return bad
-    lines = content.replace("\r\n", "\n").split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
     total = len(lines)
     if total == 0:
         return Result(True, f"{path} is empty.", f"Read {path} (empty)")
@@ -554,14 +763,15 @@ def _t_read_file(run: "Run", path: str, first: int, last) -> Result:
         return _fail(f"The file has only {total} lines.")
     end = min(last or total, total, first + READ_LINES - 1)
     rows = proto.numbered(lines[first - 1:end], first, width_to=total).split("\n")
-    keep = _fitting(rows, MODEL_RESULT_CHARS - 2 * len(path) - 80)   # whole lines that fit in what the model sees, beside the header
+    room = MODEL_RESULT_CHARS if room is None else room
+    keep = _fitting(rows, room - 2 * len(path) - len(label) - 80)   # whole lines that fit in what the model sees, beside the header
     end = first + keep - 1
-    head = f"{path}, lines {first}-{end} of {total}"
+    head = f"{path}{label}, lines {first}-{end} of {total}"
     more = f" (more lines follow: @@ read_file {path} {end + 1}-)" if end < total else ""
     return Result(True, head + more + "\n" + "\n".join(rows[:keep]), f"Read {head}")
 
 
-def _t_read_output(run: "Run", n: int, first: int, last) -> Result:
+def _t_read_output(run: "Run", n: int, first: int, last, room: "int | None" = None) -> Result:
     """Numbered lines of an earlier result of this run (P-043): its kept file, or the text the run holds.
 
     A read or a change of a file is never given back from here: the model reads the file itself, as it is now."""
@@ -586,7 +796,7 @@ def _t_read_output(run: "Run", n: int, first: int, last) -> Result:
         return _fail(f"Result {n} has only {total} lines.")
     end = min(last or total, total, first + READ_LINES - 1)
     rows = proto.numbered(lines[first - 1:end], first, width_to=total).split("\n")
-    keep = _fitting(rows, MODEL_RESULT_CHARS - len(label) - 100)
+    keep = _fitting(rows, (MODEL_RESULT_CHARS if room is None else room) - len(label) - 100)
     end = first + keep - 1
     head = f"{label}, lines {first}-{end} of {total}"
     more = f" (more lines follow: @@ read_output {n} {end + 1}-)" if end < total else ""
@@ -834,6 +1044,7 @@ class _Turn:
     full: str = ""              # the whole result text the run holds, for read_output (READABLE tools only, P-043)
     saved: str = ""             # the run whose out/ folder keeps this step's command output, when it was kept
     lines: int = 0              # that file's line count
+    paths: tuple = ()           # the files a step of several read blocks read, so an edit marks it stale (P-072)
 
 
 @dataclass
@@ -871,6 +1082,8 @@ def _tool_arg(call: proto.Call) -> str:
         return a["path"]
     if call.name == "run_check":
         return a["command"][:120]
+    if call.name == "delegate":
+        return " ".join(a["task"].split())[:120]
     return ""
 
 
@@ -940,6 +1153,8 @@ class Run:
         self._fold_to = 0                       # P-049: steps up to this number are folded into self._summary
         self._summary: dict | None = None       # {"text", "first", "last", "after"}: the model's note on the folded steps
         self._no_fold_until = 0                 # after a summary call that gave nothing, no new one before this step
+        self._sub_steps = 0                     # P-072: a delegate's helper steps, counted toward max_steps
+        self._docs: dict = {}                   # P-072: notebooks, PDFs and images read this run, as text
 
     # events -------------------------------------------------------------
 
@@ -1067,7 +1282,7 @@ class Run:
                 _ACTIVE = None
         self._trim_logs()
         seconds = round(_mono() - self._t0, 1)
-        steps = self.step - self._step0                      # this run's own steps
+        steps = self.step - self._step0 + self._sub_steps    # this run's own steps, its helpers' included (P-072)
         _audit("vibe_agent_end", "Vibe agent run ended", {
             "project": self.pid, "run": self.id, "status": status, "steps": steps, "seconds": seconds,
             "prompt_tokens": self.tokens["prompt"], "completion_tokens": self.tokens["completion"], "model": self.llm.kind})
@@ -1245,7 +1460,7 @@ class Run:
             return
         keys = {_edit_key(p) for p in changed}
         for t in self.turns:
-            if t.read_path and _edit_key(t.read_path) in keys:
+            if (t.read_path and _edit_key(t.read_path) in keys) or keys.intersection(t.paths):
                 t.stale = True
         names = ", ".join(changed[:10]) + (f" and {len(changed) - 10} more" if len(changed) > 10 else "")
         t = self.turns[-1]
@@ -1257,7 +1472,7 @@ class Run:
         while True:
             if self.stop_event.is_set():
                 return self._end("stopped", "Stopped.")
-            if self.step - self._step0 >= lim["max_steps"]:
+            if self.step - self._step0 + self._sub_steps >= lim["max_steps"]:
                 return self._end("limit", f"Stopped at the limit of {lim['max_steps']} steps. The files keep the work done so far.")
             if _mono() > self.deadline:
                 return self._end("limit", f"Stopped at the time limit of {_span(lim['max_seconds'])}. The files keep the work done so far.")
@@ -1316,7 +1531,8 @@ class Run:
                 self._bad_reply(n, reply.text, msg)
                 continue
             self._format_fails = 0
-            done = self._run_call(n, reply.text, scan.call)
+            done = (self._run_reads(n, reply.text, scan) if scan.calls      # P-072: several read blocks
+                    else self._run_call(n, reply.text, scan.call, dropped=scan.dropped))
             if done:
                 return
 
@@ -1343,7 +1559,7 @@ class Run:
 
     def _budget_text(self, n: int) -> str:
         """One line on the budget left, at the end of the last message (P-046)."""
-        own, top = n - self._step0, self.limits["max_steps"]
+        own, top = n - self._step0 + self._sub_steps, self.limits["max_steps"]
         mins = max(1, math.ceil(max(0.0, self.deadline - _mono()) / 60))
         return f"(This is step {own} of {top}, about {mins} min left." + (" This is the last step.)" if own >= top else ")")
 
@@ -1354,17 +1570,11 @@ class Run:
         self.turns.append(_Turn(n, "error", "", said[:2000], said[:300], wrapped, message.split("\n", 1)[0][:160], False))
         _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "error", "ok": False, "ms": 0})
 
-    def _run_call(self, n: int, text: str, call: proto.Call) -> bool:
-        """Run one tool. True when the run is over."""
+    def _run_call(self, n: int, text: str, call: proto.Call, dropped: int = 0) -> bool:
+        """Run one tool. True when the run is over. `dropped`: read blocks of the reply that did not run (P-072)."""
         arg = _tool_arg(call)
         self._emit("tool", step=n, name=call.name, arg=arg)
-        sig = _signature(call)
-        self._sigs.append(sig)
-        streak = 0
-        for s in reversed(self._sigs):
-            if s != sig:
-                break
-            streak += 1
+        streak = self._streak(_signature(call))
         if streak >= REPEAT_STOP:
             self._end("limit", "The agent kept repeating the same step, so I stopped it.")
             return True
@@ -1384,6 +1594,8 @@ class Run:
             result = self._ask(n, call)
             if result is None:
                 return True
+        elif call.name == "delegate":                       # a read-only helper with its own window (P-072)
+            result = self._delegate(n, call)
         elif call.name == "run_check":
             result = self._hooked(n, call, lambda: self._run_check(n, call))
             if result is None:
@@ -1394,6 +1606,8 @@ class Run:
         warn = ""
         if streak >= REPEAT_WARN:
             warn = f"\nYou have made this same call {streak} times in a row. Do something different, or use finish."
+        if dropped:
+            warn += "\n" + _dropped_note(dropped)
         if result.blocked:
             _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n, "reason": result.blocked})
         advice = ""
@@ -1458,7 +1672,7 @@ class Run:
             cp = None
         changed = set(paths) | set((cp or {}).get("changed", []))
         for t in self.turns:
-            if t.read_path and t.read_path in changed:
+            if (t.read_path and t.read_path in changed) or changed.intersection(t.paths):
                 t.stale = True
         if cp:
             self._emit("checkpoint", step=n, id=cp["id"], parent=cp.get("parent"), label=cp["label"],
@@ -1499,6 +1713,208 @@ class Run:
             return result
         return _fail(f"Tool '{vhooks.tool_name(call.name)}' was vetoed by plugin '{veto.plugin}': {veto.reason}\n"
                      "The step was not run. Do something else, or finish and say what was stopped.", "plugin")
+
+    # several read blocks, and the delegate's helper (P-072, docs/VIBE-AGENT-READ-MORE-DESIGN.md) ------------
+
+    def _streak(self, sig: str) -> int:
+        """How many times in a row this step's signature has come, this one included."""
+        self._sigs.append(sig)
+        streak = 0
+        for s in reversed(self._sigs):
+            if s != sig:
+                break
+            streak += 1
+        return streak
+
+    @staticmethod
+    def _helper_refusal(call: proto.Call) -> "Result | None":
+        """A helper's tools are proto.SUB_TOOLS, whatever its prompt or a file says: anything else is refused unrun."""
+        if call.name in proto.SUB_TOOLS:
+            return None
+        return _fail(f"{call.name} is not one of a helper's tools, so nothing was changed or run. A helper only lists, "
+                     "reads and searches: use list_files, read_file or search, then finish with your answer.", "mode")
+
+    def _read_parts(self, n: int, calls: list, helper: bool = False) -> tuple:
+        """Read blocks of one reply, each run as it would run alone (refusals, plugin hooks), then fitted together in one
+        result window: a fair share each, a file read cut at whole lines with its own "more lines follow" hint.
+        (Result for the model, the uncut text for the page, the files read, the refusal reasons)."""
+        done, seen = [], set()
+        for c in calls:
+            sig = _signature(c)
+            if sig in seen:                             # the same block twice runs once
+                continue
+            seen.add(sig)
+            res = self._helper_refusal(c) if helper else self._refusal(c)
+            if res is None:
+                res = self._hooked(n, c, lambda c=c: self._exec(c))
+            done.append((c, res))
+        heads = [f"--- block {i} of {len(done)}: {(c.name + ' ' + _tool_arg(c)).strip()}{'' if r.ok else ' (FAILED)'} ---"
+                 for i, (c, r) in enumerate(done, 1)]
+        room = MODEL_RESULT_CHARS - sum(len(h) + 2 for h in heads) - 300
+        texts = []
+        for (c, r), share in zip(done, _shares([len(r.text) for _c, r in done], room)):
+            text, a = r.text, c.args
+            if len(text) > share and r.ok and c.name in ("read_file", "read_output"):     # fewer whole lines, same hint
+                try:
+                    text = (_t_read_file(self, a["path"], a["first"], a["last"], room=share) if c.name == "read_file"
+                            else _t_read_output(self, a["n"], a["first"], a["last"], room=share)).text
+                except (VibeError, OSError):
+                    pass
+            if len(text) > share:                       # not a read of lines, or one line longer than the share
+                text = _cut_part(text, share)
+            texts.append(text)
+        body = "\n\n".join(h + "\n" + t for h, t in zip(heads, texts))
+        shown = "\n\n".join(h + "\n" + r.text for h, (_c, r) in zip(heads, done))
+        summary = f"{len(done)} reads: " + "; ".join(r.summary for _c, r in done)
+        paths = tuple(_edit_key(c.args["path"]) for c, r in done if c.name == "read_file" and r.ok)
+        return Result(any(r.ok for _c, r in done), body, summary[:160]), shown, paths, [r.blocked for _c, r in done if r.blocked]
+
+    def _run_reads(self, n: int, text: str, scan: proto.Scan) -> bool:
+        """Several read blocks of one reply as one step with one result (P-072). True when the run is over."""
+        calls = scan.calls
+        arg = " + ".join((c.name + " " + _tool_arg(c)).strip() for c in calls)[:240]
+        self._emit("tool", step=n, name=BATCH, arg=arg)
+        streak = self._streak("\x01".join(_signature(c) for c in calls))
+        if streak >= REPEAT_STOP:
+            self._end("limit", "The agent kept repeating the same step, so I stopped it.")
+            return True
+        t0 = _mono()
+        result, shown, paths, blocked = self._read_parts(n, calls)
+        for reason in blocked:
+            _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n, "reason": reason})
+        extra = f"\n\n({scan.extra})" if scan.extra else ""
+        warn = (f"\nYou have made this same call {streak} times in a row. Do something different, or use finish."
+                if streak >= REPEAT_WARN else "")
+        wrapped = proto.wrap_result(n, BATCH, arg, _for_model(result.text + extra) + warn, result.ok)
+        self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(shown + extra)[:DISPLAY_CHARS], tool=BATCH)
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": BATCH,
+                                                      "ok": result.ok, "ms": int((_mono() - t0) * 1000), "calls": len(calls)})
+        text = proto.without_todo(text)
+        short = text if len(text) <= 600 else (scan.note[:300] + "\n" + "\n".join(f"@@ {c.name} {_tool_arg(c)}" for c in calls))
+        self.turns.append(_Turn(n, BATCH, arg, text[:8000], short, wrapped, result.summary, result.ok, paths=paths))
+        return False
+
+    def _delegate(self, n: int, call: proto.Call) -> Result:
+        """A read-only helper with a fresh window (P-072): its own prompt, the question, the file map and its own steps.
+        Its tools are proto.SUB_TOOLS, its steps at most proto.SUB_MAX_STEPS and counted toward max_steps, and its
+        answer at most proto.SUB_REPORT_CHARS. It runs in this thread on this run's model: no second project claim,
+        the same stop flag and deadline, and its events go through this run's own _emit (a private run logs none)."""
+        task = call.args["task"]
+        budget = min(proto.SUB_MAX_STEPS, self.limits["max_steps"] - (self.step - self._step0 + self._sub_steps))
+        if budget <= 0:
+            return _fail("No steps are left for a helper. Read what you need yourself, or finish.")
+        turns: list = []
+        fails = 0
+        for k in range(1, budget + 1):
+            if self.stop_event.is_set():
+                return _fail("The run was stopped while the helper worked.")
+            if _mono() > self.deadline:
+                return _fail("The time ran out while the helper worked.")
+            try:
+                messages = self._sub_messages(task, turns, k, budget)
+            except _ContextTooBig:
+                return self._sub_end(turns, "The helper's steps no longer fit its window.")
+            self._sub_steps += 1
+            reply = self._stream(n, messages)
+            self._drop_text(n)
+            if reply.stopped or reply.timed_out:
+                return _fail("The run was stopped while the helper worked." if reply.stopped
+                             else "The time ran out while the helper worked.")
+            if reply.error and not reply.text.strip():
+                return self._sub_end(turns, "The model did not answer the helper.")
+            scan = proto.scan_reply(reply.text, self._parse, final=True, lenient=reply.normal_end,
+                                    report_chars=proto.SUB_REPORT_CHARS)
+            t0 = _mono()
+            if scan.state != "complete":
+                fails += 1
+                msg = ("Your reply was cut off at the length limit. Read less at a time." if reply.cut else
+                       scan.error or "I found no tool block in your reply. Reply with one short sentence and one tool "
+                                     "block that starts with @@ at the start of a line.")
+                self._sub_step(n, k, turns, reply.text, "error", "", _fail(msg), (), 0)
+                if fails >= 2:
+                    return self._sub_end(turns, "The helper's replies could not be read.")
+                continue
+            fails = 0
+            if scan.calls:
+                res, _shown, paths, blocked = self._read_parts(n, scan.calls, helper=True)
+                name, arg = BATCH, " + ".join((c.name + " " + _tool_arg(c)).strip() for c in scan.calls)[:240]
+            else:
+                c = scan.call
+                if c.name == "finish":
+                    report = c.args["report"]
+                    if report == "Done." and c.note:
+                        report = c.note
+                    self._emit("note", step=n, sub=k, text=f"Helper step {k}: answered")
+                    _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "sub": k,
+                                                                  "tool_name": "finish", "ok": True, "ms": 0})
+                    head = f"The helper's answer ({k} step{'s' if k != 1 else ''}, read-only):\n"
+                    text = head + report.strip()
+                    if len(text) > proto.SUB_REPORT_CHARS:
+                        text = text[:proto.SUB_REPORT_CHARS - 4].rstrip() + " ..."
+                    return Result(True, text, f"Helper answered in {k} step{'s' if k != 1 else ''}")
+                name, arg = c.name, _tool_arg(c)
+                res = self._helper_refusal(c) or self._hooked(n, c, lambda: self._exec(c))
+                paths = (_edit_key(c.args["path"]),) if c.name == "read_file" and res.ok else ()
+                blocked = [res.blocked] if res.blocked else []
+            for reason in blocked:
+                _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n,
+                                                                         "sub": k, "reason": reason})
+            self._sub_step(n, k, turns, reply.text, name, arg, res, paths, int((_mono() - t0) * 1000))
+        return self._sub_end(turns, f"The helper used all its {budget} steps without an answer.")
+
+    def _sub_step(self, n: int, k: int, turns: list, text: str, name: str, arg: str, res: Result, paths: tuple,
+                  ms: int) -> None:
+        """One helper step: its turn in the helper's own window, one line on the run's card, one audit line."""
+        said = proto.without_todo(text).strip() or "(no reply)"
+        wrapped = proto.wrap_result(k, name, arg, _for_model(res.text), res.ok)
+        short = said if len(said) <= 600 else said[:300] + f"\n@@ {name} {arg}\n(content left out)"
+        turns.append(_Turn(k, name, arg, said[:8000], short, wrapped, res.summary, res.ok,
+                           read_path=paths[0] if name == "read_file" and paths else "", paths=paths if name == BATCH else ()))
+        self._emit("note", step=n, sub=k, text=f"Helper step {k}: {res.summary}"[:600])
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "sub": k,
+                                                      "tool_name": name, "ok": res.ok, "ms": ms})
+
+    @staticmethod
+    def _sub_end(turns: list, why: str) -> Result:
+        """A helper that stopped without an answer: why, and what it looked at, marked failed."""
+        seen = [f"- {t.summary}" for t in turns if t.name != "error" and t.ok]
+        text = why + (" What it looked at:\n" + "\n".join(seen) if seen else " It found nothing to report.")
+        if len(text) > proto.SUB_REPORT_CHARS:
+            text = text[:proto.SUB_REPORT_CHARS - 4].rstrip() + " ..."
+        return Result(False, text, why[:160])
+
+    def _sub_messages(self, task: str, turns: list, k: int, budget: int) -> list:
+        """The helper's prompt for its step k: fixed system prompt, the question, its own steps (the newest SUB_FULL in
+        full) and the file map. None of the parent's turns."""
+        cap = self.limits["max_context_tokens"]
+        system = {"role": "system", "content": proto.delegate_prompt()}
+        first = ("THE QUESTION FROM THE AGENT YOU HELP\n" + task
+                 + "\n\nTHE OWNER'S GOAL FOR THAT AGENT (context only)\n" + self.goal[:500])
+        site = self._map() + f"\n\n(This is helper step {k} of {budget}." + (
+            " It is the last one: use finish now.)" if k >= budget else ")")
+        modes = ["full" if i >= len(turns) - SUB_FULL else "short" for i in range(len(turns))]
+        shrink = None
+        while True:
+            msgs = [system]
+            users = [first]
+            for i, t in enumerate(turns):
+                msgs.append({"role": "user", "content": users[-1]})
+                msgs.append({"role": "assistant", "content": t.assistant if modes[i] == "full" else t.assistant_short})
+                body = self._result_text(t, modes[i])
+                if shrink and i == len(turns) - 1 and len(body) > shrink:
+                    body = body[:shrink // 2] + "\n... (cut to fit the context) ...\n" + body[-(shrink // 2):]
+                users.append(body)
+            msgs.append({"role": "user", "content": users[-1] + "\n\n" + site})
+            if self._estimate(msgs) <= cap:
+                return msgs
+            idx = next((i for i, m in enumerate(modes[:-1]) if m == "full"), None)
+            if idx is not None:
+                modes[idx] = "short"
+                continue
+            if turns and (shrink is None or shrink > 1500):
+                shrink = max(1500, int(cap * CHARS_PER_TOKEN * 0.3)) if shrink is None else shrink // 2
+                continue
+            raise _ContextTooBig()
 
     # commands ----------------------------------------------------------
 
@@ -2054,9 +2470,12 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
         said = proto.without_todo(reply).strip() or "(no reply)"       # as _bad_reply kept it (P-046)
         return _Turn(n, "error", "", said[:2000], said[:300], proto.wrap_result(n, "error", "", output, ok=False), summary, False)
     text, call, note = _replayed_reply(reply, name, arg)
-    read_path = ""
+    read_path, paths = "", ()
     if name == "read_file":
         read_path = call.args.get("path", "") if call else arg.split(" ")[0]
+    elif name == BATCH:                                 # several read blocks (P-072): the files they read
+        sc = proto.scan_reply(text, proto.TOOLS, final=True, lenient=True)
+        paths = tuple(_edit_key(c.args["path"]) for c in (sc.calls or ()) if c.name == "read_file")
     full = output if name in READABLE else ""
     saved, lines, kept = "", 0, ev.get("out")
     if full and pid and isinstance(kept, dict) and isinstance(kept.get("lines"), int) and not isinstance(kept["lines"], bool):
@@ -2066,7 +2485,7 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
     pointer = _pointer(n, lines if saved else len(_lines_of(output))) if full and len(output) > MODEL_RESULT_CHARS else ""
     return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
                  proto.wrap_result(n, name, arg, _for_model(output, pointer), ok), summary, ok, read_path=read_path,
-                 full=full, saved=saved, lines=lines)
+                 full=full, saved=saved, lines=lines, paths=paths)
 
 
 def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
@@ -2081,7 +2500,7 @@ def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
         msg = CUT_WRITE
         path = _edit_key(call.args.get("path", "")) if call else ""
         for t in turns:
-            if t.read_path and path and _edit_key(t.read_path) == path:
+            if path and ((t.read_path and _edit_key(t.read_path) == path) or path in t.paths):
                 t.stale = True
     else:
         msg = CUT_STEP
@@ -2108,7 +2527,7 @@ def _rebuild_one(events: list, turns: list, by_n: dict, notes: list, pid: str = 
         elif kind == "checkpoint":
             changed = set(ev.get("changed") or [])
             for t in turns:
-                if t.read_path and t.read_path in changed:
+                if (t.read_path and t.read_path in changed) or changed.intersection(t.paths):
                     t.stale = True
         elif kind == "message":
             notes.append(ev)

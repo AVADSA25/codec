@@ -168,6 +168,8 @@
       case 'ask': return 'Asking you a question';
       case 'finish': return 'Finishing';
       case 'todo': return 'Updating its todo list';
+      case 'reads': return 'Reading several' + (arg ? ': ' + arg : '');
+      case 'delegate': return 'Asking a read-only helper' + (arg ? ': ' + arg : '');
       default: return name;
     }
   }

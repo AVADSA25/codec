@@ -507,10 +507,11 @@ def test_older_results_are_shortened_when_the_context_is_full(scripted, cfg):
 
 
 def test_every_model_call_sends_the_meter_the_servers_count_or_the_estimate_times_1_4(scripted, cfg):
-    # P-049: display only. A stream closed at the first tool block has no usage chunk, so it is the marked estimate.
+    # P-049: display only. A stream closed after its tool block has no usage chunk, so it is the marked estimate.
+    # (P-072: a read block is taken at the first line after it that cannot start another block.)
     cfg["vibe_agent"] = {"max_context_tokens": 5000}
     pid = make_project()
-    view, model = run_script(pid, ["@@ read_file style.css\n", "@@ finish\nok\n"], scripted)
+    view, model = run_script(pid, ["@@ read_file style.css\nThe file says:\n", "@@ finish\nok\n"], scripted)
     ctx = [e for e in view["events"] if e["type"] == "context"]
     assert [e["step"] for e in ctx] == [1, 2]
     assert ctx[0]["estimate"] is True and ctx[0]["used"] == int(va.Run._estimate(model.calls[0]) * 1.4)
@@ -870,13 +871,23 @@ def test_a_failed_start_does_not_leave_the_project_held(scripted):
     assert vp.agent_run_active(pid) is None and va._ACTIVE is None
 
 
-def test_reading_early_stops_the_stream_after_the_first_tool_block(scripted):
+def test_reading_early_stops_the_stream_after_the_read_blocks(scripted):
+    # P-072: the read blocks one after the other all run as one step; the made-up text after them is never read
     pid = make_project()
     model = scripted(["@@ read_file style.css\n@@ read_file app.js\n@@ read_file index.html\n" + "x" * 500, "@@ finish\nok\n"])
     model.chunk = 5
     view = wait_finished(pid, va.start_run(pid, "g")["run"])
-    reads = [e["arg"] for e in view["events"] if e["type"] == "tool" and e["name"] == "read_file"]
-    assert reads == ["style.css"]
+    tools = [(e["name"], e["arg"]) for e in view["events"] if e["type"] == "tool"]
+    assert tools[0] == ("reads", "read_file style.css + read_file app.js + read_file index.html")
+    assert model.closed_early == 1 and model.completed == 1
+
+
+def test_reading_early_stops_the_stream_after_a_tool_block_that_is_not_a_read(scripted):
+    pid = make_project()
+    model = scripted([CSS_EDIT + "@@ read_file app.js\n" + "x" * 500, "@@ finish\nok\n"])
+    model.chunk = 5
+    view = wait_finished(pid, va.start_run(pid, "g")["run"])
+    assert [e["name"] for e in view["events"] if e["type"] == "tool"] == ["edit_file", "finish"]
     assert model.closed_early == 1 and model.completed == 1
 
 
