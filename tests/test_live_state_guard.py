@@ -95,9 +95,10 @@ def test_guard_refuses_the_protected_names_and_nothing_else(tmp_path):
     g = lsg.Guard(tmp_path)
     for name in ("notifications.json", "notifications.json.lock", "notifications.tmp",
                  "pending_questions.json", "audit.log", "audit.log.1", "memory.db",
-                 "memory.db-wal", "shift_report_state.json"):
+                 "memory.db-wal", "shift_report_state.json", "qchat.db", "qchat.db.bak-voice",
+                 "vibe.db", "vibe.db-wal", "vibe.db.pre-v4-20261104-073552.bak"):
         assert g.protected(tmp_path / name), name
-    for name in ("config.json", "notes", "memory.dbx/../x", "reply_stats.jsonl"):
+    for name in ("config.json", "notes", "memory.dbx/../x", "reply_stats.jsonl", "vibe_playbooks_approved.json"):
         assert g.protected(tmp_path / name) is None, name
     assert g.protected(tmp_path / "sub" / "notifications.json") is None  # other folder
     with pytest.raises(lsg.LiveStateRefused):

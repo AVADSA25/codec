@@ -5,7 +5,7 @@ Used by tests/conftest.py; not a test module.
 - `write_fake_security`: a stand-in for /usr/bin/security that codec_keychain is
   pointed at, so no test reads or writes the owner's Keychain.
 - `Guard`: in this process, refuses writes to the owner's ~/.codec memory.db,
-  notifications, pending questions, audit log and shift report state, any
+  notifications, pending questions, audit log, shift report state, qchat.db and vibe.db, any
   sqlite3.connect to them, and any run of the real /usr/bin/security. Each
   refusal is recorded, so the test that caused it fails even when the code
   under test swallows the error.
@@ -35,8 +35,11 @@ REAL_SECURITY = "/usr/bin/security"
 # A file in the owner's ~/.codec whose name starts with one of these is refused.
 # The prefixes cover the side files too: memory.db-wal, notifications.json.lock,
 # the shift report's notifications.tmp, audit.log.1, pending_questions.json.tmp.
+# qchat.db and vibe.db (chat and Vibe history) were added on 11 Nov 2026: a test or tool opened
+# the live vibe.db on 4 Nov and ran P-077's column migration there; the prefixes also cover the
+# copies their migrations write (qchat.db.bak-voice, vibe.db.pre-v4-*.bak).
 PROTECTED_NAMES = ("memory.db", "notifications.", "pending_questions.", "audit.log",
-                   "shift_report_state.")
+                   "shift_report_state.", "qchat.db", "vibe.db")
 
 _WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 
