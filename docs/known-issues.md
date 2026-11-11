@@ -4,7 +4,9 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
-## Route-table tests fail on every FastAPI that requirements.txt allows (found 2026-10-29, D-33 CI PR)
+## FIXED (checked 2026-11-11): Route-table tests fail on every FastAPI that requirements.txt allows (found 2026-10-29, D-33 CI PR)
+
+Checked 2026-11-11: every test listed below passes on main, on the Studio and on both CI jobs (smoke, macos-15).
 
 | field | value |
 |---|---|
@@ -35,7 +37,9 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | deferred-not-fixed |
 | **revisit when** | The next item that edits the tag handling in `routes/chat.py`, or when a client starts using stream:false. |
 
-## Tests that need the owner's Mac, not a CI runner (found 2026-10-29, first macos-14 CI run)
+## FIXED (checked 2026-11-11): Tests that need the owner's Mac, not a CI runner (found 2026-10-29, first macos-14 CI run)
+
+Checked 2026-11-11 on the macos-15 runner (#567): the four textassist workflow tests skip there, `test_draft_and_write_produces_proposal_md_and_py` passes; 0 failed.
 
 | field | value |
 |---|---|
@@ -52,7 +56,9 @@ The 20 pre-existing failures from `pytest tests/ --ignore=tests/test_smoke.py` w
 
 The single most likely-to-bite-us-soon entry from that list is the `_safe_task` regex bug below; the others are either documentation drift, references to functions/symbols that no longer exist, or test/implementation mismatches in unrelated subsystems.
 
-### `codec.py:255` — `_safe_task` osascript variable name fails the regex sanitizer test
+### FIXED (checked 2026-11-11): `codec.py:255` — `_safe_task` osascript variable name fails the regex sanitizer test
+
+Checked 2026-11-11: `tests/test_security.py::test_osascript_inputs_sanitized` passes on main (the variable is now at `codec.py:456`, still sanitized).
 
 | field | value |
 |---|---|
@@ -216,7 +222,9 @@ Notification posted to `~/.codec/notifications.json` with `type="shift_report"`,
 
 *Last updated: 2026-05-02 (Step 7 sign-off; Phase 2 complete).*
 
-## 2026-06-09 — fact_extract silently no-ops on fact storage
+## FIXED (checked 2026-11-11): 2026-06-09 — fact_extract silently no-ops on fact storage
+
+Checked 2026-11-11: `skills/fact_extract.py` stores through `codec_memory_upgrade.store_fact` (`cmu.store_fact`).
 `skills/fact_extract.py:93-95` calls `mem.store_fact(...)` inside a swallowed
 try/except AttributeError — but `CodecMemory` has no `store_fact` method (it lives in
 `codec_memory_upgrade`). Extracted facts are therefore never written to the facts table.
@@ -286,7 +294,9 @@ running the PM2 dev fleet, `_bootstrap_fleet` starts the same services on the sa
 ports — the packaged app cannot be launched on the dev box without a port fight,
 so packaged-app testing belongs on the Mac Air.
 
-## 40 `test_llm_*` / stream / vision / agent_plan tests fail locally on main (2026-09-04)
+## FIXED (checked 2026-11-11): 40 `test_llm_*` / stream / vision / agent_plan tests fail locally on main (2026-09-04)
+
+Checked 2026-11-11: all of these files pass on main on the Studio (241 passed with the route-table files).
 
 On main @ cfd8b1e, `pytest` reports 40 failures across tests/test_llm_stream.py (15),
 test_llm_async.py (8), test_stream_usage.py (5), test_llm_vision_dedup.py (4),
@@ -350,7 +360,9 @@ The example config at the top of `codec_telegram.py` says
 or missing list denies every chat (`is_chat_allowed`, C2). Only the comment is
 wrong. Fix: change it to "empty = deny all".
 
-## `/ws/voice` does not check the handshake Origin (2026-09-28)
+## FIXED (checked 2026-11-11): `/ws/voice` does not check the handshake Origin (2026-09-28)
+
+Checked 2026-11-11: `routes/websocket.py:_ws_origin_ok` runs before `accept()`; it refuses `Origin: null` and a host that is neither the request's nor trusted (`tests/test_ws_origin_login_keys.py`).
 
 `routes/websocket.py:voice_websocket` authorizes the handshake with
 `_ws_authorized` only. With no login configured (no `dashboard_token`, no Touch
