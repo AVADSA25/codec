@@ -239,9 +239,13 @@ def _load_pending_proposals() -> List[Path]:
 # ── Section renderers ─────────────────────────────────────────────────────────
 def _render_completed_tasks(records: List[dict]) -> str:
     """Section 1: completed tasks."""
+    # A skill a built-in feature ran (briefing, heartbeat mail check, Daybreak, check-in, this
+    # report) writes tool_result with extra.feature (P-098); that is background work, not the
+    # owner's, so the heartbeat's mail check does not show up as dozens of google_gmail runs.
     completed = [r for r in records
                  if r.get("event") in _COMPLETED_TASK_EVENTS
-                 and r.get("outcome") == "ok"]
+                 and r.get("outcome") == "ok"
+                 and not (isinstance(r.get("extra"), dict) and r["extra"].get("feature"))]
     if not completed:
         feedback = _render_feedback(records)
         return feedback or "_(No completed tasks recorded in this window.)_"

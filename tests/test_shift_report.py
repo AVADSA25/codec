@@ -115,6 +115,18 @@ def test_assemble_completed_tasks_counts_successful_events(temp_state):
     assert "broken" not in md.split("Blocked")[0]
 
 
+def test_completed_tasks_leave_out_runs_a_built_in_feature_made(temp_state):
+    """P-098 feature runs (extra.feature) are background work, not completed tasks."""
+    _write_audit_log(temp_state / "audit.log", [
+        {"ts": _ts_iso(2), "event": "tool_result", "outcome": "ok", "tool": "weather"},
+    ] + [{"ts": _ts_iso(1), "event": "tool_result", "outcome": "ok", "tool": "google_gmail",
+          "extra": {"feature": "heartbeat"}}] * 30)
+    md = shift_report._assemble_shift_report(trigger_kind="manual")["markdown"]
+    section = md.split("Blocked")[0]
+    assert "1 successful operation(s)" in section and "weather" in section
+    assert "google_gmail" not in section
+
+
 def test_assemble_blocked_section(temp_state):
     """Section 2 lists stuck_warning / step_budget_exhausted."""
     _write_audit_log(temp_state / "audit.log", [
