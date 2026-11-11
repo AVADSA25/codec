@@ -7,6 +7,7 @@ Skills run in an isolated subprocess with:
   (process spawning is restricted, not denied)
 - CPU timeout (10s) and memory limit (256MB)
 """
+import contextlib
 import json
 import logging
 import os
@@ -158,6 +159,30 @@ def _write_sandbox_profile(allow_network: bool = False, *, home: str = None,
     return profile_path
 
 
+@contextlib.contextmanager
+def per_call_profile(allow_network: bool = False):
+    """Write a profile file for one sandboxed run, yield its path, delete it after.
+
+    Each run gets its own file (0600) next to SANDBOX_PROFILE_PATH, in ~/.codec,
+    which the sandbox cannot write. Two runs that start together with different
+    network rules can no longer overwrite each other's profile, which they could
+    when every run rewrote ~/.codec/sandbox.sb (known issue 2026-09-28). The
+    profile text is exactly what _write_sandbox_profile(allow_network) writes.
+    """
+    folder = os.path.dirname(SANDBOX_PROFILE_PATH)
+    os.makedirs(folder, exist_ok=True)
+    fd, path = tempfile.mkstemp(prefix="sandbox-", suffix=".sb", dir=folder)
+    os.close(fd)
+    try:
+        _write_sandbox_profile(allow_network=allow_network, profile_path=path)
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def _parse_permissions(skill_path: str) -> list:
     """Extract SKILL_PERMISSIONS from a skill file via AST (no import)."""
     import ast
@@ -192,9 +217,6 @@ def run_skill_sandboxed(
     # Parse permissions from skill file
     permissions = _parse_permissions(skill_path)
     allow_network = "network" in permissions
-
-    # Write sandbox profile
-    profile_path = _write_sandbox_profile(allow_network=allow_network)
 
     # AST safety check first
     try:
@@ -263,15 +285,16 @@ except Exception as e:
                 python = candidate
                 break
 
-        # Execute in sandbox
-        cmd = ["sandbox-exec", "-f", profile_path, python, wrapper_file.name]
-        start = time.time()
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout + 5,  # grace period beyond resource limit
-            text=True,
-        )
+        # Execute in sandbox, with a profile file of its own (deleted afterwards)
+        with per_call_profile(allow_network=allow_network) as profile_path:
+            cmd = ["sandbox-exec", "-f", profile_path, python, wrapper_file.name]
+            start = time.time()
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout + 5,  # grace period beyond resource limit
+                text=True,
+            )
         elapsed = time.time() - start
 
         # Read result
