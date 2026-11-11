@@ -78,7 +78,7 @@ google-auth-oauthlib>=1.2.2
 # codec_observer.py and codec_overlays.py (AppKit, Quartz), setup_hue.py (mDNS
 # bridge discovery, falls back to a cloud lookup when absent), codec_webcam.py
 # (AVFoundation + CoreMedia + Quartz: the webcam, replacing OpenCV).
-pyobjc-framework-AVFoundation>=12.2; sys_platform == "darwin"
+pyobjc-framework-AVFoundation>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-CoreMedia>=12.2; sys_platform == "darwin"
 pyobjc-framework-Quartz>=12.2; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=12.2.2; sys_platform == "darwin"
