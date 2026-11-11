@@ -1085,14 +1085,18 @@
     li.appendChild(el('div', 'agc-qa', eff.decision === 'decline' ? 'Declined.' : 'Allowed' + (eff.decision === 'always' ? ' here, always' : ' once') + (eff.network ? ', with the web.' : '.')));
   }
 
-  // Commands the owner allowed for good in this project, each with a way to take it back.
+  // Commands the owner allowed for good in this project, and his rules like "git diff *" (P-048,
+  // docs/VIBE-ALLOW-RULES-DESIGN.md), each with a way to take it back, and a box to add a rule. Mac only: away from
+  // it the lists answer 403 and nothing is drawn. Every text goes in with textContent (el).
   function drawAllowed() {
     var c = S.card, run = S.run;
     if (!c || !run || !run.ranCommands) return;
-    api('GET', base(run.pid, '/commands')).then(function (list) {
-      if (S.run !== run || !list.length) return;
+    var rulesGot = api('GET', base(run.pid, '/rules')).catch(function () { return null; });
+    Promise.all([api('GET', base(run.pid, '/commands')), rulesGot]).then(function (got) {
+      var list = got[0] || [], rules = got[1];
+      if (S.run !== run || (!list.length && !rules)) return;
       var box = el('div', 'agc-allow');
-      box.appendChild(el('div', 'agc-qa', 'Commands allowed here without asking:'));
+      if (list.length) box.appendChild(el('div', 'agc-qa', 'Commands allowed here without asking:'));
       list.forEach(function (item) {
         var row = el('div', 'agc-arow');
         row.appendChild(el('code', 'agc-cmd', item.cmd + (item.network ? '  (web)' : '')));
@@ -1104,8 +1108,50 @@
         });
         row.appendChild(forget); box.appendChild(row);
       });
+      if (rules) drawRules(box, run, rules);
       c.end.appendChild(box);
     }).catch(function () { /* away from the Mac, or the list is empty */ });
+  }
+
+  function drawRules(box, run, rules) {
+    box.appendChild(el('div', 'agc-qa', 'Rules: commands that start with these words run without asking, with no web.'));
+    var shelf = el('div', 'agc-rules');
+    function fill(items) {
+      shelf.textContent = '';
+      items.forEach(function (item) {
+        var row = el('div', 'agc-arow');
+        row.appendChild(el('code', 'agc-cmd', item.rule));
+        var forget = el('button', 'agc-link', 'Forget'); forget.type = 'button';
+        forget.addEventListener('click', function () {
+          forget.disabled = true;
+          api('POST', base(run.pid, '/rules/forget'), { rule: item.rule }).then(function () { row.remove(); toast('That rule is gone: its commands ask again'); })
+            .catch(function (e) { forget.disabled = false; toast('Could not forget it: ' + e.message); });
+        });
+        row.appendChild(forget); shelf.appendChild(row);
+      });
+    }
+    fill(rules);
+    box.appendChild(shelf);
+    var form = el('form', 'agc-qf');
+    var input = el('input'); input.type = 'text'; input.placeholder = 'git diff *'; input.maxLength = 200;
+    input.autocomplete = 'off'; input.spellcheck = false;
+    input.setAttribute('aria-label', 'A new rule, like git diff *');
+    var add = el('button', 'agc-btn', 'Add rule'); add.type = 'submit';
+    form.appendChild(input); form.appendChild(add);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = input.value.trim();
+      if (!text) return;
+      add.disabled = true;
+      api('POST', base(run.pid, '/rules'), { rule: text }).then(function (items) {
+        add.disabled = false; input.value = ''; fill(items || []); toast('Rule added');
+      }).catch(function (e) {
+        add.disabled = false;
+        toast(e.status === 403 ? 'Rules are set only at this Mac.' : 'Not added: ' + e.message);
+      });
+    });
+    box.appendChild(form);
+    box.appendChild(el('div', 'agc-qa', 'Not for npm, python, shells, build or test runners, or the project\'s own scripts: those keep asking.'));
   }
 
   function drawNote(eff) {

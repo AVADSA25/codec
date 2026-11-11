@@ -4,6 +4,16 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
+## Vibe agent commands inherit bash start-up variables (found 2026-11-11, P-048 build)
+
+| field | value |
+|---|---|
+| **where** | `codec_vibe_agent_cmd.command_env` (and `codec_envscrub.scrub`, which only drops secret-looking names) |
+| **what's wrong** | A command runs as `/bin/bash -c <command>` inside the sandbox. If the dashboard's own environment held `BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`, `PS4` or an exported function (`BASH_FUNC_*`), bash would read or run it before the approved command. Nothing on the Studio sets them today, and whatever runs is still inside the sandbox; the agent cannot set environment variables. |
+| **what P-048 does** | The new rule matcher (`codec_vibe_agent_rules._env_ok`) refuses to match while any of them is set, so a rule never runs a command in such an environment; exact approvals are unchanged. |
+| **status** | deferred-not-fixed: dropping them in `command_env` changes every agent command (a section 10 zone), so it is its own small change. |
+| **revisit when** | The next change to `command_env`, or before the buyer app ships Vibe commands. |
+
 ## Route-table tests fail on every FastAPI that requirements.txt allows (found 2026-10-29, D-33 CI PR)
 
 | field | value |

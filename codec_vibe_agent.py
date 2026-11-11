@@ -34,6 +34,7 @@ import codec_vibe_agent_check as vcheck
 import codec_vibe_agent_cmd as cmdmod
 import codec_vibe_agent_hooks as vhooks
 import codec_vibe_agent_proto as proto
+import codec_vibe_agent_rules as vrules
 import codec_vibe_agent_search as vsearch
 import codec_vibe_playbooks as vpb
 import codec_vibe_projects as vp
@@ -2094,8 +2095,13 @@ class Run:
             self._command_audit(n, "refused", command, False, None, 0)
             return Result(False, f"That command was refused: {e}. Use a plainer one.", "Command refused", blocked="dangerous")
         stored = next((a for a in vp.allowed_commands(self.pid) if a["cmd"] == command), None)
+        rule = None if stored else vrules.match([r["rule"] for r in vp.allowed_rules(self.pid)], command,
+                                                vp.project_dir(self.pid))       # after check_command, never instead (P-048)
         if stored:
             decision, network = "stored", bool(stored["network"])
+        elif rule:
+            decision, network = "rule", False                                  # a rule never carries the web
+            self._emit("note", step=n, text=f"Ran without a card: your rule {rule} allows it (no web).")
         else:
             got = self._approval(n, command)
             if got is None:
@@ -2886,6 +2892,21 @@ def forget(pid: str, command) -> list:
     if not isinstance(command, str):
         raise VibeError(400, "Send the command text")
     return vp.forget_command(pid, command)
+
+
+def command_rules(pid: str) -> list:
+    return vp.allowed_rules(pid)
+
+
+def add_command_rule(pid: str, rule) -> list:
+    """The owner's click at this Mac only (the route answers 403 elsewhere); never called from a run (P-048)."""
+    return vp.allow_rule(pid, rule)
+
+
+def forget_command_rule(pid: str, rule) -> list:
+    if not isinstance(rule, str):
+        raise VibeError(400, "Send the rule text")
+    return vp.forget_rule(pid, rule)
 
 
 def stop_run(pid: str, run_id: str) -> dict:

@@ -985,6 +985,61 @@ def forget_command(pid: str, command: str) -> list[dict]:
     return kept
 
 
+# ── the owner's rules, like "git diff *" (P-048, docs/VIBE-ALLOW-RULES-DESIGN.md) ──
+# Checked by codec_vibe_agent_rules when added, and again (its static part) every time they are read, so a rule put
+# into project.json by hand that the editor would refuse is ignored. A rule never carries the web.
+
+MAX_ALLOWED_RULES = 20
+
+
+def allowed_rules(pid: str) -> list[dict]:
+    import codec_vibe_agent_rules as rules
+    raw = _read_meta(project_dir(pid)).get("allowed_rules")
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for e in raw:
+            text = e.get("rule") if isinstance(e, dict) else None
+            try:
+                ok = rules.check_rule(text)
+            except rules.RuleRefused:
+                continue
+            if ok == text and all(x["rule"] != ok for x in out):
+                out.append({"rule": ok})
+    return out[-MAX_ALLOWED_RULES:]
+
+
+def allow_rule(pid: str, rule) -> list[dict]:
+    """Only on the owner's click at this Mac (routes/vibe_agent.py). 400 with the reason when the rule is refused."""
+    import codec_vibe_agent_rules as rules
+    pdir = project_dir(pid)
+    try:
+        text = rules.check_rule(rule, project=pdir)
+    except rules.RuleRefused as e:
+        raise VibeError(400, str(e)) from None
+    with _lock(pid):
+        items = [e for e in allowed_rules(pid) if e["rule"] != text]
+        items.append({"rule": text})
+        meta = _read_meta(pdir)
+        meta["allowed_rules"] = items[-MAX_ALLOWED_RULES:]
+        _write_json_atomic(_meta_path(pdir), meta)
+    _audit("vibe_agent_allow", "Vibe command rule allowed for a project", {"project": pid, "action": "allow_rule", "network": False})
+    return items[-MAX_ALLOWED_RULES:]
+
+
+def forget_rule(pid: str, rule: str) -> list[dict]:
+    pdir = project_dir(pid)
+    with _lock(pid):
+        items = allowed_rules(pid)
+        kept = [e for e in items if e["rule"] != rule]
+        if len(kept) == len(items):
+            raise VibeError(404, "That rule is not on the list")
+        meta = _read_meta(pdir)
+        meta["allowed_rules"] = kept
+        _write_json_atomic(_meta_path(pdir), meta)
+    _audit("vibe_agent_allow", "Vibe command rule forgotten for a project", {"project": pid, "action": "forget_rule", "network": False})
+    return kept
+
+
 # ── helpers for the agent run that holds the project (the 409 guard does not apply to them) ──
 
 def agent_checkpoint(pid: str, label: str, kind: str, run: str, step: int, *, force: bool = False) -> dict | None:
