@@ -589,7 +589,8 @@ file + manifest): leave lines with `extra.feature` out of section 1.
 
 `codec_agent_messaging._dispatch_to_channel` (the iMessage notice) puts the repo's
 `skills/` folder first on `sys.path` and imports `imessage_send` for its
-`_send`; `skills/clipboard_url_fetch.py` does the same for `web_fetch`. Neither
+`_send`; `skills/clipboard_url_fetch.py` did the same for `web_fetch` (fixed 2026-11-11: it uses
+`codec_dispatch.feature_module`). Neither
 goes through the registry's load gate, the skill switch or the hooks, and the
 `sys.path` insert lets a skill file shadow a module of the same name in that
 process. Outside P-098's seven files. Fix: `codec_dispatch.feature_module`
