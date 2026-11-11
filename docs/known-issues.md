@@ -330,7 +330,7 @@ same time with different `allow_network` values race, and the last writer wins
 for both. Found while reviewing `/api/run_code` for the 27 Sep audit follow-up.
 Fix: write a per-call profile (a temp file, or one file per network mode).
 
-## Sandbox docstrings claim "no process spawning" (2026-09-28)
+## Sandbox docstrings claim "no process spawning" (2026-09-28) — FIXED 2026-11-11 (the four descriptions now say what the profile allows)
 
 `codec_sandbox.py` (module docstring), `skills/python_exec.py` (module docstring),
 the comment at the top of `routes/vibe_exec.py`, and AGENTS.md §7 (`python_exec`
@@ -341,7 +341,7 @@ and the Python framework. What it does restrict is writes (to
 the network. Fix: correct the four descriptions, or tighten the profile and test
 it.
 
-## `codec_telegram.py` config example says an empty allowlist allows everyone (2026-09-28)
+## `codec_telegram.py` config example says an empty allowlist allows everyone (2026-09-28) — FIXED 2026-11-11 (comment says deny all)
 
 The example config at the top of `codec_telegram.py` says
 `"allowed_chat_ids": []  // empty = allow all`. The code is fail-closed: an empty

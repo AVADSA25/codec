@@ -34,7 +34,7 @@ log = logging.getLogger("codec_dashboard")
 # the python_exec skill (single-language, utility) this endpoint must run 8
 # languages incl. compilers (go/rust) and bash, so a full codec_sandbox
 # deny-default `sandbox-exec` profile is INTENTIONALLY NOT applied — its
-# no-process-spawn + no-network rules break compilation and the IDE's
+# narrow program list + no-network rules break compilation and the IDE's
 # legitimate use (a user testing an API call wants network). Instead we apply
 # the two hardenings that are safe across every language:
 #   1. resource limits (CPU / address space / FDs / output-file size) so a

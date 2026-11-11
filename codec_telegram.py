@@ -12,7 +12,7 @@ Usage:
 Config in ~/.codec/config.json:
     "telegram": {
         "bot_token": "YOUR_BOT_TOKEN",
-        "allowed_chat_ids": [],        // empty = allow all
+        "allowed_chat_ids": [],        // empty = deny all (fail closed)
         "require_trigger": false       // true = require "Hey CODEC" or "/codec" prefix
     }
 """
