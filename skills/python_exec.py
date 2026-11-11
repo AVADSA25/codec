@@ -131,12 +131,10 @@ def _preexec_set_rlimits():
         pass
 
 
-def _sandbox_command(python_bin: str, script_path: str) -> list:
-    """Build a `sandbox-exec -f <profile> <python> <script>` argv using
-    `codec_sandbox`'s deny-default profile. Returns the argv list ready
-    for `subprocess.run`."""
-    from codec_sandbox import _write_sandbox_profile
-    profile_path = _write_sandbox_profile(allow_network=False)
+def _sandbox_command(python_bin: str, script_path: str, profile_path: str) -> list:
+    """Build a `sandbox-exec -f <profile> <python> <script>` argv. The profile
+    is the run's own file from `codec_sandbox.per_call_profile` (deny-default,
+    no network). Returns the argv list ready for `subprocess.run`."""
     return ["/usr/bin/sandbox-exec", "-f", profile_path, python_bin, script_path]
 
 
@@ -192,14 +190,16 @@ def run(task, app="", ctx=""):
             f.write(code + "\n")
             tmp_path = f.name
 
-        cmd = _sandbox_command(_python_bin(), tmp_path)
-        result = subprocess.run(
-            cmd,
-            capture_output=True, text=True,
-            timeout=_SUBPROCESS_TIMEOUT,
-            env=_minimal_safe_env(),
-            preexec_fn=_preexec_set_rlimits,
-        )
+        from codec_sandbox import per_call_profile
+        with per_call_profile(allow_network=False) as profile_path:   # this run's own file, deleted after
+            cmd = _sandbox_command(_python_bin(), tmp_path, profile_path)
+            result = subprocess.run(
+                cmd,
+                capture_output=True, text=True,
+                timeout=_SUBPROCESS_TIMEOUT,
+                env=_minimal_safe_env(),
+                preexec_fn=_preexec_set_rlimits,
+            )
 
         stdout = (result.stdout or "").strip()
         stderr = (result.stderr or "").strip()

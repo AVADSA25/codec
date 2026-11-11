@@ -11,7 +11,9 @@ Reference: docs/audits/PHASE-1-SECURITY.md findings D-9 and D-10.
 """
 from __future__ import annotations
 
+import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
@@ -126,14 +128,46 @@ def test_minimal_safe_env_strips_dangerous_vars():
 
 def test_sandbox_command_uses_sandbox_exec_binary():
     """`_sandbox_command` must prepend `/usr/bin/sandbox-exec -f <profile>`."""
-    cmd = python_exec._sandbox_command("/usr/bin/python3", "/tmp/x.py")
-    assert cmd[0] == "/usr/bin/sandbox-exec"
-    assert cmd[1] == "-f"
-    # Index 2 is the profile path written by codec_sandbox; just sanity
-    # that it's a real path string and exists in the filesystem.
-    assert cmd[2].endswith("sandbox.sb")
-    assert cmd[3] == "/usr/bin/python3"
-    assert cmd[4] == "/tmp/x.py"
+    cmd = python_exec._sandbox_command("/usr/bin/python3", "/tmp/x.py", "/tmp/run.sb")
+    assert cmd == ["/usr/bin/sandbox-exec", "-f", "/tmp/run.sb", "/usr/bin/python3", "/tmp/x.py"]
+
+
+def test_each_run_gets_its_own_profile_file_deleted_after(monkeypatch, tmp_path):
+    """Known issue 2026-09-28: every run rewrote one shared ~/.codec/sandbox.sb,
+    so two runs racing with different network rules could swap profiles. Now
+    each run writes its own file next to it and deletes it afterwards."""
+    import codec_sandbox
+    shared = tmp_path / "sandbox.sb"
+    monkeypatch.setattr(codec_sandbox, "SANDBOX_PROFILE_PATH", str(shared))
+    seen = []
+
+    def fake_run(cmd, **kw):
+        prof = cmd[2]
+        seen.append((prof, os.path.exists(prof), oct(os.stat(prof).st_mode & 0o777),
+                     open(prof).read()))
+        return subprocess.CompletedProcess(cmd, 0, stdout="hi\n", stderr="")
+
+    monkeypatch.setattr(python_exec.subprocess, "run", fake_run)
+    assert python_exec.run("run python ```print('hi')```") == "hi"
+    assert python_exec.run("run python ```print('hi')```") == "hi"
+    (p1, ok1, mode1, text1), (p2, ok2, mode2, _) = seen
+    assert ok1 and ok2 and p1 != p2
+    assert os.path.dirname(p1) == str(tmp_path) and p1.endswith(".sb")
+    assert mode1 == mode2 == "0o600"
+    assert "(deny network-outbound)" in text1
+    assert not shared.exists()
+    assert list(tmp_path.glob("*.sb")) == []          # nothing left behind
+
+
+def test_two_profiles_open_together_keep_their_own_network_rule(monkeypatch, tmp_path):
+    import codec_sandbox
+    monkeypatch.setattr(codec_sandbox, "SANDBOX_PROFILE_PATH", str(tmp_path / "sandbox.sb"))
+    with codec_sandbox.per_call_profile(allow_network=False) as closed, \
+            codec_sandbox.per_call_profile(allow_network=True) as open_:
+        assert closed != open_
+        assert "(deny network-outbound)" in open(closed).read()
+        assert "(allow network-outbound)" in open(open_).read()
+    assert list(tmp_path.glob("*.sb")) == []
 
 
 # ── Live sandbox-exec subprocess tests (macOS only, slow) ────────────────────

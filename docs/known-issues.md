@@ -322,7 +322,9 @@ sends to the AVA proxy. Found while reviewing LLM config for the cloud fallback
 model (docs/CLOUD-FALLBACK-MODEL-DESIGN.md). Fix: migrate it to a Keychain slot with
 the same first-read migration as the PR-2B-2 getters and blank the field.
 
-## `codec_sandbox` shares one profile file between callers (2026-09-28)
+## FIXED (2026-11-11): `codec_sandbox` shares one profile file between callers (2026-09-28)
+
+Fixed: `codec_sandbox.per_call_profile` gives each run (sandboxed skills and `python_exec`) its own 0600 profile file in `~/.codec`, deleted after the run (docs/SANDBOX-PER-CALL-PROFILE-DESIGN.md).
 
 `codec_sandbox._write_sandbox_profile(allow_network=...)` rewrites the single
 file `~/.codec/sandbox.sb` on every call. Two sandboxed runs that start at the
