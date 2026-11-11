@@ -41,6 +41,9 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 /* Reading column: 760px, centred. The side padding (16px on the phone) keeps the scrollbar at the window edge. */
 .messages{flex:1;min-height:0;overflow-y:auto;padding:14px max(16px,calc((100% - 760px) / 2));-webkit-overflow-scrolling:touch}
 .msg{margin-bottom:14px;max-width:85%;animation:fadeIn .2s ease;position:relative}
+.voice-divider{display:flex;align-items:center;gap:10px;margin:18px 0 12px;color:var(--text-muted,#888);font-size:12px;font-weight:600}
+.voice-divider::before,.voice-divider::after{content:'';flex:1;height:1px;background:var(--border,#333)}
+.voice-tag{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--text-muted,#888);margin-bottom:3px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 /* The user's text is a soft right-aligned bubble. An assistant reply (.md, rendered Markdown) has no
    bubble and fills the column; cards (plans, questions, status, images) keep theirs. */
@@ -485,7 +488,7 @@ input[type=file]{display:none}
 <span id="cbModelSlot"><select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
 <option value="">model…</option>
 </select></span>
-<button type="button" class="cb-btn" id="micBtn" onclick="toggleMic()" title="Voice input" aria-label="Voice input"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+<button type="button" class="cb-btn" id="micBtn" onclick="toggleMic()" title="Voice input" aria-label="Voice input"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><button type="button" class="cb-btn" id="voiceCallBtn" onclick="startVoiceCall()" title="Voice call: it knows this chat and is added to it when you hang up" aria-label="Start a voice call about this chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg></button>
 <button type="button" class="cb-send empty" id="sendBtn" onclick="sendMessage()" title="Send" aria-label="Send"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
 <button type="button" class="cb-send stop" id="stopBtn" onclick="stopGeneration()" title="Stop generating" aria-label="Stop generating"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg></button>
 </div>
@@ -1670,6 +1673,23 @@ function genId(){return Date.now().toString(36)+Math.random().toString(36).subst
 // so a link like #session=../api/screenshot cannot make the page fetch another route (P-089).
 var _CHAT_ID_RE=/^[A-Za-z0-9_-]{1,80}$/;
 
+// Voice call in a chat (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md): the Voice page as it is, linked to this
+// chat by its id only. The server reads the chat itself and adds the call to it at the end; the Voice page
+// comes back here (#session=<id>). A temporary chat is never saved, so it gets a plain call.
+function startVoiceCall(){
+  if(temporaryChat||!_CHAT_ID_RE.test(String(sessionId||''))){location.href='/voice?auto=1';return}
+  location.href='/voice?auto=1&chat='+encodeURIComponent(sessionId);
+}
+// Rows a voice call added (source 'voice'): a phone mark, and one divider where a call starts.
+function _markVoiceRow(data,i,div){
+  if(!div||!data[i]||data[i].source!=='voice')return;
+  div.classList.add('voice-row');
+  var t=document.createElement('div');t.className='voice-tag';t.textContent='Voice';div.insertBefore(t,div.firstChild);
+  if(i>0&&data[i-1]&&data[i-1].source==='voice')return;
+  var d=document.createElement('div');d.className='voice-divider';d.setAttribute('role','separator');
+  d.textContent='Voice call';
+  div.parentNode.insertBefore(d,div);
+}
 function startNewSession(){if(typeof setPick==='function')setPick(null);_pickAgent=null;_discardFrom=null;_verPending=null;_savedRows=[];sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
 // PR #39: persist sessionId across page reloads. If a previous session
@@ -1748,7 +1768,7 @@ window.addEventListener('hashchange',_chatFromHash);
       chatHist=[];
       for(var i=0;i<data.length;i++){
         var m=data[i];
-        addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);
+        _markVoiceRow(data,i,addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp));
         chatHist.push({role:m.role,content:m.content||''});
       }
       rehydrateAgentPlanCards().then(jumpToLatest);
@@ -1787,7 +1807,7 @@ async function loadSession(sid){
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+encodeURIComponent(sid));var data=await r.json();
-    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp,false,m.attachments);chatHist.push({role:m.role,content:m.content||''});_savedRows.push(_rowCopy(m))}
+    for(var i=0;i<data.length;i++){var m=data[i];_markVoiceRow(data,i,addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp,false,m.attachments));chatHist.push({role:m.role,content:m.content||''});_savedRows.push(_rowCopy(m))}
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).
     await rehydrateAgentPlanCards();

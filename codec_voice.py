@@ -455,6 +455,50 @@ Show personality. You are not a search engine — you are a companion with opini
 Your user's right hand — not a customer service bot."""
 
 
+# ── Voice call in a chat (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md) ─────────
+# A call started from a chat (/voice?chat=<id>) reads that chat's newest lines into its
+# system prompt, and adds its own turns to the chat when the socket closes.
+def _chat_link_enabled() -> bool:
+    """config.json voice.chat_link (default on), read per call: off = a plain call."""
+    try:
+        from codec_config import load_config
+        v = (load_config().get("voice") or {}).get("chat_link", True)
+        return v is not False
+    except Exception:
+        return True
+
+
+def _chat_context_block(chat_id: str) -> tuple[str, int, int]:
+    """The 'Earlier in this chat' block for the system prompt, fenced as data (an older
+    reply can hold web page text). Returns (block, rows, characters); ('', 0, 0) when
+    there is nothing to add."""
+    try:
+        from routes.qchat import voice_context_rows
+        rows = voice_context_rows(chat_id)
+    except Exception:
+        log.debug("voice: reading the chat for a linked call failed", exc_info=True)
+        return "", 0, 0
+    if not rows:
+        return "", 0, 0
+    text = "\n".join(("User: " if r == "user" else "CODEC: ") + t for r, t in rows)
+    try:
+        import codec_fence
+        body = codec_fence.fence(text, "The typed chat this call was started from")
+    except Exception:
+        body = text
+    block = ("\n\n━━ EARLIER IN THIS CHAT ━━\nThe user started this call from a typed chat. "
+             "Its newest lines are below, oldest first. Use them as context; the user may refer to them.\n" + body)
+    return block, len(rows), sum(len(t) for _, t in rows)
+
+
+def _clean_turn_text(content) -> str:
+    if isinstance(content, list):
+        content = " ".join(str(p) for p in content)
+    text = re.sub(r"<think>[\s\S]*?</think>", "", str(content or ""))
+    text = re.sub(r"\[SKILL:[^\]]*\]", "", text)
+    return text.strip()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 class VoicePipeline:
     """One voice session per WebSocket connection. Two-task architecture."""
@@ -463,8 +507,12 @@ class VoicePipeline:
     _resumable_sessions: dict[str, list] = {}
     _resume_timestamps: dict[str, float] = {}  # session_id → time.monotonic() at save (M-6)
     _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
+    # Voice call in a chat: per session, how many messages are already handled (written to the chat or
+    # skipped) and which positions are greetings, so a reconnect never writes a line twice.
+    _chat_progress: dict[str, dict] = {}
 
-    def __init__(self, websocket, resume_session_id: str | None = None, client_pcm: bool = False):
+    def __init__(self, websocket, resume_session_id: str | None = None, client_pcm: bool = False,
+                 chat_id: str | None = None):
         self.ws              = websocket
         # The page said it can play streamed voice 02 chunks (?pcm=1). Without it the call keeps whole Kokoro files, so a page
         # that was already open when this shipped does not receive audio it cannot play.
@@ -477,6 +525,22 @@ class VoicePipeline:
         # voice activity happens, not only on the next _save_for_resume.
         self._prune_resumable()
 
+        # Voice call in a chat: the chat's newest lines go in the system prompt (rebuilt every turn
+        # by _system_base), and the call's turns go back into the chat when the socket closes.
+        self.chat_id = None
+        self._chat_block = ""
+        self._chat_seen = (0, 0)
+        if chat_id and _chat_link_enabled():
+            try:
+                from routes.qchat import valid_chat_id
+                if valid_chat_id(chat_id):
+                    self.chat_id = chat_id
+                    block, n_rows, n_chars = _chat_context_block(chat_id)
+                    self._chat_block = block
+                    self._chat_seen = (n_rows, n_chars)
+            except Exception:
+                log.debug("voice: chat link skipped", exc_info=True)
+
         # Resume conversation context if available
         self._is_resumed = False
         if resume_session_id and resume_session_id in self._resumable_sessions:
@@ -486,7 +550,10 @@ class VoicePipeline:
             self._is_resumed = True
             log.info(f"Resumed session {resume_session_id} with {len(saved)} messages")
         else:
-            self.messages = [{"role": "system", "content": _build_system_prompt()}]
+            self.messages = [{"role": "system", "content": self._system_base()}]
+        prog = VoicePipeline._chat_progress.get(self.session_id) if self._is_resumed else None
+        self._chat_done = min(prog["done"], len(self.messages)) if prog else 1   # messages[0] is the system prompt
+        self._chat_skip = set(prog["skip"]) if prog else set()
 
         # VAD state
         self.audio_buffer     = bytearray()
@@ -534,8 +601,47 @@ class VoicePipeline:
             for sid in stale:
                 cls._resumable_sessions.pop(sid, None)
                 cls._resume_timestamps.pop(sid, None)
+                cls._chat_progress.pop(sid, None)
         except Exception:
             log.debug("voice: stale-resume-session cleanup pass swallowed", exc_info=True)
+
+    def _system_base(self) -> str:
+        """The voice system prompt, plus the linked chat's lines when the call came from a chat."""
+        return _build_system_prompt() + (getattr(self, "_chat_block", "") or "")
+
+    def write_back_to_chat(self) -> int:
+        """Add this call's new turns to the chat it was started from (source 'voice'): user and
+        assistant turns only, never the greetings, never a line written before (a reconnect
+        resumes the count). Runs on the event loop thread, like every user of the qchat
+        connection. Returns the rows written; never raises."""
+        if not self.chat_id:
+            return 0
+        turns = []
+        try:
+            for i in range(self._chat_done, len(self.messages)):
+                m = self.messages[i]
+                if i in self._chat_skip or m.get("role") not in ("user", "assistant"):
+                    continue
+                text = _clean_turn_text(m.get("content"))
+                if text:
+                    turns.append((m["role"], text))
+            from routes.qchat import append_voice_turns
+            written = append_voice_turns(self.chat_id, turns)
+            self._chat_done = len(self.messages)
+            if self._disconnect_reason == "user":             # hung up: no resume will follow
+                VoicePipeline._chat_progress.pop(self.session_id, None)
+            else:
+                VoicePipeline._chat_progress[self.session_id] = {"done": self._chat_done, "skip": sorted(self._chat_skip)}
+        except Exception:
+            log.warning("voice: writing the call into its chat failed", exc_info=True)
+            return 0
+        if written:
+            try:
+                _voice_log_event("voice_chat_written", "codec-voice", "Voice call turns added to its chat",
+                                 extra={"rows": written}, correlation_id=getattr(self, "_cid", None))
+            except Exception:
+                log.debug("voice: voice_chat_written audit emit failed", exc_info=True)
+        return written
 
     def _save_for_resume(self):
         """Stash conversation state so a reconnecting client can resume."""
@@ -573,7 +679,7 @@ class VoicePipeline:
             mem = CodecMemory()
             context = mem.get_context("recent", 5)
             if context:
-                base = _build_system_prompt()
+                base = self._system_base()
                 self.messages[0] = {
                     "role": "system",
                     "content": base + "\n\nRecent memory:\n" + context
@@ -830,7 +936,7 @@ class VoicePipeline:
                 if targeted:
                     self.messages[0] = {
                         "role": "system",
-                        "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
+                        "content": self._system_base() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
                     }
             except Exception:
                 log.debug("voice: targeted-memory injection skipped", exc_info=True)
@@ -1928,6 +2034,13 @@ class VoicePipeline:
                              correlation_id=cid)
         except Exception:
             log.debug("voice: voice_session_start audit emit failed", exc_info=True)
+        if self.chat_id:
+            try:
+                _voice_log_event("voice_chat_linked", "codec-voice", "Voice call started from a chat",
+                                 extra={"rows": self._chat_seen[0], "chars": self._chat_seen[1],
+                                        "resumed": bool(is_resumed)}, correlation_id=cid)
+            except Exception:
+                log.debug("voice: voice_chat_linked audit emit failed", exc_info=True)
         # Phase 1 Step 2: fire on_operation_start hooks (per-plugin, not the
         # voice_session_start audit event above — that's Step 1 vocabulary
         # and intentionally unchanged). Hook layer never raises.
@@ -1946,6 +2059,7 @@ class VoicePipeline:
         if is_resumed:
             # Reconnected — short acknowledgement, no full greeting
             greeting = "Reconnected. I'm still here. Go ahead."
+            self._chat_skip.add(len(self.messages))
             self.messages.append({"role": "assistant", "content": greeting})
             await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
             await self._speak_outside_a_turn(greeting, greeting=True)
@@ -1963,6 +2077,7 @@ class VoicePipeline:
                 greeting = f"Greetings {_user_name}. CODEC is online. {_where} What do you need?"
             else:
                 greeting = f"Greetings. CODEC is online. {_where} What do you need?"
+            self._chat_skip.add(len(self.messages))
             self.messages.append({"role": "assistant", "content": greeting})
             await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
             await self._speak_outside_a_turn(greeting, greeting=True)
@@ -1995,6 +2110,7 @@ class VoicePipeline:
             if self._speech is not None:
                 await self._speech.close()
             self.save_to_memory()
+            self.write_back_to_chat()
             log.info(f"Session ended: {self.session_id}")
             try:
                 duration_ms = (time.monotonic() - run_t0) * 1000.0

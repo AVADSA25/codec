@@ -19,6 +19,11 @@ P2.12 (docs/P2.12-DESIGN.md): a sent message keeps its attachment tiles: an
 attachments column (JSON: name, kind, size, a small JPEG thumbnail, and for an
 image what the vision model saw). Additive, after a backup copy.
 
+Voice call in a chat (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md): a call started
+from a chat reads the chat's newest lines (voice_context_rows) and adds its own turns
+to it when the socket closes (append_voice_turns), marked by a source column ('voice';
+NULL = typed). Additive, after a backup copy.
+
 DB setup (QCHAT_DB, _qchat_conn singleton, qchat_db helper) lives here
 too — it was only ever referenced by these endpoints. WAL + busy_timeout
 + auto-migration applied on first connect.
@@ -113,6 +118,11 @@ def qchat_db():
             _qchat_conn.commit()
             _backup_once(_qchat_conn, "p2.12")
             _qchat_conn.execute("ALTER TABLE qchat_messages ADD COLUMN attachments TEXT")
+        # Voice call in a chat: which rows came from a call (a new column; additive, backup first).
+        if "source" not in _columns(_qchat_conn, "qchat_messages"):
+            _qchat_conn.commit()
+            _backup_once(_qchat_conn, "voice")
+            _qchat_conn.execute("ALTER TABLE qchat_messages ADD COLUMN source TEXT")
         # P2.7: reply feedback (a new table; additive, backup first).
         has_feedback = _qchat_conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='qchat_feedback'").fetchone()
@@ -148,7 +158,7 @@ async def qchat_sessions(user_id: str = None, offset: int = 0, limit: int = 30, 
 
 
 def _current_messages(conn, sid: str) -> list:
-    return conn.execute("SELECT role, content, timestamp, attachments FROM qchat_messages "
+    return conn.execute("SELECT role, content, timestamp, attachments, source FROM qchat_messages "
                         "WHERE session_id=? AND superseded_at IS NULL ORDER BY id ASC", (sid,)).fetchall()
 
 
@@ -208,8 +218,72 @@ async def qchat_session(sid: str):
         atts = _attachments_out(r[3])
         if atts:
             m["attachments"] = atts
+        if r[4] == "voice":
+            m["source"] = "voice"
         out.append(m)
     return out
+
+
+# ── Voice call in a chat (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md) ──────
+# The call runs in this process, on the event loop thread like every other user of
+# the shared connection (P-016): these helpers are plain, quick SQLite calls.
+CHAT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")      # the chat page's own id rule
+VOICE_CONTEXT_ROWS = 12
+VOICE_CONTEXT_ROW_CHARS = 800
+VOICE_CONTEXT_TOTAL_CHARS = 4000
+VOICE_ROW_MAX_CHARS = 4000
+
+
+def valid_chat_id(sid) -> bool:
+    return isinstance(sid, str) and bool(CHAT_ID_RE.match(sid))
+
+
+def voice_context_rows(sid: str) -> list:
+    """The newest lines of a chat, for a voice call started from it: user and assistant
+    rows only, each cut at 800 characters, 4,000 in all, the oldest dropped first.
+    Returned oldest first as (role, text). Empty for a bad id or an unknown chat."""
+    if not valid_chat_id(sid):
+        return []
+    rows = qchat_db().execute(
+        "SELECT role, content FROM qchat_messages WHERE session_id=? AND superseded_at IS NULL "
+        "AND role IN ('user', 'assistant') ORDER BY id DESC LIMIT ?", (sid, VOICE_CONTEXT_ROWS)).fetchall()
+    out, total = [], 0
+    for role, content in rows:
+        text = str(content or "").strip()
+        if not text:
+            continue
+        if len(text) > VOICE_CONTEXT_ROW_CHARS:
+            text = text[:VOICE_CONTEXT_ROW_CHARS].rstrip() + " ..."
+        if total + len(text) > VOICE_CONTEXT_TOTAL_CHARS:
+            break
+        total += len(text)
+        out.append((role, text))
+    out.reverse()
+    return out
+
+
+def append_voice_turns(sid: str, turns: list, user_id: str = "default") -> int:
+    """Add a call's turns [(role, text)] to the end of a chat, each row marked source='voice'.
+    A chat that does not exist yet is created, titled with the first thing said.
+    Returns the number of rows written (0 for a bad id or nothing to write)."""
+    if not valid_chat_id(sid):
+        return 0
+    rows = [(r, str(t).strip()[:VOICE_ROW_MAX_CHARS]) for r, t in (turns or [])
+            if r in ("user", "assistant") and str(t or "").strip()]
+    if not rows:
+        return 0
+    now = datetime.now().isoformat()
+    conn = qchat_db()
+    if conn.execute("SELECT 1 FROM qchat_sessions WHERE id=?", (sid,)).fetchone():
+        conn.execute("UPDATE qchat_sessions SET updated_at=? WHERE id=?", (now, sid))
+    else:
+        title = next((t for r, t in rows if r == "user"), "") or "Voice call"
+        conn.execute("INSERT INTO qchat_sessions (id, title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?)",
+                     (sid, title[:60], now, now, user_id))
+    conn.executemany("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id, source) "
+                     "VALUES (?, ?, ?, ?, ?, 'voice')", [(sid, r, t, now, user_id) for r, t in rows])
+    conn.commit()
+    return len(rows)
 
 
 @router.patch("/api/qchat/session/{sid}")
