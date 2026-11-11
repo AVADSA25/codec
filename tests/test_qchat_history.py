@@ -161,10 +161,24 @@ def test_google_doc_route_uses_the_skill_helper(client, monkeypatch):
             return "https://docs.google.com/document/d/abc/edit"
 
     monkeypatch.setattr(codec_dispatch.registry, "load", lambda name: FakeSkill if name == "google_docs" else None)
+    # The route checks the licence first; its cached state depends on which tests ran before
+    # (it failed with 403 after other chat tests), so this test sets it.
+    import codec_license
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda feature: True)
     _save(client, "c", [{"role": "user", "content": "Plan a trip"}])
     r = client.post("/api/qchat/session/c/gdoc")
     assert r.status_code == 200 and r.json()["url"].startswith("https://docs.google.com/")
     assert calls and calls[0][0] == "c" and "Plan a trip" in calls[0][1]
+
+
+def test_google_doc_route_refuses_without_a_licence(client, monkeypatch):
+    import codec_dispatch
+    import codec_license
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda feature: False)
+    monkeypatch.setattr(codec_dispatch.registry, "load", lambda name: pytest.fail("no skill load without a licence"))
+    _save(client, "c", [{"role": "user", "content": "Plan a trip"}])
+    r = client.post("/api/qchat/session/c/gdoc")
+    assert r.status_code == 403 and "license" in r.json()["error"]
 
 
 def test_patch_is_csrf_checked_like_other_writes():
