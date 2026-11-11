@@ -9,9 +9,9 @@ Owner's words (11 Nov): "add live voice inside chat, we just need a phone icon, 
 ### What the owner sees
 
 1. A phone icon in the chat box, next to the microphone.
-2. A click opens the Voice page, exactly as it is today: the same call, the same voice 02, the same "stop when I talk", the same modes. The page shows one line at the top: "Linked to: <chat title>".
+2. A click opens the Voice page, exactly as it is today: the same call, the same voice 02, the same "stop when I talk", the same modes. The page shows one line at the top: "Started from your chat", with a "Back to chat" link.
 3. The call already knows the chat. If he typed ten messages before, voice can answer "as we said above".
-4. He hangs up. The page goes back to the same chat. The call's lines are now in the chat, after the typed ones, each with a small phone mark and a divider "Voice call, 4 min". Typing afterwards goes on with all of it: the next text reply sees the call too.
+4. He hangs up. The page goes back to the same chat. The call's lines are now in the chat, after the typed ones, each with a small "Voice" tag, and one "Voice call" divider before each call. Typing afterwards goes on with all of it: the next text reply sees the call too.
 5. A call started on a new, empty chat works the same way: the chat is created with the call in it.
 6. A temporary chat (P2.11, never saved) gets a plain call with no link: nothing of the call is written to the chat, as before.
 
@@ -21,7 +21,7 @@ The Voice page holds the microphone, the speaking worker, the audio player and t
 
 ### How it works
 
-**Opening.** The phone icon goes to `/voice?chat=<id>` with the chat's id (the same id the page already keeps in `codec-chat-session`). The Voice page adds `&chat=<id>` to its socket address. `routes/websocket.py` checks the id against the chat id rule (`^[A-Za-z0-9_-]{1,80}$`) and hands it to `VoicePipeline(chat_id=...)`. An id that fails the rule is ignored and the call is a plain one.
+**Opening.** The phone icon goes to `/voice?auto=1&chat=<id>` with the chat's id (the same id the page already keeps in `codec-chat-session`). The Voice page adds `&chat=<id>` to its socket address. `routes/websocket.py` checks the id against the chat id rule (`^[A-Za-z0-9_-]{1,80}$`) and hands it to `VoicePipeline(chat_id=...)`. An id that fails the rule is ignored and the call is a plain one.
 
 **Context.** The server reads the chat from `qchat.db` itself; the page sends no chat text. It takes the newest 12 typed lines (user and assistant), each cut at 800 characters, 4,000 characters in all, oldest dropped first, and adds them to the voice system prompt as one block "Earlier in this chat", wrapped with `codec_fence.fence` (an older reply can hold web page text). Putting it in the system prompt, not as separate turns, means:
 - the voice 20-turn trim never removes it;
@@ -39,7 +39,7 @@ Cost: about 1,000 more tokens for the model to read on every voice turn. The loc
 
 The server writes, not the page, so the call is still saved if the phone locks or the tab closes during the call.
 
-**Going back.** On hang-up the Voice page goes to `/chat#chat=<id>` (a new, fixed form of the hash link the chat page already reads; it only opens that chat, it never sends text). The chat page loads the chat the normal way and draws `source = 'voice'` rows with the phone mark and one divider per call. A "Back to chat" link also stays on the Voice page in case he wants to stay.
+**Going back.** On hang-up the Voice page goes to `/chat#session=<id>` (the hash link the chat page already reads; it only opens that chat, it never sends text). The page waits for the server to close the socket (the write-back is done by then), with a 4 s fallback. The chat page loads the chat the normal way and draws `source = 'voice'` rows with a "Voice" tag and one divider per call. A "Back to chat" link also stays on the Voice page in case he wants to stay.
 
 **Memory.** Unchanged: the call is still saved to `memory.db` under its own `voice_...` session, as today.
 
@@ -50,8 +50,8 @@ The server writes, not the page, so the call is still saved if the phone locks o
 | `routes/qchat.py` | New column `qchat_messages.source TEXT` (NULL = typed). Additive, backup of `qchat.db` first, the same pattern as P2.12. `/api/qchat/session/{id}` returns `source`. One helper `append_voice_turns(chat_id, turns)` used by the call. |
 | `routes/websocket.py` | Read and check `chat`, pass it to the pipeline. |
 | `codec_voice.py` | `chat_id` argument; the context block in the system prompt; the write-back on close; the written count in the resume store. |
-| `codec_voice.html` | Read `?chat=`, pass it on, the "Linked to" line, back to the chat on hang-up. |
-| `codec_chat.html` | Phone icon (line icon, no emoji; hidden in a temporary chat); the `#chat=<id>` hash; the phone mark and divider on voice rows. |
+| `codec_voice.html` | Read `?chat=`, pass it on, the "Started from your chat" line, back to the chat on hang-up. |
+| `codec_chat.html` | Phone icon (line icon, no emoji; in a temporary chat it opens a plain call); the "Voice" tag and divider on voice rows. |
 | `docs/codec-architecture.md` | Two audit lines. |
 
 **Audit:** `voice_chat_linked` (rows and characters read into the call) and `voice_chat_written` (rows written). Counts only, never text or a title.
@@ -69,7 +69,7 @@ The server writes, not the page, so the call is still saved if the phone locks o
 - Context block: cut rules (12 lines, 800 and 4,000 characters, oldest dropped first), fenced, absent for a bad id or with the switch off.
 - Write-back: only call turns, no greeting, `source = 'voice'`, no double write across a reconnect, a missing chat is created, nothing written without a chat id.
 - Migration: the column is added once, the backup is made first, old rows read back with `source` NULL.
-- Pages: the icon is hidden in a temporary chat; the hash only opens a chat; voice rows get the mark (string checks in the style of the existing page tests).
+- Pages: a temporary chat gets a plain call; only the chat id goes in the address; voice rows get the tag, drawn with `textContent` (string checks in the style of the existing page tests).
 - All against temp databases (`tmp_path`), never the live `~/.codec`.
 
 ### Rollback
