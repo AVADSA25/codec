@@ -2,8 +2,9 @@
 
 Skills run in an isolated subprocess with:
 - Network access denied by default (unless SKILL_PERMISSIONS includes "network")
-- File writes restricted to ~/.codec/skill_output/
-- Process spawning denied
+- File writes restricted to ~/.codec/skill_output/ and /private/tmp
+- Programs may fork and run only from /usr, /opt/homebrew and the Python framework
+  (process spawning is restricted, not denied)
 - CPU timeout (10s) and memory limit (256MB)
 """
 import json

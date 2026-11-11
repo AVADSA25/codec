@@ -415,7 +415,7 @@ Real adapter over `audit()` for lifecycle events (session start/end, scheduler t
 
 1. **AST gate.** The substring blocker (`"import os"`, `"eval("`, etc. — trivially bypassable via `getattr(__builtins__, chr(95)*2+'import'+chr(95)*2)`, `vars(__builtins__)`, unicode-escape, etc.) was replaced with `codec_config.is_dangerous_skill_code` — the same AST validator that PR-1A uses at `SkillRegistry.load`. Refusals emit `python_exec_blocked` audit (`source=codec-skill-python-exec`, level=`warning`, extra={`reason`, `code_preview`}).
 
-2. **`sandbox-exec` at runtime.** Python interpreter runs inside `/usr/bin/sandbox-exec -f <profile>` using `codec_sandbox`'s deny-default profile: no network, no process spawning, file writes restricted to `~/.codec/skill_output/` and `/tmp/`. Even if AST-validated code somehow reaches a novel reflection pattern the validator missed, the kernel blocks the syscall.
+2. **`sandbox-exec` at runtime.** Python interpreter runs inside `/usr/bin/sandbox-exec -f <profile>` using `codec_sandbox`'s deny-default profile: no network, programs only from `/usr`, `/opt/homebrew` and the Python framework (fork allowed), file writes restricted to `~/.codec/skill_output/` and `/tmp/`. Even if AST-validated code somehow reaches a novel reflection pattern the validator missed, the kernel blocks the syscall.
 
 3. **Resource limits via `preexec_fn`.** `RLIMIT_CPU` (5s wall-clock), `RLIMIT_AS` (256 MB address space), `RLIMIT_NOFILE` (32 file descriptors) — caps `while True: pass`, memory bombs, and FD leaks. `subprocess.run` outer `timeout=10` is the belt-and-suspenders backstop.
 

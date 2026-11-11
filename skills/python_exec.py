@@ -12,8 +12,9 @@ Hardened in PR-2C (closes audit D-9):
 
 2. macOS sandbox-exec at runtime.
    The Python interpreter runs inside `sandbox-exec -f <profile>`
-   using `codec_sandbox`'s deny-default profile: no network, no
-   process spawning, file writes restricted to SKILL_OUTPUT_DIR
+   using `codec_sandbox`'s deny-default profile: no network,
+   programs only from /usr, /opt/homebrew and the Python framework
+   (fork allowed), file writes restricted to SKILL_OUTPUT_DIR
    and /tmp. Even if AST-validated code somehow reaches a syscall
    the validator missed (novel reflection), the kernel blocks it.
 
