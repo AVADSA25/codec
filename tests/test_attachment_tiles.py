@@ -141,7 +141,7 @@ def test_sent_and_loaded_messages_keep_their_tiles():
     assert "saveMessages([{role:'user',content:displayText,attachments:atts}]);" in PAGE
     assert "addMessage('user',displayText,undefined,null,false,atts);" in PAGE
     assert "if(role==='user')_renderAtts(div,atts);" in PAGE
-    assert "m.timestamp,false,m.attachments);" in PAGE and "_savedRows.push(_rowCopy(m))" in PAGE
+    assert "m.timestamp,false,m.attachments));" in PAGE and "_savedRows.push(_rowCopy(m))" in PAGE
     rc = _block("function _rowCopy(m){", "\n}\n")
     assert "k!=='full'" in rc, "the in-page 1280px image is never saved"
     tiles = _block("function _attTiles(files){", "function _renderAtts(")

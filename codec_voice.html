@@ -82,6 +82,9 @@
         .status { font-size: var(--fs-16); color: var(--text); min-height: 1.5em; }
         /* One hint line during a call: the server's "Speak to interrupt" while CODEC speaks or works,
            the hold-to-talk hint otherwise. */
+        .chat-link { margin-top: 8px; font-size: var(--fs-12); color: var(--text-dim); max-width: 340px; text-align: center; line-height: 1.4; }
+        .chat-link[hidden] { display: none; }
+        .chat-link a { color: var(--accent); }
         .interrupt-hint, .hold-hint { display: none; font-size: var(--fs-13); color: var(--text-dim); min-height: 1.45em; }
         body.in-call.state-speaking .interrupt-hint,
         body.in-call.state-processing .interrupt-hint,
@@ -279,6 +282,7 @@
             <div class="status" id="statusLabel" aria-live="polite">Tap to start voice call</div>
             <div class="interrupt-hint" id="interruptHint"></div>
             <div class="hold-hint" id="holdHint">Hold the circle to talk, let go to send</div>
+            <div class="chat-link" id="chatLink" hidden>Started from your chat: the call knows it, and is added to it when you hang up. <a href="/chat" id="chatBack">Back to chat</a></div>
         </div>
 
         <!-- Voice mode: flash / default / think (docs/VOICE-MODES-DESIGN.md) -->
@@ -659,6 +663,27 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         }
     }
 
+    /* ── Voice call in a chat (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md) ──
+       /voice?chat=<id>: the server reads that chat and adds the call to it when the socket closes.
+       After hanging up the page goes back to the chat; only the id travels, never text. */
+    var LINKED_CHAT = (function () {
+        var c = '';
+        try { c = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
+        return /^[A-Za-z0-9_-]{1,80}$/.test(c) ? c : '';
+    })();
+    var _leaving = false;
+    function backToChat() {
+        if (_leaving || !LINKED_CHAT) return;
+        _leaving = true;
+        location.href = '/chat#session=' + encodeURIComponent(LINKED_CHAT);
+    }
+    (function () {
+        if (!LINKED_CHAT) return;
+        var box = document.getElementById('chatLink'), a = document.getElementById('chatBack');
+        if (a) a.href = '/chat#session=' + encodeURIComponent(LINKED_CHAT);
+        if (box) box.hidden = false;
+    })();
+
     /* ── WebSocket with auto-reconnect ── */
     var wsRetryCount = 0;
     var wsRetryMax   = 5;
@@ -677,6 +702,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         if (wsSessionId) {
             url += '&resume=' + encodeURIComponent(wsSessionId);
         }
+        if (LINKED_CHAT) url += '&chat=' + encodeURIComponent(LINKED_CHAT);
         ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';
 
@@ -753,6 +779,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             setTyping(false);
             if (wsIntentionalClose) {
                 addTranscript('system', 'Disconnected — transcript saved to memory');
+                backToChat();      /* linked call: the server closes once the call is in the chat */
                 return;
             }
             /* Unexpected disconnect — try to reconnect */
@@ -1031,12 +1058,21 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         wsIntentionalClose = true;
         if (ws) {
             try { ws.send(JSON.stringify({type: 'end_call'})); } catch(e) {}
-            try { ws.close(); } catch(e){}
+            if (LINKED_CHAT) {
+                /* Let the server close: it adds the call to the chat first. Back after 4 s at most. */
+                var w = ws;
+                setTimeout(function () { try { w.close(); } catch (e) {} backToChat(); }, 4000);
+            } else {
+                try { ws.close(); } catch(e){}
+            }
             ws = null;
+        } else if (LINKED_CHAT) {
+            backToChat();
         }
         wsSessionId = null; /* clear session — no resume after intentional end */
         setState('idle');
-        document.getElementById('statusLabel').textContent = 'Call ended — transcript saved to memory';
+        document.getElementById('statusLabel').textContent = LINKED_CHAT ? 'Call ended — adding it to your chat…'
+                                                                         : 'Call ended — transcript saved to memory';
     }
 
     function updateTimer() {

@@ -447,7 +447,7 @@ def test_the_route_tells_the_pipeline_whether_the_page_can_play_the_stream(monke
     seen = []
 
     class FakePipeline:
-        def __init__(self, ws, resume_session_id=None, client_pcm=False):
+        def __init__(self, ws, resume_session_id=None, client_pcm=False, chat_id=None):
             seen.append((resume_session_id, client_pcm))
 
         async def run(self):

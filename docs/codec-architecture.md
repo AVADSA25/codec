@@ -310,6 +310,13 @@ Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, leve
 |---|---|
 | `tts_fallback` | `purpose` (`speak` or `live`), `reason` (an exception name such as `ConnectionError`, `ConnectError` or `Timeout`, `timeout`, `empty`, `http_<status>`, `not_audio`, or `breaker_open` when two live failures in a row turned the clone off for the rest of a call): voice 02 failed and the Kokoro request was used instead |
 
+Voice call inside a chat (2026-11, docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md): emitted by `codec_voice`, source `codec-voice`, level info, the call's correlation_id. Counts only: never a line, a title or the chat id.
+
+| Event | extra fields |
+|---|---|
+| `voice_chat_linked` | `rows` (chat lines read into the call's system prompt), `chars` (their characters), `resumed` (bool): a call started from a chat (`?chat=` on `/ws/voice`) |
+| `voice_chat_written` | `rows` (user and assistant turns added to the chat, `qchat_messages.source = 'voice'`): written when the socket closes, only when at least one row was added |
+
 ### Web Push events (2026-09, UI P3.13)
 
 Emitted by `codec_push` (docs/P3.13-DESIGN.md). Metadata only: never an endpoint, a key or any notification text.
