@@ -390,7 +390,9 @@ def test_a_real_failing_check_makes_the_agent_fix_the_code(scripted):
              "test_calc.py": "import unittest\nfrom calc import add\n\n\nclass T(unittest.TestCase):\n"
                              "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n"}
     pid = make_project(files)
-    command = "python3 -m unittest -q # vibe-run-test"
+    # -B: the fix keeps calc.py the same size, and within the same second Python would
+    # reuse the bytecode it cached on the first (failing) run and fail again.
+    command = "python3 -B -m unittest -q # vibe-run-test"
     marked(pid, command)
     model = scripted([FINISH,
                       "Fix add.\n@@ write_file calc.py\n<<<<<<< CONTENT\ndef add(a, b):\n    return a + b\n>>>>>>> END\n",
