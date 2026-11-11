@@ -272,7 +272,7 @@ re-run `verify_audit_log()` to confirm `integrity_ok` goes true. The two
 existing broken lines stay — §6 forbids hand-editing the log, and per-line HMAC
 cannot detect a deletion anyway.
 
-## `_bootstrap_fleet` bypasses the ephemeral-location guard (2026-09-03)
+## `_bootstrap_fleet` bypasses the ephemeral-location guard (2026-09-03) — FIXED 2026-11-11 (the guard is in install_launchagents.sh, which every writer calls)
 
 `packaging/macos/first_run.py` now refuses to write LaunchAgents when the app runs
 from a removable or translocated location (#335). But
@@ -300,7 +300,7 @@ branch: zero unique to the branch. Fix: decide whether the cloud-mode lock is th
 intended default in tests (then update expectations) or gate it behind config in the
 test fixture.
 
-## `_fleet_loaded()` counts the app's own LaunchServices registration (2026-09-04)
+## `_fleet_loaded()` counts the app's own LaunchServices registration (2026-09-04) — FIXED 2026-11-11 (counts labels starting with `ai.avadigital.codec.` only)
 
 `launcher/codec_app_main.py:_fleet_loaded()` counts `launchctl list` entries matching
 `ai.avadigital.codec`. LaunchServices registers the running app itself as
