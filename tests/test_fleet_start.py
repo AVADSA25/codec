@@ -261,6 +261,29 @@ def test_install_script_errors_clearly_when_node_is_missing():
     assert "node is required" in src and "--services-json" in src
 
 
+@pytest.mark.parametrize("workdir", ["/Volumes/CODEC Installer 1/Sovereign AI Workstation.app/Contents/Resources/app",
+                                     "/private/var/folders/x/AppTranslocation/ABC/d/CODEC.app/Contents/Resources/app"])
+def test_install_script_refuses_an_ephemeral_location_even_with_force(workdir):
+    """The launcher's re-bootstrap calls the script directly, so the 2026-09-03 guard is in it too."""
+    r = subprocess.run(["bash", str(INSTALL_SH), "--dry-run", "--force", "--workdir", workdir,
+                        "--services-json", "/nonexistent/services.json"], capture_output=True, text=True)
+    assert r.returncode == 1 and "REFUSING" in r.stderr and "/Applications" in r.stderr
+    assert r.stdout == ""
+
+
+def test_fleet_loaded_counts_fleet_labels_not_the_app_itself(entry, monkeypatch):
+    out = ("PID\tStatus\tLabel\n"
+           "812\t0\tapplication.ai.avadigital.codec.98123.98130\n"
+           "-\t0\tcom.apple.SafariHistoryServiceAgent\n")
+
+    class R:
+        stdout = out
+    monkeypatch.setattr(entry.subprocess, "run", lambda *a, **k: R())
+    assert entry._fleet_loaded() == 0, "LaunchServices' own entry for the running app is not the fleet"
+    R.stdout = out + "901\t0\tai.avadigital.codec.dashboard\n-\t78\tai.avadigital.codec.voice\n"
+    assert entry._fleet_loaded() == 2
+
+
 def test_install_script_is_valid_bash():
     r = subprocess.run(["bash", "-n", str(INSTALL_SH)], capture_output=True, text=True)
     assert r.returncode == 0, f"syntax error: {r.stderr}"

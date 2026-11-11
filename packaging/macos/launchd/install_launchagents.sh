@@ -44,6 +44,22 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# --- guard: never write LaunchAgents that point at a volume the user will eject --------
+# LaunchAgents keep absolute paths. first_run.py refuses a mounted DMG or an App Translocation
+# path (incident 2026-09-03); the launcher's re-bootstrap calls this script directly, so the same
+# rule lives here and covers every writer. --force does not override it.
+for _p in "$HERE" "$INTERP" "$WORKDIR" "$SERVICES_JSON"; do
+    [ -n "$_p" ] || continue
+    _real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$_p")"
+    case "$_real" in
+        /Volumes/*|*/AppTranslocation/*)
+            echo "REFUSING: $_real is on a mounted volume or a temporary App Translocation path." >&2
+            echo "  LaunchAgents written from here break as soon as it is ejected or moved." >&2
+            echo "  Move CODEC into /Applications and open it from there." >&2
+            exit 1 ;;
+    esac
+done
+
 # Resolve the service list without requiring node wherever possible.
 if [ -z "$SERVICES_JSON" ] && [ -f "$HERE/../services.json" ]; then
     SERVICES_JSON="$HERE/../services.json"

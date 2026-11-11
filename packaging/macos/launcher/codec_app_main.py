@@ -119,7 +119,11 @@ def _fleet_loaded() -> int:
                              timeout=15).stdout
     except (OSError, subprocess.SubprocessError):
         return 0
-    return sum(1 for line in out.splitlines() if FLEET_LABEL_PREFIX in line)
+    # The label is the last column. Match the fleet's own labels only: LaunchServices registers the
+    # running app itself as application.ai.avadigital.codec.<pid>.<n>, which a substring test
+    # counted, so an app opened by double-click saw "1 loaded" and never re-bootstrapped.
+    labels = (line.split()[-1] for line in out.splitlines()[1:] if line.split())
+    return sum(1 for label in labels if label.startswith(FLEET_LABEL_PREFIX + "."))
 
 
 def _run_first_run(resources: Path) -> int:
