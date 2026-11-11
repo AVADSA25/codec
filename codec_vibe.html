@@ -77,7 +77,14 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 #pf{flex:1;min-width:0;border:none;background:#fff}
 .pv-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:var(--bg);color:var(--tx2);font-size:var(--fs-14);line-height:1.5}
 .pv-wrap.has .pv-empty{display:none}
-@media (min-width:769px){.sp.code-off .ep{display:none}}
+@media (min-width:769px){.sp.code-off .ep{display:none}
+  /* Both panes closed (docs/VOICE-IN-CHAT-AND-VIBE-PANES-DESIGN.md): the chat takes the width, its text kept readable */
+  .sp.code-off.prev-off .cp{flex:1 1 auto!important;width:auto!important;border-right:0}
+  .sp.code-off.prev-off #rh{display:none}
+  .sp.code-off.prev-off #cm,.sp.code-off.prev-off .ia,.sp.code-off.prev-off .amode,.sp.code-off.prev-off .vsel{padding-left:max(12px,calc((100% - 900px) / 2));padding-right:max(12px,calc((100% - 900px) / 2))}}
+.vhd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pane-btns{display:flex;gap:6px}.pane-btns .bb[hidden]{display:none}
+@media (max-width:768px){.pane-btns{display:none}}
 #codeBtn[aria-pressed="true"]{border-color:var(--ac);color:var(--ac)}
 #eb{flex:1}
 .eb-fail{padding:16px;color:var(--text-muted);font-size:var(--fs-13)}
@@ -389,12 +396,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
     <button class="bb" id="verBtn" type="button" onclick="VibeProj.versions()" title="Saved versions of this project" hidden>Versions</button>
   </div>
 </div>
-<div class="sp" data-pane="chat">
-<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="abn" id="privBanner" role="status" hidden>Private chat: nothing of it is saved. Files you build still keep their versions in a project folder.</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="amode" id="amode" role="group" aria-label="How the next message is handled" hidden><button type="button" class="amb sel" id="amChat" aria-pressed="true" title="One answer: files are written behind a checkpoint">Chat</button><button type="button" class="amb" id="amAgent" aria-pressed="false" title="The agent reads, edits and checks files step by step">Agent</button><select id="amModel" aria-label="Model for the next message" hidden></select></div><div class="vmention" id="vmention" role="listbox" aria-label="Project files" hidden></div><div class="vsel" id="vsel" hidden><button type="button" class="amb" id="vselBtn" title="Add the selected lines of the open file to your message">Add selection</button><span id="vselInfo"></span></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="sp code-off prev-off" data-pane="chat">
+<div class="cp"><div class="hd vhd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500"><span>Vibe Coding</span><span class="pane-btns"><button type="button" class="bb" id="showCode" onclick="VibePanes.pick('code', true)" title="Show the code">Code</button><button type="button" class="bb" id="showPrev" onclick="VibePanes.pick('preview', true)" title="Show the preview">Preview</button></span></div><div class="abn" id="privBanner" role="status" hidden>Private chat: nothing of it is saved. Files you build still keep their versions in a project folder.</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="amode" id="amode" role="group" aria-label="How the next message is handled" hidden><button type="button" class="amb sel" id="amChat" aria-pressed="true" title="One answer: files are written behind a checkpoint">Chat</button><button type="button" class="amb" id="amAgent" aria-pressed="false" title="The agent reads, edits and checks files step by step">Agent</button><select id="amModel" aria-label="Model for the next message" hidden></select></div><div class="vmention" id="vmention" role="listbox" aria-label="Project files" hidden></div><div class="vsel" id="vsel" hidden><button type="button" class="amb" id="vselBtn" title="Add the selected lines of the open file to your message">Add selection</button><span id="vselInfo"></span></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
-<div class="vtabs" id="vtabs" role="tablist" aria-label="Panes"><button type="button" class="vtab sel" id="vtabChat" role="tab" aria-selected="true" onclick="_setVibeTab('chat')">Chat</button><button type="button" class="vtab" id="vtabPrev" role="tab" aria-selected="false" onclick="_setVibeTab('preview')">Preview<span class="vdot" hidden></span></button><button type="button" class="vtab" id="vtabCode" role="tab" aria-selected="false" onclick="_setVibeTab('code')">Code</button></div>
+<div class="vtabs" id="vtabs" role="tablist" aria-label="Panes"><button type="button" class="vtab sel" id="vtabChat" role="tab" aria-selected="true" onclick="_setVibeTab('chat')">Chat</button><button type="button" class="vtab" id="vtabPrev" role="tab" aria-selected="false" onclick="_setVibeTab('preview')">Preview<span class="vdot" hidden></span></button><button type="button" class="vtab" id="vtabCode" role="tab" aria-selected="false" onclick="_setVibeTab('code')">Code<span class="vdot" hidden></span></button></div>
 <div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div class="abn" id="agentBanner" role="status" hidden>The agent is working on these files. Stop it to edit them.</div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" id="saveBtn" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg><span id="saveLbl">Save</span></button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
-<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><span class="ph-live" id="liveState" role="status" hidden></span><button type="button" class="ph-b" id="stopLiveBtn" onclick="VibeProj.stopLive()" title="Stop" aria-label="Stop what is running" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button><button type="button" class="ph-b" id="runBtn" onclick="VibeProj.runDialog()" title="Show the project on localhost, or run it on this Mac" aria-label="Show on localhost or run the project" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"/></svg></button><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
+<div class="pp off" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><span class="ph-live" id="liveState" role="status" hidden></span><button type="button" class="ph-b" id="stopLiveBtn" onclick="VibeProj.stopLive()" title="Stop" aria-label="Stop what is running" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button><button type="button" class="ph-b" id="runBtn" onclick="VibeProj.runDialog()" title="Show the project on localhost, or run it on this Mac" aria-label="Show on localhost or run the project" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"/></svg></button><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 </div>
@@ -403,6 +410,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <script src="/static/vibe-projects.js?v=7b7e069e"></script>
 <script src="/static/vibe-agent.js?v=51dfe490"></script>
 <script src="/static/vibe-chat.js?v=95a6a24c"></script>
+<script src="/static/vibe-panes.js?v=6a295795"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
@@ -590,6 +598,7 @@ if (typeof require === 'function' && typeof require.config === 'function') {
     } catch (e) { ed = null; _editorFailed(); }
     if (ed) _reopenLiveRun();
     if (ed && window.VibeAgent) VibeAgent.attachEditor(ed);
+    if (ed) VibePanes.attachEditor(ed);
     if (ed) _openFromLink();
   }, function () { _editorFailed(); });
 } else _editorFailed();
@@ -1058,27 +1067,16 @@ function _setVibeTab(t) {
     el.setAttribute('aria-selected', t === x[1] ? 'true' : 'false');
   });
   if (t === 'preview') { var d = document.querySelector('#vtabPrev .vdot'); if (d) d.hidden = true; }
+  if (t === 'code') { var cd = document.querySelector('#vtabCode .vdot'); if (cd) cd.hidden = true; }
   if (t === 'code' && window.ed) setTimeout(function () { ed.layout(); ed.setScrollTop(0); }, 0);
 }
 function closePrev() {
-  document.getElementById('pp').classList.add('off');
+  VibePanes.pick('preview', false);      // closed stays closed in this project until it is opened again
   _setVibeTab('chat');
 }
 
-// The code pane sits next to the preview and can be hidden; the choice is remembered.
-function _applyCodePane() {
-  var off = _lsGet('codec-vibe-code') === 'off';
-  var sp = document.querySelector('.sp');
-  if (sp) sp.classList.toggle('code-off', off);
-  var b = document.getElementById('codeBtn');
-  if (b) { b.setAttribute('aria-pressed', off ? 'false' : 'true'); b.textContent = off ? 'Show code' : 'Hide code'; }
-}
-function toggleCodePane() {
-  _lsSet('codec-vibe-code', _lsGet('codec-vibe-code') === 'off' ? 'on' : 'off');
-  _applyCodePane();
-  if (window.ed) setTimeout(function () { ed.layout(); }, 0);
-}
-_applyCodePane();
+// The code pane sits next to the preview and can be hidden; the choice is kept per project (static/vibe-panes.js).
+function toggleCodePane() { VibePanes.toggle('code'); }
 
 // silent: an automatic refresh (after an AI change, an undo, a saved edit). It does not switch
 // the phone to the Preview tab (the tab gets a dot instead) and says nothing when there is no page.
@@ -1087,8 +1085,9 @@ function doPrev(silent) {
   // Showing the project on localhost (or running it): refresh that frame instead of the inline copy.
   if (window.VibeProj && VibeProj.liveActive()) { VibeProj.liveReload(); return; }
   var c = (window.VibeProj && VibeProj.previewSource()) || (ed ? ed.getValue() : '');
-  if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body') || c.includes('<html')) {
-    document.getElementById('pp').classList.remove('off');
+  if (VibePanes.isPage(c)) {
+    if (silent && !VibePanes.allow('preview')) return;      // the owner closed the preview in this project
+    if (silent) VibePanes.setPrev(true); else VibePanes.pick('preview', true, true);
     var wrap = document.querySelector('.pv-wrap');
     if (wrap) wrap.classList.add('has');
     if (silent) {
@@ -1110,9 +1109,11 @@ function doPrev(silent) {
   }
 }
 // Refresh the preview if it is open (called after an AI change, an undo, a restore, a saved edit).
+// A closed preview on auto opens the first time there is a page (static/vibe-panes.js).
 function refreshPreview() {
   var pp = document.getElementById('pp');
-  if (!pp || pp.classList.contains('off')) return;
+  if (!pp) return;
+  if (pp.classList.contains('off')) { VibePanes.sync(); return; }
   doPrev(true);
 }
 
