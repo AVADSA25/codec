@@ -575,7 +575,7 @@ refused. Fix (own PR, section 10 file, owner's word on which parents to refuse):
 compare case-folded, refuse a grant whose root contains a blocked location, and
 anchor the system entries at `/`.
 
-## The shift report counts background feature runs as completed work (2026-11-03, P-098 review)
+## The shift report counts background feature runs as completed work (2026-11-03, P-098 review) — FIXED 2026-11-11 (lines with extra.feature are left out of section 1)
 
 Since P-098 every skill a built-in feature runs writes a `tool_result` line
 with `extra.feature` (briefing, heartbeat, daybreak, checkin, shift_report).
