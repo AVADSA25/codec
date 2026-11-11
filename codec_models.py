@@ -35,6 +35,9 @@ Three further consequences shape this module:
    a hand-started server, CI) `restart_server()` reports failure and the switch
    proceeds in-place exactly as before — `probe()` forces the load either way.
    Losing the memory reclaim is a worse outcome than losing the switch.
+   On a buyer's Mac (launchd, no PM2) a switch restarts the model LaunchAgent
+   instead: `restart_for_switch()` -> `restart_launchd()` (P-039 part 2,
+   docs/LAUNCHD-MODEL-RESTART-DESIGN.md).
 
 The chat handler re-reads ~/.codec/config.json on every request, so writing
 `llm_model` there takes effect on the next message.
@@ -597,6 +600,164 @@ def restart_server(process: Optional[str] = None,
     return False, f"{name} started but {host}:{port} never opened within {ready_timeout:.0f}s"
 
 
+# ── Buyer Mac: the model LaunchAgent (P-039 part 2, docs/LAUNCHD-MODEL-RESTART-DESIGN.md) ──
+# Where launchd runs the fleet (the .app) there is no PM2. A switch restarts exactly one job,
+# the model server's LaunchAgent, with `launchctl kickstart -k`: launchd stops the running copy
+# before it starts the job again and never runs two copies of one job, so the old model's
+# memory is released before the new one loads. The label comes from the shipped services list
+# and must equal the known one; config.json is never read for it.
+
+LAUNCHD_MODEL_LABEL = "ai.avadigital.codec.qwen3.6"
+_LAUNCHD_LABEL_PREFIX = "ai.avadigital.codec."
+_LAUNCHD_MODEL_LABEL_RE = re.compile(re.escape(LAUNCHD_MODEL_LABEL))   # prefix + the known name
+_MODEL_SERVER_SCRIPT = "scripts/start_model_server.sh"
+_LAUNCHCTL = "/bin/launchctl"
+_LAUNCHCTL_TIMEOUT_S = 60
+# Contents/Resources/services.json, next to Resources/app where this file runs in the .app.
+SERVICES_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "services.json")
+
+
+def _supervisor_kind(cfg: Optional[Dict[str, Any]] = None) -> str:
+    """'pm2' or 'launchd' (codec_supervisor.kind, P-032); 'pm2' when it cannot tell."""
+    try:
+        import codec_supervisor
+        return codec_supervisor.kind(cfg if cfg is not None else _load_config())
+    except Exception:
+        return "pm2"
+
+
+def restart_for_switch() -> tuple[bool, str]:
+    """The restart a model switch asks for. Under PM2 (the Studio, any checkout) it is
+    `restart_server()`, unchanged; where launchd runs the fleet, the model LaunchAgent."""
+    if _supervisor_kind() == "launchd":
+        return restart_launchd()
+    return restart_server()
+
+
+def launchd_model_label(services_path: Optional[str] = None) -> tuple[Optional[str], str]:
+    """(label, "") for the model server's LaunchAgent, or (None, reason code).
+
+    The label is built from the one service in the shipped services list that runs
+    scripts/start_model_server.sh and must equal LAUNCHD_MODEL_LABEL exactly.
+    """
+    try:
+        with open(services_path or SERVICES_JSON, encoding="utf-8") as f:
+            apps = json.load(f)
+    except (OSError, ValueError):
+        return None, "no_service_list"
+    if isinstance(apps, dict):
+        apps = apps.get("apps")
+    if not isinstance(apps, list):
+        return None, "no_service_list"
+    names = [a.get("name") for a in apps
+             if isinstance(a, dict) and a.get("script") == _MODEL_SERVER_SCRIPT]
+    if len(names) != 1 or not isinstance(names[0], str):
+        return None, "not_model_label"
+    label = _LAUNCHD_LABEL_PREFIX + names[0]
+    if not _LAUNCHD_MODEL_LABEL_RE.fullmatch(label):
+        return None, "not_model_label"
+    return label, ""
+
+
+def _launchctl(args: List[str]) -> tuple[int, str, str]:
+    """(exit code, stdout, stderr) of one launchctl argv, never a shell. Never raises."""
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=_LAUNCHCTL_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return -1, "", type(e).__name__
+    return r.returncode, r.stdout or "", r.stderr or ""
+
+
+def _launchd_pid(run, target: str) -> tuple[bool, Optional[int]]:
+    """(launchd knows the job, pid when it is running) from `launchctl print` (read only)."""
+    rc, out, _err = run([_LAUNCHCTL, "print", target])
+    if rc != 0:
+        return False, None
+    try:
+        import codec_supervisor
+        info = codec_supervisor.parse_print(out)
+    except Exception:
+        return True, None
+    try:
+        pid = int(str(info.get("pid", "")).strip())
+    except ValueError:
+        pid = 0
+    return True, (pid if info.get("state") == "running" and pid > 0 else None)
+
+
+def _restart_audit(label: str, result: str, reason: str, seconds: float) -> None:
+    """One `model_server_restarted` line per launchd restart attempt; metadata only."""
+    try:
+        from codec_audit import audit
+        audit(event="model_server_restarted", source="codec-models",
+              outcome={"ok": "ok", "refused": "warning"}.get(result, "error"),
+              level="info" if result == "ok" else "warning",
+              message=f"model server restart via launchd: {result}",
+              extra={"supervisor": "launchd", "label": label, "result": result,
+                     "reason": reason, "seconds": round(seconds, 1)})
+    except Exception:
+        pass
+
+
+def restart_launchd(ready_timeout: float = _RESTART_READY_TIMEOUT, *, run=None,
+                    uid: Optional[int] = None,
+                    services_path: Optional[str] = None) -> tuple[bool, str]:
+    """Restart the model server's LaunchAgent so only one model is ever resident.
+
+    `launchctl kickstart -k gui/<uid>/<label>` for exactly the model server's label, then
+    wait for a new pid and the open port. Returns (ok, detail); never raises. A failure
+    leaves the switch in place (the probe loads the model), as a missing PM2 does.
+    """
+    t0 = time.time()
+    label, reason = launchd_model_label(services_path)
+    if label is None:
+        _restart_audit("", "refused", reason, 0.0)
+        return False, f"no model LaunchAgent label ({reason}) — switching in place"
+    run = run or _launchctl
+    uid = os.getuid() if uid is None else uid
+    target = f"gui/{int(uid)}/{label}"
+    host, port = _host_port(_load_config())
+
+    known, old_pid = _launchd_pid(run, target)
+    if not known:
+        _restart_audit(label, "refused", "not_loaded", time.time() - t0)
+        return False, f"{label} is not loaded in launchd — switching in place"
+
+    rc, out, err = run([_LAUNCHCTL, "kickstart", "-k", target])
+    if rc != 0:
+        _restart_audit(label, "failed", "kickstart_failed", time.time() - t0)
+        msg = (err or out or "").strip().replace("\n", " ")[:200]
+        return False, f"launchctl kickstart {label} exited {rc}: {msg}"
+
+    # launchd starts the new copy only once the old one has exited: a new pid means the
+    # old model's memory is gone.
+    gone_deadline = time.time() + _RESTART_RESPAWN_TIMEOUT
+    while True:
+        pid = _launchd_pid(run, target)[1]
+        if pid is not None and pid != old_pid:
+            break
+        if time.time() >= gone_deadline:
+            _restart_audit(label, "failed", "no_new_process", time.time() - t0)
+            return False, (f"{label} did not come back with a new process within "
+                           f"{_RESTART_RESPAWN_TIMEOUT:.0f}s of kickstart")
+        time.sleep(0.5)
+
+    # uvicorn binds the port only after the preload: an open port means the model is loaded.
+    deadline = time.time() + ready_timeout
+    while True:
+        pid = _launchd_pid(run, target)[1]
+        if pid is not None and pid != old_pid and _is_listening(host, port):
+            secs = time.time() - t0
+            _restart_audit(label, "ok", "", secs)
+            return True, f"{label} kickstart -k, serving in {secs:.1f}s"
+        if time.time() >= deadline:
+            _restart_audit(label, "failed", "not_ready", time.time() - t0)
+            return False, (f"{label} started but {host}:{port} never opened within "
+                           f"{ready_timeout:.0f}s")
+        time.sleep(1.0)
+
+
 def _write_active(model_id: str) -> None:
     cfg = _load_config()
     cfg["llm_model"] = model_id
@@ -756,7 +917,7 @@ def _set_active_unlocked(model_id: str, verify: bool = True) -> Dict[str, Any]:
                 "changed": True, "detail": "switched (unverified)"}
 
     # Config is written first so the restarted server preloads the NEW model.
-    restarted, restart_detail = restart_server()
+    restarted, restart_detail = restart_for_switch()
 
     ok, detail = probe(model_id)
     if ok:
@@ -782,7 +943,7 @@ def _set_active_unlocked(model_id: str, verify: bool = True) -> Dict[str, Any]:
     # back: the process that just failed to load a model is the last one we want
     # to keep serving from.
     _write_active(previous)
-    restart_server()
+    restart_for_switch()
     reverted_ok, revert_detail = probe(previous)
     _emit_audit(previous, model_id, False, detail, restarted, restart_detail)
     return {"ok": False, "active": previous, "attempted": model_id,
