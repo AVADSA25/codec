@@ -391,6 +391,24 @@ def test_mem_pressure_alerts_on_a_footprint_above_1_5x_the_model(mem):
     assert len(mem.alerts) == 1
     assert "the model server holds 32.0 GB, 1.6x its 20.0 GB model" in mem.alerts[0][1]
     assert "pm2 restart qwen3.6" in mem.alerts[0][1] and "swap" not in mem.alerts[0][1]
+    assert "gives its memory back. 75% of memory is free." in mem.alerts[0][1]
+
+
+def test_swap_alert_with_a_normal_size_model_server_does_not_offer_its_restart(mem):
+    mem.footprint = FOOTPRINT_BYTES.format(pid=4242, n=21_000_000_000)   # 1.05x the 20 GB model
+    codec_heartbeat.memory_check(_model_app())
+    high = codec_heartbeat.memory_check(_model_app())
+    assert high["swap"] == "high" and high["model_footprint"] == "ok" and len(mem.alerts) == 1
+    msg = mem.alerts[0][1]
+    assert "pm2 restart" not in msg and "gives its memory back" not in msg
+    assert "normal size (1.05x its model), so restarting it gives back little" in msg
+    assert msg.endswith("quitting apps you do not use helps more. 75% of memory is free.")
+
+
+def test_swap_alert_without_a_model_reading_says_restart_helps_only_if_grown(mem):
+    codec_heartbeat.memory_check([])
+    codec_heartbeat.memory_check([])
+    assert "restarting the model server (pm2 restart qwen3.6) helps only if it has grown" in mem.alerts[0][1]
 
 
 def test_an_unreadable_footprint_reports_unknown_and_never_alerts(mem):

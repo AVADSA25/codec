@@ -70,7 +70,13 @@ nothing high resets the count and sends `alert_resolved`. The reading and the
 count live in `MEMORY_STATE_PATH` (`~/.codec/memory_check.json`, 0600, written
 with `read_modify_write`). `GET /api/status` adds `memory` from that file
 (`codec_heartbeat.memory_status()`; `{"level": "unknown", "checked_at": null}`
-before the first reading). Messages carry figures only.
+before the first reading). Messages carry figures only. The alert offers
+`pm2 restart <model server>` only when the footprint is high; with the server
+at its normal size it says a restart gives back little and quitting other apps
+helps more, and with no footprint reading it says a restart helps only if the
+server has grown (`_memory_advice`, added 11 Nov 2026 after a swap-only alert
+advised a restart that would have freed about 1 GB). It ends with the free
+percentage when known.
 
 No audit envelope change, no new audit event, no memory.db change, no PM2 or
 ecosystem change.
