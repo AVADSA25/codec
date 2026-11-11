@@ -911,6 +911,21 @@ def _memory_limits(cfg) -> tuple:
     return num("swap_pct", MEM_SWAP_PCT, 50.0, 100.0), num("footprint_ratio", MEM_FOOTPRINT_RATIO, 1.1, 5.0)
 
 
+def _memory_advice(reading, app) -> str:
+    """What to do about a mem_pressure alert. A restart of the model server gives memory back only
+    when the server has grown past its model (footprint high); at its normal size it frees about the
+    gap between footprint and model, so quitting other apps helps more."""
+    free = reading.get("free_pct")
+    free_txt = f" {free}% of memory is free." if isinstance(free, int) else ""
+    if reading.get("model_footprint") == "high":
+        return f"Restarting the model server (pm2 restart {app}) gives its memory back.{free_txt}"
+    if reading.get("model_footprint") == "ok":
+        return (f"The model server is at its normal size ({reading['footprint_ratio']:.2f}x its model), "
+                f"so restarting it gives back little; quitting apps you do not use helps more.{free_txt}")
+    return (f"Quitting apps you do not use helps; restarting the model server (pm2 restart {app}) "
+            f"helps only if it has grown.{free_txt}")
+
+
 def memory_check(procs=None, now_ts=None) -> dict:
     """Read swap, memory pressure and the model server's footprint; alert `mem_pressure` once after
     MEM_HIGH_TICKS ticks in a row with swap above 80% or the footprint above 1.5x the model, and one
@@ -984,7 +999,7 @@ def memory_check(procs=None, now_ts=None) -> dict:
             app = "qwen3.6"
         alert_once("mem_pressure", "warning",
                    f"CODEC ALERT: memory is tight on this Mac: {' and '.join(parts)}. Chat may slow down. "
-                   f"Restarting the model server (pm2 restart {app}) gives its memory back.")
+                   + _memory_advice(reading, app))
     elif reading["level"] == "ok":
         alert_resolved("mem_pressure", "CODEC RECOVERED: memory is back to normal.")
     return reading
