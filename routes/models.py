@@ -27,16 +27,18 @@ async def list_models():
 async def set_model(body: dict):
     """Switch the active chat model.
 
-    Synchronous on purpose: the server unloads the old model and loads the new
-    one, and the caller needs to know whether that succeeded. On failure the
-    previous model is restored and reloaded before this returns, so CODEC is
-    never left without a brain.
+    The request waits for the switch on purpose: the server unloads the old
+    model and loads the new one, and the caller needs to know whether that
+    succeeded. On failure the previous model is restored and reloaded before
+    this returns, so CODEC is never left without a brain. The switch runs in a
+    worker thread (P-016): a load takes up to minutes, and on the event loop it
+    froze every other page and the voice call meanwhile.
     """
     model_id = (body or {}).get("model") or (body or {}).get("id") or ""
     if not model_id:
         return JSONResponse({"ok": False, "error": "missing 'model'"},
                             status_code=400)
-    result = codec_models.set_active(str(model_id))
+    result = await asyncio.to_thread(codec_models.set_active, str(model_id))
     return JSONResponse(result, status_code=200 if result.get("ok") else 409)
 
 
