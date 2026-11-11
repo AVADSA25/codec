@@ -82,8 +82,12 @@ jobs:
           retention-days: 14
 
   macos:
-    name: macos-14 (Python 3.12, buyer hash lock)
-    runs-on: macos-14
+    name: macos-15 (Python 3.12, buyer hash lock)
+    # GitHub retired the macos-14 image on 2 Nov 2026 (jobs are refused with
+    # "macos-14-arm64-us-default is not supported"). The D-34 floor check below installs
+    # the wheels picked for the app's floor and reads each file's Mach-O minos, so it does
+    # not depend on the runner's own macOS.
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,8 +107,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --require-hashes --only-binary=:all: --no-deps -r "$BUYER_LOCK"
-      - name: No installed file needs a newer macOS than the app's floor (D-34)
-        run: python packaging/macos/verify/macho_minos.py --app "$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+      - name: No file the app bundles needs a newer macOS than the app's floor (D-34)
+        # The same install as packaging/macos/bundle_python.sh: wheels picked for the floor in
+        # Info.plist (--platform), not for the runner. Plain pip on a macos-15 runner picks
+        # mlx's macosx_15_0 wheel, which the app never bundles.
+        run: |
+          FLOOR_MAJOR="$(python -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1], "rb"))["LSMinimumSystemVersion"].split(".")[0])' packaging/macos/Info.plist)"
+          python -m pip install --require-hashes --only-binary=:all: --no-deps \
+            --platform "macosx_${FLOOR_MAJOR}_0_arm64" --target "$RUNNER_TEMP/floor-site" -r "$BUYER_LOCK"
+          python packaging/macos/verify/macho_minos.py --app "$RUNNER_TEMP/floor-site"
       - name: Add the test tools, held to the lock's versions
         # pytest, ruff and pytest-cov only; the constraints stop pip from
         # changing any package the lock installed.
@@ -131,7 +142,7 @@ jobs:
           CI: "true"
       - name: Job summary (tests, coverage)
         if: always()
-        run: python tools/ci_report_summary.py --label "macos-14, Python 3.12, buyer hash lock" junit.xml coverage.xml
+        run: python tools/ci_report_summary.py --label "macos-15, Python 3.12, buyer hash lock" junit.xml coverage.xml
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -24,8 +24,9 @@ launcher `Contents/MacOS/codec` (minos 26.0). Two causes, both fixed here:
 - **Check:** `packaging/macos/verify/macho_minos.py --app <app>` reads the version out of every Mach-O
   header (thin or universal, `LC_BUILD_VERSION` and the old `LC_VERSION_MIN_MACOSX`) and exits 1 if any
   needs more than the floor; it prints the offenders. `build_app.sh --with-python` runs it right after the
-  bundle step, so a bundle that needs a newer macOS never reaches signing. CI's macos-14 job runs it on the
-  installed lock too. Cross-checked against `otool -l` (libmlx.dylib: minos 26.2 both ways).
+  bundle step, so a bundle that needs a newer macOS never reaches signing. CI's macOS job runs it on the
+  installed lock too (macos-15 runner since GitHub retired macos-14 on 2 Nov 2026; the check reads each
+  file's minos, so the runner's own macOS does not matter). Cross-checked against `otool -l` (libmlx.dylib: minos 26.2 both ways).
 - Not edited: `scripts/start_model_server.sh`, `llm_model`.
 
 ## Not done / pending
