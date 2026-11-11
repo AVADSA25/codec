@@ -1969,47 +1969,45 @@ async def chat_completion(request: Request):
             answer += _LOOP_NOTE
 
         # ── Post-LLM skill routing ──
-        # If the LLM outputs [SKILL:name:query], execute and inline the result.
-        skill_tag = re.search(r'\[SKILL:(\w+):([^\]]+)\]', answer)
-        if skill_tag:
+        # Every [SKILL:name:query] tag, in order, handled as the stream's
+        # _resolve_skill_tag does (docs/CHAT-JSON-TAG-PARITY-DESIGN.md): each tag
+        # uses one step of the turn's budget (allowed or not); past the budget, a
+        # skill outside CHAT_SKILL_ALLOWLIST, a skill that returns nothing or one
+        # that fails: the tag is dropped, never shown raw. A result goes in bold.
+        _parts, _last = [], 0
+        for skill_tag in SKILL_TAG_RE.finditer(answer):
+            _parts.append(answer[_last:skill_tag.start()])
+            _last = skill_tag.end()
             s_name, s_query = skill_tag.group(1), skill_tag.group(2)
-            if s_name in CHAT_SKILL_ALLOWLIST and not _budget.consume("post_llm_skill_tag"):
-                # re-audit medium: the non-streaming path previously skipped the
-                # step budget that the streaming _resolve_skill_tag enforces, so
-                # stream:false could run skills past the per-turn cap. Mirror the
-                # stream path: budget exhausted → drop the tag.
+            if not _budget.consume("post_llm_skill_tag"):
                 log.info("[Chat] step_budget exhausted — dropping [SKILL:...] tag (non-stream)")
-                answer = answer.replace(skill_tag.group(0), "")
-            elif s_name in CHAT_SKILL_ALLOWLIST:
-                try:
-                    _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)
-                    _turn_actions.append((s_name, s_result))   # backs a claim if it acted
-                    if s_result:
-                        answer = answer.replace(skill_tag.group(0), f"**{s_result}**")
-                except Exception as e:
-                    # A-22 fix: was a silent `pass` — if skill resolution blows
-                    # up, the raw [SKILL:...] tag leaks into the user's chat with
-                    # no footprint. Surface it (log + audit); behavior unchanged
-                    # (tag stays, chat still returns).
-                    log.warning(
-                        f"Post-LLM skill tag resolution failed for {s_name!r}: {e}")
-                    try:
-                        log_event(
-                            "post_llm_skill_tag_failed", source="codec-dashboard",
-                            message=f"Skill tag resolution failed: {s_name}",
-                            level="warning", outcome="error",
-                            extra={"skill": s_name, "error": str(e)[:200]},
-                        )
-                    except Exception:
-                        pass
-            else:
-                # J1 parity: a non-allowlisted skill name is never executed
-                # (the invariant holds via the two branches above) AND its raw
-                # tag is stripped — the streaming path's _resolve_skill_tag
-                # already drops disallowed tags; the non-stream path used to
-                # leave "[SKILL:foo:...]" visible in the chat bubble.
+                continue
+            if s_name not in CHAT_SKILL_ALLOWLIST:
                 log.info(f"[Chat] LLM tried disallowed skill {s_name!r} (non-stream) — dropping tag")
-                answer = answer.replace(skill_tag.group(0), "")
+                continue
+            try:
+                _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)
+                _turn_actions.append((s_name, s_result))   # backs a claim if it acted
+                if s_result:
+                    _parts.append(f"**{s_result}**")
+                else:
+                    log.info(f"[Chat] Skill {s_name!r} returned None (non-stream) — dropping tag")
+            except Exception as e:
+                # A-22: surface a failed resolution (log + audit); the tag is dropped.
+                log.warning(
+                    f"Post-LLM skill tag resolution failed for {s_name!r}: {e}")
+                try:
+                    log_event(
+                        "post_llm_skill_tag_failed", source="codec-dashboard",
+                        message=f"Skill tag resolution failed: {s_name}",
+                        level="warning", outcome="error",
+                        extra={"skill": s_name, "error": str(e)[:200]},
+                    )
+                except Exception:
+                    pass
+        if _parts:
+            _parts.append(answer[_last:])
+            answer = "".join(_parts)
 
         # P-099: the post-reply checks, shared with the stream path; in a worker
         # thread because the Project suggestion may ask the local model.
