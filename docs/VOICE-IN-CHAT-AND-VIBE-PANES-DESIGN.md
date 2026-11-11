@@ -1,6 +1,6 @@
 # Voice call inside Chat, and Vibe panes that open by themselves
 
-Status: design, waiting for the owner's OK (2026-11-11). Two separate builds, two PRs.
+Status: approved by the owner (2026-11-11, "go build both"). Two separate builds, two PRs.
 
 Owner's words (11 Nov): "add live voice inside chat, we just need a phone icon, voice to voice then start like it is now, then once voice to voice is over a transcript of the voice to voice chat must be inserted into the chat where user is, same if a voice chat is initiated later on the chat after some back and forth text to text chat, the voice chat need context". On Vibe: "I think best we keep it separated". On the Vibe windows: "we should be able to collapse them, or it like proactively showing once u get cooking".
 
@@ -80,7 +80,7 @@ Revert the PR. The `source` column stays and is ignored by the old code. Or set 
 
 ### Today
 
-On a wide screen the Vibe page shows three panes side by side: chat, code, preview. A new project opens with an empty editor ("// Ask CODEC to build something") and an empty preview. "Hide code" exists (one setting for all projects) and the preview has a close button, but a closed preview stays closed after the agent writes a page.
+On a wide screen the Vibe page shows three panes side by side: chat, code, preview. A new project opens with an empty editor ("// Ask CODEC to build something") and an empty preview. "Hide code" exists (one setting for all projects) and the preview has a close button; a closed preview reopens when an AI change touches an HTML file, even after he closed it, and stays closed after other changes.
 
 ### What changes
 
@@ -90,6 +90,7 @@ On a wide screen the Vibe page shows three panes side by side: chat, code, previ
 4. **Collapsed panes leave two small buttons, "Code" and "Preview"**, at the top right of the chat pane, to bring them back. With both closed the chat takes the whole width (text kept at a readable width, centred).
 5. "Hide code" keeps working and now sets the code pane of the current project. The old global setting becomes the starting state for projects with no choice yet, so nothing he set before changes.
 6. Phone layout (Chat / Preview / Code tabs): unchanged, except that a tab gets its dot when its pane opens by itself.
+7. A project with no page (a server or a script) keeps the preview closed on auto; its Run button sits in the preview header, so it takes one click on "Preview" first.
 
 ### Changes
 
