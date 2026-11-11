@@ -2000,12 +2000,16 @@ async function sendCmd() {
     if (data.status === 'queued' || data.status === 'processing') {
       text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);
     } else if (data.error) {
+      // Refused (blocked, no model, ...): nothing is coming back, so no poll loop
+      // that would cover the reason with "Processing..." for up to 5 minutes.
       text.innerHTML = '<span style="color:var(--danger)">Error:</span> ' + escHtml(data.error);
+      return;
     } else {
       text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);
     }
   } catch(e) {
     text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
+    return;
   }
   loadChat(true);
   // Clear any previous poll to prevent stacking

@@ -195,3 +195,20 @@ def test_a_page_mounts_an_inbox_group_with_its_actions_under_jsdom():
     d = json.loads(line)
     assert d["cards"] == [1, 1, False], "only that group's cards, and the count"
     assert d["allowed"] == 1 and d["drawerClosed"] is True, "the card's actions work outside the drawer"
+
+
+def test_flash_does_not_start_polling_after_a_refused_or_failed_send():
+    # known-issues 2026-09-28: the poll loop started after an /api/command error and
+    # covered the reason with "Processing..." for up to 5 minutes.
+    body = HOME[HOME.index("async function sendCmd()"):]
+    body = body[:body.index("var pollResp = setInterval")]
+    err = body.index("if (data.error)")
+    assert body.index("return;", err) < body.index("} else {", err), "return right after showing the error"
+    caught = body.index("} catch(e) {", err)
+    assert body.index("return;", caught) < body.index("loadChat(true);", caught), "and after a failed request"
+
+
+def test_chat_reasoning_text_uses_the_readable_muted_colour():
+    chat = (REPO / "codec_chat.html").read_text(encoding="utf-8")
+    rule = re.search(r"\.tot-window\{[^}]*\}", chat).group(0)
+    assert "color:var(--text-muted)" in rule and "--text-dim" not in rule

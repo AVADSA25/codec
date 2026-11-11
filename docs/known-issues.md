@@ -368,14 +368,14 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
 
 ## Found during UI Phase 1 PR-C (2026-09-28)
 
-- **Home question panels can vanish.** Question panels are inserted into
+- **FIXED (P3.2/P3.4: questions are Inbox cards in Today's Needs you, not in `#chatList`). Home question panels can vanish.** Question panels are inserted into
   `#chatList` (`codec_dashboard.html`, the ask_user panel code), and
   `loadChat()` replaces that list. A pending question can disappear while
   `_activePanels` still marks it as shown, so it is not drawn again. Fix: keep
   question panels in their own container outside `#chatList`.
-- **Train-of-thought text contrast.** The collapsible reasoning text is 12px
+- **FIXED 2026-11-11 (`.tot-window` uses `--text-muted`). Train-of-thought text contrast.** The collapsible reasoning text is 12px
   `--text-dim`, 4.18:1 on `--surface-2` in light. Fix: `--text-muted`.
-- **`codec_mcp_http.py` reads `request.url.path`.** Same pattern as the
+- **FIXED 2026-11-11 (#571, `scope["path"]`). `codec_mcp_http.py` reads `request.url.path`.** Same pattern as the
   dashboard's Host-header bypass fixed in #397; there a crafted Host only
   skips the rate limit, not the login. Fix: read `request.scope["path"]`.
 - **Home Flash refuses any message with a backtick or `$(`.** `/api/command`
@@ -385,7 +385,7 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
   this check; it relies on the skill-level gates (strict consent, the MCP
   block lists). Fix: decide whether Flash text needs this check at all, since
   it goes to the LLM, not to a shell.
-- **Flash keeps polling after an error.** In `sendCmd` (`codec_dashboard.html`)
+- **FIXED 2026-11-11 (`sendCmd` returns after the error). Flash keeps polling after an error.** In `sendCmd` (`codec_dashboard.html`)
   an error from `/api/command` is shown, but the poll loop still starts and
   overwrites the error with "Processing... <message>" for up to 5 minutes. Fix:
   return after showing the error.
