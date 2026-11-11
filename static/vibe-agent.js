@@ -121,6 +121,7 @@
       case 'end':
         run.status = ev.status || 'done';
         run.finished = true;
+        if (ev.check && typeof ev.check === 'object') run.ranCommands = true;    // a check is marked: show the list (P-045)
         if (typeof ev.prompt_tokens === 'number') setUsage(run, ev);
         if (ev.model && typeof ev.model.id === 'string' && ev.model.id) run.modelId = ev.model.id;
         run.end = { status: run.status, report: ev.report || '', steps: ev.steps, seconds: ev.seconds, startCp: ev.start_checkpoint || run.startCp };
@@ -624,6 +625,17 @@
     return body;
   }
 
+  // The command the owner marked as the project's check, from the server's list of always-allowed commands, or ''
+  // (P-045 part 2). Only the JSON value true counts, as on the server.
+  function checkedCommand(list) {
+    if (!Array.isArray(list)) return '';
+    for (var i = list.length - 1; i >= 0; i--) {
+      var e = list[i];
+      if (e && e.check === true && typeof e.cmd === 'string') return e.cmd;
+    }
+    return '';
+  }
+
   function playbookState(p) {
     var s = PLAYBOOK_STATE[p && p.state] || 'Cannot be used';
     return p && p.state === 'invalid' && p.problem ? s + ': ' + p.problem : s;
@@ -643,6 +655,7 @@
     contextMeter: contextMeter, compactText: compactText };
   Object.assign(core, { reviewOf: reviewOf, playbookNote: playbookNote, findingItems: findingItems, findingPlace: findingPlace,
     canReview: canReview, reviewChoices: reviewChoices, reviewRequest: reviewRequest, playbookState: playbookState });   // P-071
+  core.checkedCommand = checkedCommand;                                                                                  // P-045 part 2
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -1085,7 +1098,9 @@
     li.appendChild(el('div', 'agc-qa', eff.decision === 'decline' ? 'Declined.' : 'Allowed' + (eff.decision === 'always' ? ' here, always' : ' once') + (eff.network ? ', with the web.' : '.')));
   }
 
-  // Commands the owner allowed for good in this project, each with a way to take it back.
+  // Commands the owner allowed for good in this project, each with a way to take it back, and a box to make one of
+  // them the check that runs when the agent finishes (P-045 part 2). Only this click marks it; the server refuses it
+  // from anywhere but this Mac.
   function drawAllowed() {
     var c = S.card, run = S.run;
     if (!c || !run || !run.ranCommands) return;
@@ -1093,9 +1108,32 @@
       if (S.run !== run || !list.length) return;
       var box = el('div', 'agc-allow');
       box.appendChild(el('div', 'agc-qa', 'Commands allowed here without asking:'));
+      var checks = [];
+      function settle(mark) {
+        checks.forEach(function (x) { x.input.checked = x.cmd === mark; x.input.disabled = false; });
+      }
       list.forEach(function (item) {
         var row = el('div', 'agc-arow');
         row.appendChild(el('code', 'agc-cmd', item.cmd + (item.network ? '  (web)' : '')));
+        var label = el('label', 'agc-net');
+        label.title = 'Runs in the sandbox when the agent finishes. If it fails, the agent gets the output and goes on (at most 2 more tries).';
+        var use = el('input'); use.type = 'checkbox'; use.checked = item.check === true;
+        label.appendChild(use);
+        label.appendChild(el('span', null, 'Use as check'));
+        checks.push({ cmd: item.cmd, input: use });
+        use.addEventListener('change', function () {
+          var on = use.checked;
+          checks.forEach(function (x) { x.input.disabled = true; });
+          api('POST', base(run.pid, '/commands/check'), { command: item.cmd, on: on }).then(function (got) {
+            settle(checkedCommand(got));
+            toast(on ? 'The agent\'s finish now waits for this check' : 'No check at the finish');
+          }).catch(function (e) {
+            use.checked = !on;
+            checks.forEach(function (x) { x.input.disabled = false; });
+            toast(e.status === 403 ? 'The check is set only at this Mac.' : 'Could not change the check: ' + e.message);
+          });
+        });
+        row.appendChild(label);
         var forget = el('button', 'agc-link', 'Forget'); forget.type = 'button';
         forget.addEventListener('click', function () {
           forget.disabled = true;

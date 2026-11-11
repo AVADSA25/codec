@@ -148,6 +148,35 @@ def test_task_14_the_long_run_is_outside_the_bar_skipped_by_default_and_its_chec
     assert not ok and "missed p07" in detail                         # the rest of the page must stay as it was
 
 
+def test_task_16_the_check_gated_finish_is_outside_the_bar_and_needs_tests_and_a_passed_check(tmp_path):
+    task = next(t for t in ev.TASKS if t["id"] == 16)
+    assert task["needs"] == "run_check" and 16 not in ev.BAR_IDS and task["check_cmd"] == "python3 -m unittest -q"
+    assert "add" not in task["goal"].split("subtract")[0].lower().replace("add a function", "")   # the goal names subtract only
+    for name, content in task["files"].items():
+        (tmp_path / name).write_text(content)
+    passed = [{"type": "end", "status": "done", "check": {"command": task["check_cmd"], "state": "passed", "tries": 2}}]
+    ok, detail = task["check"](dict(task["files"]), passed, "", tmp_path)
+    assert not ok and "the tests still fail" in detail                # the seed: add is broken, subtract is missing
+    (tmp_path / "calc.py").write_text("def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return a - b\n")
+    assert task["check"]({}, passed, "", tmp_path) == (True, "tests pass; the check passed at finish 2 of 2")
+    skipped = [{"type": "end", "status": "done", "check": {"state": "skipped", "reason": "away", "tries": 0}}]
+    ok, detail = task["check"]({}, skipped, "", tmp_path)
+    assert not ok and detail == "the check is skipped (away)"
+    ok, detail = task["check"]({}, [{"type": "end", "status": "limit"}], "", tmp_path)
+    assert not ok and detail == "ended as limit; the check is missing"
+
+
+def test_run_task_marks_the_check_the_way_the_owners_click_does(scripted, cfg, monkeypatch):  # noqa: F811
+    import codec_vibe_agent_cmd as cmd
+    monkeypatch.setattr(cmd, "available", lambda: True)
+    seen = []
+    monkeypatch.setattr(va, "_run_command", lambda project, root, command, **kw: seen.append(command) or cmd.Result(0, "OK", 0.2))
+    scripted(["Done.\n@@ finish\nAdded subtract.\n"])
+    task = dict(next(t for t in ev.TASKS if t["id"] == 16), check=lambda files, events, report, pdir=None: (True, "ok"))
+    rec = ev.run_task(task, va, vp, cfg, False)
+    assert seen == ["python3 -m unittest -q"] and rec["status"] == "done"
+
+
 # ── two tries ──
 
 def test_second_try_sees_the_failure_and_either_try_passes_the_task():
