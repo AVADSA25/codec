@@ -125,7 +125,8 @@ def _guard_live_state() -> None:
 
     Only where the owner's ~/.codec existed before the run, so it does nothing on
     CI. Write opens, replace, rename and delete of ~/.codec memory.db*,
-    notifications.*, pending_questions.*, audit.log* and shift_report_state.*,
+    notifications.*, pending_questions.*, audit.log*, shift_report_state.*, qchat.db*
+    and vibe.db*,
     any sqlite3.connect to them, and any run of the real /usr/bin/security raise
     LiveStateRefused; `_live_state_untouched` then fails the test even if the code
     swallowed the error. Installed early so a write made while the helpers below
@@ -221,6 +222,13 @@ def _isolate_usage_stores() -> None:
     try:
         import routes.qchat as qchat
         qchat.QCHAT_DB = str(tmp / "qchat.db")
+    except Exception:
+        pass
+    try:
+        # The Vibe chat history. On 4 Nov an unpointed open ran P-077's column migration on the
+        # owner's ~/.codec/vibe.db; the live-state guard now refuses both databases as well.
+        import routes.vibe as vibe
+        vibe.VIBE_DB = str(tmp / "vibe.db")
     except Exception:
         pass
 
