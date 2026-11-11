@@ -125,6 +125,12 @@ def test_extract_url_returns_none_when_no_url():
     assert cuf._extract_url(None) is None  # type: ignore
 
 
+def _use_web_fetch(monkeypatch, fake):
+    """web_fetch comes through codec_dispatch.feature_module (load gate + skill switch)."""
+    import codec_dispatch
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: fake if name == "web_fetch" else None)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # run() behavior (5)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +146,7 @@ def test_run_url_from_clipboard(monkeypatch):
 
     fake_web_fetch = MagicMock()
     fake_web_fetch.run.return_value = "<html>page content here</html>"
-    monkeypatch.setitem(sys.modules, "web_fetch", fake_web_fetch)
+    _use_web_fetch(monkeypatch, fake_web_fetch)
 
     result = cuf.run("[trigger fired]")
     assert "https://example.com" in result
@@ -153,7 +159,7 @@ def test_run_url_from_task_when_clipboard_empty(monkeypatch):
 
     fake_web_fetch = MagicMock()
     fake_web_fetch.run.return_value = "manual fetch"
-    monkeypatch.setitem(sys.modules, "web_fetch", fake_web_fetch)
+    _use_web_fetch(monkeypatch, fake_web_fetch)
 
     result = cuf.run("please fetch https://test.com for me")
     assert "https://test.com" in result
@@ -166,7 +172,7 @@ def test_run_truncates_large_content(monkeypatch):
     long_content = "x" * 5000
     fake_web_fetch = MagicMock()
     fake_web_fetch.run.return_value = long_content
-    monkeypatch.setitem(sys.modules, "web_fetch", fake_web_fetch)
+    _use_web_fetch(monkeypatch, fake_web_fetch)
 
     result = cuf.run("")
     assert "[truncated" in result
@@ -179,9 +185,23 @@ def test_run_handles_web_fetch_failure(monkeypatch):
 
     fake_web_fetch = MagicMock()
     fake_web_fetch.run.side_effect = RuntimeError("boom")
-    monkeypatch.setitem(sys.modules, "web_fetch", fake_web_fetch)
+    _use_web_fetch(monkeypatch, fake_web_fetch)
 
     result = cuf.run("")
     assert "web_fetch failed" in result
     assert "boom" in result
     assert "https://broken.example.com" in result
+
+
+def test_run_reports_web_fetch_switched_off_or_unknown(monkeypatch):
+    monkeypatch.setattr(cuf, "_read_clipboard", lambda: "https://example.com")
+    import codec_dispatch
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: None)
+    monkeypatch.setitem(sys.modules, "web_fetch", MagicMock())   # a bare module is never used
+    assert cuf.run("") == "clipboard_url_fetch: web_fetch skill not available; URL was https://example.com"
+
+
+def test_no_bare_import_or_sys_path_insert():
+    src = (Path(cuf.__file__)).read_text(encoding="utf-8")
+    assert "sys.path.insert" not in src and "import web_fetch" not in src
+    assert 'codec_dispatch.feature_module("web_fetch")' in src

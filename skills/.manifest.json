@@ -25,7 +25,7 @@
     "chrome_search.py": "71b6f049fa055c615d2acaada8b63b2a020a222ef99b6c4d02394b56485a1832",
     "chrome_tabs.py": "ce0c203aecc6188b2d2012e17f6ed9d54b0669bf7839e926442e1bfc73842ec1",
     "clipboard.py": "f5ef9cc501fe38a3de95bf0b49896b928250c0e272060173668f6b195728d131",
-    "clipboard_url_fetch.py": "ec73b41c985a6014e2e55712573f04264aae7681d85d586a6337c36a7393a3dd",
+    "clipboard_url_fetch.py": "80dacf90436723aad9231a2d4a7d07cad9454df40fcfabf4dc30a74032ba934d",
     "compare.py": "9562b18ed4dafdab5472a76a655e6dd348fd904b4c412087a37b837a5c03dca9",
     "cookbook_download.py": "8fd9c8a5b82f8e910cc0721904b908f2d201908ff0ac6373994be922598c382c",
     "cookbook_list.py": "23c19b92742bfd88a801e74bd79e8bbd70f88d49ac1951f1c30e4857cc693a79",

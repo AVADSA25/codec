@@ -391,7 +391,8 @@ def test_web_fetch_for_a_project_agent_is_not_fenced(monkeypatch):
 def test_clipboard_url_fetch_closes_the_fence_its_cut_removed(monkeypatch):
     wf = _skill("web_fetch")
     _html_page(monkeypatch, wf, "<p>" + "long page text " * 400 + "</p>")
-    monkeypatch.setitem(sys.modules, "web_fetch", wf)
+    import codec_dispatch                                  # clipboard_url_fetch gets web_fetch through the registry
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: wf if name == "web_fetch" else None)
     cuf = _skill("clipboard_url_fetch")
     monkeypatch.setattr(cuf, "_read_clipboard", lambda: "")
     out = cuf.run("fetch https://news.example/long")

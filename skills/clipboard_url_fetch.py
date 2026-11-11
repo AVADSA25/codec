@@ -128,19 +128,18 @@ def run(task: str = "", context: str = "") -> str:
     if not url:
         return "clipboard_url_fetch: no URL in clipboard or task"
 
-    # Delegate to the existing web_fetch skill for the actual HTTP work.
-    # Lazy import keeps this skill loadable even if web_fetch is missing
-    # from the runtime skills directory.
+    # Delegate to the web_fetch skill for the actual HTTP work, through the registry's load
+    # gate and the owner's skill switch (codec_dispatch.feature_module), never a bare import
+    # after a sys.path insert (that skipped both and let a file shadow a module of that name).
     try:
-        import sys
-        from pathlib import Path
-        skills_dir = Path(__file__).resolve().parent
-        if str(skills_dir) not in sys.path:
-            sys.path.insert(0, str(skills_dir))
-        import web_fetch  # type: ignore
-        content = web_fetch.run(url)
-    except ImportError:
+        import codec_dispatch
+        web_fetch = codec_dispatch.feature_module("web_fetch")
+    except Exception:
+        web_fetch = None
+    if web_fetch is None or not hasattr(web_fetch, "run"):
         return f"clipboard_url_fetch: web_fetch skill not available; URL was {url}"
+    try:
+        content = web_fetch.run(url)
     except Exception as e:
         return f"clipboard_url_fetch: web_fetch failed for {url}: {e}"
 
