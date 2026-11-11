@@ -25,7 +25,7 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | deferred-not-fixed |
 | **revisit when** | Before CODEC is supported on a machine without the macOS Keychain. |
 
-## Chat: the JSON reply handles `[SKILL:...]` tags differently from the stream (found 2026-11-03, P-099)
+## FIXED (2026-11-11, docs/CHAT-JSON-TAG-PARITY-DESIGN.md): Chat: the JSON reply handles `[SKILL:...]` tags differently from the stream (found 2026-11-03, P-099)
 
 | field | value |
 |---|---|

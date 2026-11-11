@@ -221,3 +221,37 @@ def test_a_skill_that_acted_backs_the_claim_on_both_paths(env, monkeypatch):
         assert "**Wrote ~/Desktop/summary.md**" in out.text
         assert "Correction" not in out.text
         assert "unbacked_claim_corrected" not in [a[0] for a in out.audits]
+
+
+# ── [SKILL:] tags: stream:false handles them like the stream (known-issues 2026-11-03) ──
+
+def test_every_tag_is_resolved_on_both_paths(env):
+    env.state.reply = f"First {TAG}, then {TAG} again."
+    sse, js = env.post(True), env.post(False)
+    assert sse.text.startswith("First **12:00**, then **12:00** again.")
+    assert js.text == sse.text and js.skills == sse.skills == [("time", "current time")] * 2
+    assert js.budget == sse.budget
+
+
+def test_a_disallowed_tag_uses_a_step_and_is_dropped_on_both_paths(env):
+    bad = "[SKILL:no_such_skill:do it]"
+    assert "no_such_skill" not in chat.CHAT_SKILL_ALLOWLIST
+    env.state.reply = f"Done {bad} here."
+    sse, js = env.post(True), env.post(False)
+    for out in (sse, js):
+        assert bad not in out.text and out.text.startswith("Done  here.") and out.skills == []
+        assert ("post_llm_skill_tag", True) in out.budget
+    assert js.text == sse.text and js.budget == sse.budget
+
+
+@pytest.mark.parametrize("outcome", ["nothing", "error"])
+def test_a_tag_whose_skill_gives_nothing_or_fails_is_dropped_on_both_paths(env, monkeypatch, outcome):
+    def skill(name, query, temporary=False):
+        if outcome == "error":
+            raise RuntimeError("skill broke")
+        return name, None
+    monkeypatch.setattr(chat, "_try_skill_by_name", skill)
+    env.state.reply = f"It is {TAG} now."
+    sse, js = env.post(True), env.post(False)
+    assert TAG not in sse.text and TAG not in js.text
+    assert js.text == sse.text
