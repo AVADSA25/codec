@@ -82,8 +82,11 @@ jobs:
           retention-days: 14
 
   macos:
-    name: macos-14 (Python 3.12, buyer hash lock)
-    runs-on: macos-14
+    name: macos-15 (Python 3.12, buyer hash lock)
+    # GitHub retired the macos-14 image on 2 Nov 2026 (jobs are refused with
+    # "macos-14-arm64-us-default is not supported"). The D-34 floor check below reads
+    # each file's Mach-O minos, so it does not depend on the runner's own macOS.
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +134,7 @@ jobs:
           CI: "true"
       - name: Job summary (tests, coverage)
         if: always()
-        run: python tools/ci_report_summary.py --label "macos-14, Python 3.12, buyer hash lock" junit.xml coverage.xml
+        run: python tools/ci_report_summary.py --label "macos-15, Python 3.12, buyer hash lock" junit.xml coverage.xml
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
