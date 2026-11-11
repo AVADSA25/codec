@@ -173,8 +173,10 @@ def main():
 
     class RateAndMetricsMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            # Only rate-limit the MCP tool path; leave OAuth + health alone
-            if request.url.path.startswith("/mcp"):
+            # Only rate-limit the MCP tool path; leave OAuth + health alone. The routed path, never
+            # the URL's path: that one is rebuilt from the Host header, so a crafted Host such as
+            # `[::1]/x` moved /mcp off the prefix and skipped the limit (same bypass as #397).
+            if request.scope["path"].startswith("/mcp"):
                 # Prefer CF-Connecting-IP (set by Cloudflare tunnel)
                 ip = (request.headers.get("cf-connecting-ip")
                       or request.headers.get("x-forwarded-for", "").split(",")[0].strip()

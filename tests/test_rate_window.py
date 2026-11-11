@@ -19,6 +19,7 @@ import time
 import types
 from collections import deque
 from pathlib import Path
+from pathlib import Path
 
 import pytest
 
@@ -104,3 +105,9 @@ def test_sweep_gated_by_interval(mcp_http):
     mcp_http._RATE_LAST_EVICT = now  # within the interval → must NOT sweep this call
     mcp_http._rate_check("caller")
     assert "idle" in mcp_http._RATE_WINDOW, "no sweep should run within _RATE_EVICT_INTERVAL"
+
+
+def test_mcp_http_rate_limit_reads_the_routed_path_not_the_host_built_url():
+    src = (Path(__file__).resolve().parent.parent / "codec_mcp_http.py").read_text(encoding="utf-8")
+    assert 'if request.scope["path"].startswith("/mcp"):' in src
+    assert "request.url.path" not in src
