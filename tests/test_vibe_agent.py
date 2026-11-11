@@ -767,8 +767,17 @@ def test_an_unanswered_question_ends_the_run_after_the_wait(scripted, monkeypatc
     cfg["vibe_agent"] = {"wait_seconds": 5}
     pid = make_project()
     scripted(["@@ ask\nAre you there?\n"])
-    clock = itertools.count(0, 1)
-    monkeypatch.setattr(va, "_mono", lambda: next(clock))
+    # One tick per call, counted per thread: with one shared counter, any other
+    # thread reading the clock (the test's own polling, a run left over from an
+    # earlier test) moved this run past its 900 s work limit before it asked,
+    # and on a slow CI runner it ended "limit" instead of "stopped".
+    ticks = threading.local()
+
+    def clock():
+        ticks.n = getattr(ticks, "n", -1) + 1
+        return ticks.n
+
+    monkeypatch.setattr(va, "_mono", clock)
     monkeypatch.setattr(va, "WAIT_STEP", 0.01)
     run_id = va.start_run(pid, "g")["run"]
     view = wait_finished(pid, run_id)
