@@ -402,11 +402,14 @@ def _qwen_url() -> str:
 
 
 def _qwen_model() -> str:
+    """The model id the runner sends: codec_models' "agent" role (config llm_model),
+    read per call so a model switch is followed without a restart (P-057, E-14;
+    docs/RUNNER-PLANNER-MODEL-ROLE-DESIGN.md). _local_llm still keeps it local."""
+    import codec_models
     try:
-        from codec_config import QWEN_MODEL as _m
-        return _m
+        return codec_models.resolve("agent")
     except Exception:
-        return "mlx-community/Qwen3.6-35B-A3B-4bit"
+        return codec_models.default_for("agent")
 
 
 def _qwen_base() -> str:
