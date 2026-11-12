@@ -297,6 +297,7 @@ def _refusals(monkeypatch):
     monkeypatch.setattr(codec_consent, "chat_consent_ok", lambda name, query: False)
     out["declined"] = chat._try_skill_by_name("file_ops", "write notes.md")[1]
     out["temporary"] = chat._try_skill_by_name("memory_save", "my colour is orange", True)[1]
+    out["web_off"] = chat._try_skill_by_name("web_search", "who is the mayor", search=False)[1]  # R-01
     skill = {"name": "time"}
     monkeypatch.setattr(codec_license, "feature_allowed", lambda *a, **k: False)
     monkeypatch.setattr(codec_license, "license_state",

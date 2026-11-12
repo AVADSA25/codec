@@ -226,6 +226,24 @@ def _temporary_blocks(name, temporary: bool) -> bool:
     return bool(temporary) and name in TEMPORARY_NO_MEMORY_SKILLS
 
 
+# R-01 (docs/WEB-SEARCH-SWITCH-DESIGN.md): in the chat, the web_search skill runs
+# only with the "Search the web" switch on (force_search) and no web:false, on
+# every path (pre-LLM match, '@' pick, post-LLM tag), with a capped query.
+WEB_SEARCH_SKILL = "web_search"
+WEB_SEARCH_MAX_CHARS = 300
+WEB_SEARCH_OFF = "Not searched: web search is off. Turn on Search the web to search."
+
+
+def _web_search_task(text) -> str:
+    """What the chat hands the web_search skill: the text on one line, at most
+    WEB_SEARCH_MAX_CHARS characters, cut back to the last whole word."""
+    one = " ".join(str(text or "").split())
+    if len(one) <= WEB_SEARCH_MAX_CHARS:
+        return one
+    cut = one[:WEB_SEARCH_MAX_CHARS + 1].rfind(" ")
+    return one[:cut] if cut > 0 else one[:WEB_SEARCH_MAX_CHARS]
+
+
 def _note_memory(meta, source: str, kind: str, count: int) -> None:
     """Record what memory went into this turn, for the reply's "Memory used" (P2.4):
     source, kind and a count, never the text."""
@@ -612,7 +630,35 @@ def _skill_outcome_message(result: str) -> str:
     return r  # error / vague / dashboard-unreachable — pass through as-is
 
 
-def _try_skill(user_text: str, temporary: bool = False):
+def _without_web_search(skill):
+    """The match with web_search left out (R-01, switch off): the next match leads,
+    as if web_search had not matched. None when nothing else matched."""
+    names = list(skill.get("_all_matches") or [skill["name"]])
+    if WEB_SEARCH_SKILL not in names:
+        return skill
+    names = [n for n in names if n != WEB_SEARCH_SKILL]
+    return {"name": names[0], "_all_matches": names} if names else None
+
+
+def _run_matched(skill, user_text: str):
+    """run_skill over the matched skills in order. With web_search among them
+    (switch on), it gets the capped query (R-01); the skills before and after it
+    get the message as before."""
+    from codec_dispatch import run_skill
+    names = list(skill.get("_all_matches") or [skill["name"]])
+    if WEB_SEARCH_SKILL not in names:
+        return run_skill(skill, user_text, app="CODEC Chat")
+    i = names.index(WEB_SEARCH_SKILL)
+    for group, task in ((names[:i], user_text), (names[i:i + 1], _web_search_task(user_text)),
+                        (names[i + 1:], user_text)):
+        if group and task:
+            result = run_skill({"name": group[0], "_all_matches": group}, task, app="CODEC Chat")
+            if result is not None:
+                return result
+    return None
+
+
+def _try_skill(user_text: str, temporary: bool = False, search: bool = True):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
 
     An explicit allowlisted-trigger match (e.g. "what was I doing 1h ago?" →
@@ -621,9 +667,13 @@ def _try_skill(user_text: str, temporary: bool = False):
     chatty-phrasing heuristic. Only when NO allowlisted skill matches do
     conversational messages fall through to the LLM (the original behaviour).
     Before this, questions like "what was I doing?" were skipped entirely and the
-    LLM answered from memory (and fabricated)."""
+    LLM answered from memory (and fabricated).
+
+    search=False (the chat's "Search the web" switch off, or web:false; R-01):
+    web_search never runs from a trigger phrase. The default True is for callers
+    with no switch (Home's Flash box, /api/command)."""
     try:
-        from codec_dispatch import check_skill, run_skill, time_limited
+        from codec_dispatch import check_skill, time_limited
         # A long paste is a document, not a command. Pasting a spec, an article,
         # or a set of instructions would otherwise hijack the turn: a 6.3k-char
         # paste of standing rules mentioning "write ... to <path>" matched
@@ -634,6 +684,8 @@ def _try_skill(user_text: str, temporary: bool = False):
         if len(user_text) > MAX_SKILL_HIJACK_CHARS:
             return None, None
         skill = check_skill(user_text)
+        if skill and not search:  # R-01: switch off, web_search is not a match
+            skill = _without_web_search(skill)
         matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)
         if not matched and _is_conversational(user_text):
             return None, None
@@ -649,7 +701,7 @@ def _try_skill(user_text: str, temporary: bool = False):
                     "confirmed — skipped."
                 )
             with time_limited("chat"):  # P-087: a hung skill cannot hold the chat
-                result = run_skill(skill, user_text, app="CODEC Chat")
+                result = _run_matched(skill, user_text)
             if result is not None:
                 return skill["name"], str(result)
     except Exception as e:
@@ -664,14 +716,15 @@ MAX_EXPLICIT_SKILL_CHARS = 5000
 _MCP_CALL = re.compile(r"^\S+\s*(\{.*\})?\s*$", re.DOTALL)
 
 
-def _try_explicit_skill(target: str, user_text: str, temporary: bool = False):
+def _try_explicit_skill(target: str, user_text: str, temporary: bool = False, search: bool = True):
     """Run the skill the user picked with '@' (the chat `skill` body field, P2.3;
     docs/P2.3-DESIGN.md). Returns (skill_name, result).
 
     Only the skills the '@' picker lists (routes.palette.pickable_skills: the chat
     allowlist) run this way, and `mcp_connect` for an "mcp:<server>" target, through
     codec_dispatch.run_skill (hooks, audit, licence) after the same consent gate as
-    automatic routing. No trigger matching: the pick decides."""
+    automatic routing. No trigger matching: the pick decides. A picked web_search
+    answers WEB_SEARCH_OFF with search=False and gets the capped query otherwise (R-01)."""
     target = str(target or "").strip()
     text = str(user_text or "").strip()
     if target.startswith("mcp:"):
@@ -693,6 +746,10 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False):
         return name, "That skill can't be run from chat."
     if _temporary_blocks(name, temporary):
         return name, TEMPORARY_REFUSAL
+    if name == WEB_SEARCH_SKILL:
+        if not search:
+            return name, WEB_SEARCH_OFF
+        task = _web_search_task(task)
     if len(task) > MAX_EXPLICIT_SKILL_CHARS:
         return name, f"That message is too long for a skill ({MAX_EXPLICIT_SKILL_CHARS} characters at most)."
     try:
@@ -711,8 +768,12 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False):
     return name, (str(result) if result is not None else f"{name} had nothing to return for that.")
 
 
-def _try_skill_by_name(name: str, query: str, temporary: bool = False):
+def _try_skill_by_name(name: str, query: str, temporary: bool = False, search: bool = True):
     """Execute a specific skill by name (for LLM-routed skill calls).
+
+    A [SKILL:web_search:...] tag answers WEB_SEARCH_OFF with search=False (the
+    chat's "Search the web" switch off, or web:false) and runs with the capped
+    query otherwise (R-01).
 
     For calculator specifically: LLMs often pass natural-language descriptions
     like "sum of Facebook (4900 + 6100), LinkedIn ...". The calculator skill
@@ -722,6 +783,10 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False):
     """
     if _temporary_blocks(name, temporary):
         return name, TEMPORARY_REFUSAL
+    if name == WEB_SEARCH_SKILL:
+        if not search:
+            return name, WEB_SEARCH_OFF
+        query = _web_search_task(query)
     try:
         from codec_dispatch import run_skill, time_limited
         skill = {"name": name}
@@ -1461,6 +1526,9 @@ async def chat_completion(request: Request):
     # an unrelated feature flag.
     # P2.11: a temporary chat (see TEMPORARY_NO_MEMORY_SKILLS).
     _temporary = bool(body.get("temporary"))
+    # R-01 (docs/WEB-SEARCH-SWITCH-DESIGN.md): the web_search skill runs on this
+    # turn only with the "Search the web" switch on (force_search) and no web:false.
+    _search_on = bool(body.get("force_search")) and body.get("web", True) is not False
     last_user_text = ""
     for _m in reversed(messages):
         if _m.get("role") == "user" and isinstance(_m.get("content"), str):
@@ -1475,7 +1543,7 @@ async def chat_completion(request: Request):
         _explicit = body.get("skill")
         if _explicit and isinstance(_explicit, str) and last_user_text:
             _budget.consume("skill_hijack")
-            skill_name, skill_result = await asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary)
+            skill_name, skill_result = await asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary, search=_search_on)
             log.info(f"[Chat] Picked skill '{skill_name}' handled ({len(skill_result)} chars)")
             if body.get("stream", False):
                 from starlette.responses import StreamingResponse as _PickSR
@@ -1566,7 +1634,7 @@ async def chat_completion(request: Request):
             if _has_persona:
                 skill_name, skill_result = None, None
             else:
-                skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text, _temporary)
+                skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text, _temporary, search=_search_on)
             if skill_result:
                 _budget.consume("skill_hijack")   # pre-LLM hijack consumes 1
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
@@ -1800,7 +1868,7 @@ async def chat_completion(request: Request):
                         log.info(f"[Chat] LLM tried disallowed skill {s_name!r} — dropping tag")
                         return raw_tag.replace(m.group(0), "")
                     try:
-                        _, s_result = _try_skill_by_name(s_name, s_query, _temporary)
+                        _, s_result = _try_skill_by_name(s_name, s_query, _temporary, search=_search_on)
                         _stream_actions.append((s_name, s_result))   # backs a claim if it acted
                         if s_result:
                             return raw_tag.replace(m.group(0), f"**{s_result}**")
@@ -1986,7 +2054,7 @@ async def chat_completion(request: Request):
                 log.info(f"[Chat] LLM tried disallowed skill {s_name!r} (non-stream) — dropping tag")
                 continue
             try:
-                _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)
+                _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary, search=_search_on)
                 _turn_actions.append((s_name, s_result))   # backs a claim if it acted
                 if s_result:
                     _parts.append(f"**{s_result}**")

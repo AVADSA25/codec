@@ -543,7 +543,13 @@ startup warmup fixed on 2026-10-07. Fix: `await asyncio.to_thread(requests.post,
 in each. Found by an AST scan of async routes. Revisit: the next item that touches
 photos or vision.
 
-## The `web_search` skill still searches on its own trigger phrases (2026-10-29)
+## FIXED (2026-11-12, R-01, docs/WEB-SEARCH-SWITCH-DESIGN.md): The `web_search` skill still searches on its own trigger phrases (2026-10-29)
+
+Fixed for the chat (`routes/chat.py`): the skill runs on a trigger phrase, an '@'
+pick or a model tag only with the "Search the web" toggle on and no `web: false`,
+with at most 300 characters on one line; off, a pick or a tag answers "Not
+searched". Voice, the wake word, Home's Flash box, the bridges and MCP have no
+toggle and still run it as before (the design note lists each).
 
 D-37 (docs/LOCAL-FIRST-DEFAULTS-DESIGN.md) made the chat's automatic search in
 `routes/chat._enrich_messages` wait for the "Search the web" toggle. The

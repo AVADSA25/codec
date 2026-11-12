@@ -158,6 +158,10 @@ def test_web_search_claims_match_the_code():
     triggers = _const("skills/web_search.py", "SKILL_TRIGGERS")
     for phrase in ("search for", "look up", "who is"):
         assert phrase in triggers and f'"{phrase}"' in t
+    # R-01 (docs/WEB-SEARCH-SWITCH-DESIGN.md): in Chat the skill waits for the same toggle.
+    assert '_search_on = bool(body.get("force_search")) and body.get("web", True) is not False' in chat
+    assert f"In Chat and the Flash box on Home: your request on one line, at most {_const('routes/chat.py', 'WEB_SEARCH_MAX_CHARS')} characters" in t
+    assert 'In Chat only while the "Search the web" toggle is on' in t
 
 
 def test_model_provider_defaults_match_the_code():
@@ -194,7 +198,7 @@ def test_lookup_skills_alerts_and_marketplace_hosts_are_named():
 
 
 def test_staying_offline_names_the_web_search_skill():
-    """The skill fires on a phrase, toggle or not, so 'staying offline' must say so."""
+    """Outside Chat the skill fires on a phrase, toggle or not, so 'staying offline' must say so."""
     assert "web_search" in _const("routes/chat.py", "CHAT_SKILL_ALLOWLIST")
     triggers = _const("skills/web_search.py", "SKILL_TRIGGERS")
     offline = _doc()[_doc().index("**Staying offline.**"):]

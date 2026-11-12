@@ -275,7 +275,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(prompts, "_load_prompt_overrides", lambda: {})
     monkeypatch.setattr(chat, "_identity_block", lambda meta, temporary: "")
     monkeypatch.setattr(chat, "_recall_memory", lambda messages, meta=None, temporary=False: [])
-    monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False: (None, None))
+    monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False, search=True: (None, None))
     monkeypatch.setattr(chat, "_maybe_escalate_suggestion", lambda text, sid: None)
     sent: list = []
     started: list = []

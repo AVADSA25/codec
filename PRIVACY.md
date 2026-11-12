@@ -74,7 +74,7 @@ These two are the only requests that go out without you asking for something or 
 | Feature | What is sent | To | When |
 |---|---|---|---|
 | **Web search in chat** | The first line of your message, links and a lead-in such as "search the web for" removed, at most 12 words. Pasted text below the first line stays on the Mac. | DuckDuckGo (`api.duckduckgo.com`, `html.duckduckgo.com`), or Serper (`google.serper.dev`) when a Serper key is set; if Serper fails or answers with an error (429 = out of credit), the same query goes to DuckDuckGo instead | Only when the "Search the web" toggle is on; the reply then shows "Searched the web". Temporary chats follow the same rule; Vibe never searches. |
-| **The `web_search` skill** | The words of your request | The same providers | When you say a phrase such as "search for", "look up" or "who is", or when the model calls the skill |
+| **The `web_search` skill** | In Chat and the Flash box on Home: your request on one line, at most 300 characters. By voice, the wake word, Telegram, iMessage or claude.ai: the words of your request | The same providers | In Chat only while the "Search the web" toggle is on: when you say a phrase such as "search for", "look up" or "who is", pick it with @, or the model calls the skill. With the toggle off it answers "Not searched" and sends nothing; Vibe never runs it. Voice, the wake word, the Flash box on Home, Telegram, iMessage and claude.ai still run it on such a phrase or call. |
 | **A link in a chat message** | A request for that page | The site in the link (public addresses only) | When your message contains a link (not in Vibe) |
 | **Screen and image questions** | The screenshot or image | The local vision model by default. **Google Gemini** (`generativelanguage.googleapis.com`) only when `config.json` has `"vision_provider": "gemini"` and a Gemini key. | Per question |
 | **A cloud model** for chat, voice and agents | Your prompt, the conversation context and tool results | The local model (`http://localhost:8083/v1`) by default. A cloud provider only if you chose one at setup, picked a cloud model in the model list, or set `llm_auto_fallback` (used while the local model is down). Mail triage, text assist, the morning briefing and Project-mode agents always stay local; Vibe chat asks before each message it sends to a cloud model. | Per turn while a cloud model is selected |
@@ -147,8 +147,9 @@ also removes `~/.codec`.
 day.
 
 **Staying offline.** Keep the local model, leave the "Search the web" toggle off, leave `vision_provider` unset,
-and do not connect Google, Telegram, connectors or claude.ai. A message with a phrase such as "who is" or "look up"
-still runs the `web_search` skill (section 2.2); switch that skill off on the Skills page if you want none. The
+and do not connect Google, Telegram, connectors or claude.ai. In Chat the `web_search` skill then sends nothing either.
+By voice, the wake word or the Flash box on Home, a phrase such as "who is" or "look up" still runs the `web_search`
+skill (section 2.2); switch that skill off on the Skills page if you want none. The
 update check then remains the only request CODEC makes on its own (plus the licence key on the paid app).
 
 ## 6. GDPR (paid tier) — Art. 13 disclosures
