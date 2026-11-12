@@ -339,7 +339,16 @@ def test_an_interrupt_by_loud_audio_stops_the_stream_and_the_page_hears_about_it
                 break
         c.p.processing, c.p.last_tts_end = True, 0.0
         loud = struct.pack("<4096h", *[int(12000 * math.sin(i / 3)) for i in range(4096)])
-        c.ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "bytes": loud}] * 4 + [{"type": "websocket.disconnect"}])
+        frames = [{"type": "websocket.receive", "bytes": loud}] * 4
+
+        async def receive():
+            # The page stays connected until the reply has ended, then hangs up: once
+            # the socket is gone nothing more is sent (docs/VOICE-SKILL-MATCH-DESIGN.md).
+            if frames:
+                return frames.pop()
+            await turn
+            return {"type": "websocket.disconnect"}
+        c.ws.receive = receive
         await c.p._audio_receiver()
         await asyncio.wait_for(turn, 10)
         return c

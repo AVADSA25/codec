@@ -5,7 +5,10 @@ import re
 SKILL_NAME = "google_tasks"
 
 SKILL_TRIGGERS = [
-    "google tasks", "my tasks", "task list", "to do", "todo",
+    "google tasks", "my tasks", "task list",
+    # The list, not a bare "to do"/"todo": those fired on any sentence with
+    # "nothing to do" or "how to do it" in it (docs/VOICE-SKILL-MATCH-DESIGN.md).
+    "to do list", "to-do list", "todo list", "my to do", "my to-do", "my todo",
     "show tasks", "check tasks", "list tasks",
     "add task", "add a task", "new task", "create task", "create a task",
     "add to my to-do", "add to my todo", "add to to-do", "add to todo",

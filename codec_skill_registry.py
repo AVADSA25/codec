@@ -419,13 +419,21 @@ class SkillRegistry:
         matches = self.match_all_triggers(task)
         return matches[0] if matches else None
 
-    def match_all_triggers(self, task: str) -> List[str]:
-        """Return all skill names whose triggers match, sorted by specificity (longest trigger first)."""
+    def match_all_triggers(self, task: str, min_words: int = 1, at_start: bool = False) -> List[str]:
+        """Return all skill names whose triggers match, sorted by specificity (longest trigger first).
+
+        `min_words` leaves out triggers shorter than that many words (the voice call
+        fires on phrases only); `at_start` counts a trigger only when `task` opens
+        with it (docs/VOICE-SKILL-MATCH-DESIGN.md). Triggers are compared in lower
+        case, as the voice call always did; before, a custom trigger written with a
+        capital letter never matched the chat or the wake word."""
         low = task.lower()
+        lead = '^' if at_start else r'\b'
         scored = []
         for name in self._meta:
-            triggers = self._effective_triggers(name)  # A-4: honors custom_triggers
-            matched = [t for t in triggers if re.search(r'\b' + re.escape(t) + r'\b', low)]
+            triggers = [t.lower() for t in self._effective_triggers(name)  # A-4: honors custom_triggers
+                        if len(t.split()) >= min_words]
+            matched = [t for t in triggers if re.search(lead + re.escape(t) + r'\b', low)]
             if matched:
                 best = max(len(t) for t in matched)
                 scored.append((best, name))

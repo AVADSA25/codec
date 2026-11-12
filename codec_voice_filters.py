@@ -17,6 +17,8 @@ B6-P4 / SR-35: extracted from codec_voice.py. These are stateless data
   - `discard_reason(text)`  Why a whole Whisper transcript should be dropped
                             (noise word, hallucination, repetition) or None.
                             Used by dictation (routes/transcribe.py, P2.5).
+  - `command_parts(text, long_words)` The parts of a spoken turn a skill
+                            trigger may fire from (docs/VOICE-SKILL-MATCH-DESIGN.md).
 
 codec_voice re-exports each name so any existing import keeps working.
 Splitting these out lets the filter sets be tested + tuned without
@@ -119,6 +121,37 @@ def discard_reason(text: str) -> Optional[str]:
     if _REPEATED.search(text.strip().lower()):
         return "repetitive"
     return None
+
+
+# Voice skill matching (docs/VOICE-SKILL-MATCH-DESIGN.md). Whisper ends each
+# spoken sentence with . ! or ?; anything else that is not part of a word is
+# dropped before words are counted.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+_NOT_WORD = re.compile(r"[^\w'\u2019-]+")
+# Openings that come before the command itself ("hey codec, could you set a timer").
+_LEAD_INS = re.compile(
+    r"^(?:(?:hey|hi|ok|okay|codec|please|just|now|so|and|also|then|let's|lets|"
+    r"(?:can|could|would|will) (?:you|u)|i (?:want|need) you to|go ahead and)\s+)+")
+
+
+def command_parts(text: str, long_words: int) -> list:
+    """The parts of a spoken turn a skill trigger may fire from, as (part,
+    at_start) pairs: every sentence of at most `long_words` words, where the
+    trigger may be anywhere (at_start False), and every longer sentence with its
+    lead-ins dropped, where the trigger must open it (at_start True). A trigger
+    phrase met only in the middle of a long sentence belongs to a statement, not
+    a command, so it is in no part.
+    """
+    parts = []
+    for sentence in _SENTENCE_END.split((text or "").strip()):
+        words = _NOT_WORD.sub(" ", sentence.lower()).split()
+        if not words:
+            continue
+        if len(words) <= long_words:
+            parts.append((sentence, False))
+        else:
+            parts.append((_LEAD_INS.sub("", " ".join(words) + " ").strip(), True))
+    return parts
 
 
 def rms_int16(chunk: bytes) -> float:

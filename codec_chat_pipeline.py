@@ -33,6 +33,11 @@ log = logging.getLogger("codec_chat_pipeline")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 
+# Longer than this many words, a message is almost always conversation, not a
+# command. The voice call uses the same number per sentence (codec_voice._match_skill).
+LONG_MESSAGE_WORDS = 15
+
+
 def _is_conversational(text: str) -> bool:
     """Detect if a message is conversational rather than a direct command.
     Conversational messages should go to the LLM, not trigger skills."""
@@ -42,7 +47,7 @@ def _is_conversational(text: str) -> bool:
     if len(words) <= 3:
         return False
     # Long messages (>15 words) are almost always conversational
-    if len(words) > 15:
+    if len(words) > LONG_MESSAGE_WORDS:
         return True
     # Messages with question-like patterns about CODEC/features/capabilities
     _CONV_PATTERNS = [
