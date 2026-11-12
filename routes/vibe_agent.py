@@ -97,6 +97,38 @@ async def commands(pid: str, request: Request):
     return await _call(va.commands, pid)
 
 
+@router.get("/api/vibe/projects/{pid}/agent/rules")
+async def rules(pid: str, request: Request):
+    """The owner's rules like "git diff *" (P-048, docs/VIBE-ALLOW-RULES-DESIGN.md). Before /{run_id} on purpose."""
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    return await _call(va.command_rules, pid)
+
+
+@router.post("/api/vibe/projects/{pid}/agent/rules")
+async def add_rule(pid: str, request: Request):
+    """Only the owner's click at this Mac adds a rule; 400 with the reason when the editor refuses it."""
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.add_command_rule, pid, body.get("rule"))
+
+
+@router.post("/api/vibe/projects/{pid}/agent/rules/forget")
+async def forget_rule(pid: str, request: Request):
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.forget_command_rule, pid, body.get("rule"))
+
+
 @router.get("/api/vibe/projects/{pid}/agent/{run_id}")
 async def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0, replies: int = -1):
     view = await _call(va.get_run, pid, run_id, since, wait)
