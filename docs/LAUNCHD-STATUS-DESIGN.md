@@ -88,7 +88,7 @@ alert itself (the owner's notification) is unchanged.
 
 - `codec_models.restart_server`, `codec_alerts._try_restart` and Cortex's
   restart and log buttons: restarting under launchd belongs to the model-picker
-  item P-039. On launchd the heartbeat's restart attempt still calls PM2, which
+  item P-039 (part 2, the model switch only: docs/LAUNCHD-MODEL-RESTART-DESIGN.md). On launchd the heartbeat's restart attempt still calls PM2, which
   is absent, and KeepAlive does the restart.
 - PM2 process names, `ecosystem.config.js`, the generator, the plists.
 - **Per-service crash-cap wrapper: not built, not needed now.** It waits for

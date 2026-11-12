@@ -1,8 +1,8 @@
 # Offer the best local model that fits this Mac (P-039)
 
 Status: built 2026-11-04 (parts 1, 3, 4). Part 2 (a launchd-aware model-server
-restart) is designed below and waits for the owner's word: it is an AGENTS.md
-section 10 change.
+restart) is built in its own PR, left open for the owner's word (AGENTS.md
+section 10): docs/LAUNCHD-MODEL-RESTART-DESIGN.md.
 
 Owner's word, 2026-11-03: "go go build i trust ur judgment here" (approval for the
 design-first gate on the audit plan items). It does not cover section 10 files, so
@@ -120,3 +120,8 @@ owner's word:
 - Without that LaunchAgent the current in-place message stays.
 - `tests/test_model_switching.py` stays green; new tests fake `launchctl` and
   `launchd_jlist`, never the real one.
+
+Superseded by docs/LAUNCHD-MODEL-RESTART-DESIGN.md: one `launchctl kickstart -k`
+instead of `kill` then `kickstart` (the model job has KeepAlive, so launchd would
+restart it by itself after the kill and race the second command), and the label
+comes from the shipped services list, not from `model_pm2_process`.

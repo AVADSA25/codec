@@ -166,6 +166,13 @@ Emitted by `codec_cookbook.offer.start_download` (outcome `ok`, existing envelop
 |---|---|---|---|
 | `model_download_started` | `codec-cookbook` | info | `model` (catalog id), `repo` (hub id), `size_gb` |
 
+### Model server restart on launchd (2026-11, P-039 part 2)
+Emitted by `codec_models.restart_launchd` once per attempt to restart the model LaunchAgent during a model switch on a buyer Mac (existing envelope; outcome `ok`, `warning` for a refusal, `error` for a failure). Metadata only: no model id, path or command output. The switch keeps its `model_switched` line. Design: `docs/LAUNCHD-MODEL-RESTART-DESIGN.md`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `model_server_restarted` | `codec-models` | info (warning unless `ok`) | `supervisor` (`launchd`), `label` (empty when none was accepted), `result` (`ok`\|`refused`\|`failed`), `reason` (`not_model_label`\|`no_service_list`\|`not_loaded`\|`kickstart_failed`\|`no_new_process`\|`not_ready`\|empty), `seconds` |
+
 ### Create image events (2026-09)
 One event name, emitted by `codec_image` when an image job ends. Metadata only: the prompt text is never recorded. Design: `docs/CHAT-CREATE-IMAGE-DESIGN.md`.
 
