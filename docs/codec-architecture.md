@@ -190,6 +190,8 @@ Emitted by `codec_vibe_projects` (docs/VIBE-PROJECTS-DESIGN.md), source `codec-v
 | `vibe_apply` | `project`, `checkpoint`, `files_changed`, `lines_added`, `lines_removed` |
 | `vibe_restore` | `project`, `restored_to`, `checkpoint`, `saved_before` |
 | `vibe_project_trash` | `project` |
+| `vibe_project_attach` | `project`, `files` (the folder's tracked files, a count), `folder_notes` (bool); never the folder's path (P-050, docs/VIBE-ATTACH-FOLDER-DESIGN.md) |
+| `vibe_project_detach` | `project`, `checkpoints`, `runs` (counts in the record moved to the trash); never the folder's path (P-050) |
 | `vibe_project_fork` | `project` (the copy), `from`, `checkpoint`, `files` (P-077, docs/VIBE-V4-DESIGN.md) |
 | `vibe_session_trash` | `messages`, `reason` (`owner`\|`retention`); from `routes/vibe.py`, after the chat's trash file is written (P-077) |
 | `vibe_retention_sweep` | `days`, `sessions`, `messages`, `skipped`; from `routes/vibe.py`, one line per sweep, never while `vibe.retention_days` is 0 (P-077) |

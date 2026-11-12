@@ -1,6 +1,6 @@
 # Vibe: attach an existing folder as a project (P-050) — design
 
-Status: **for the owner's approval** (board card E-12, plan item P-050). No code before his word. It touches two AGENTS.md section 10 zones: the command sandbox (`codec_vibe_agent_cmd.profile`) and `<project>/.vibe/`.
+Status: **built** (plan item P-050). The owner approved this note on 12 Nov 2026 with the ten choices below as proposed (board cards R-09 to R-18), including the section 10 changes they need (the command sandbox `codec_vibe_agent_cmd.profile` and `<project>/.vibe/`) and nothing more. What was built, and the points this note left open, are in "As built" at the end.
 
 Goal (plan line): an attached folder works with a stat-only scan and a detach (not trash); created projects behave byte-identically; real-sandbox tests pass.
 
@@ -107,3 +107,23 @@ Done means his live check: attach a clone of a real repo in `~/Projects`, an age
 8. **The folder's own `AGENTS.md`/`CLAUDE.md`** become agent notes only if you tick it at attach; otherwise plain files? (Recommended: off by default.)
 9. **Sandbox:** you agree the command write rule may point at a folder you attach, plus the attached-only refusals (`.git` entries, hooks and config at any depth, submodules; secret-file reads), and nothing widened beyond that? (Recommended: yes; any later widening comes back to you.)
 10. **Detach** moves the record (history, run logs, allowed commands) to the CODEC trash, touches nothing in the folder, and re-attaching starts a fresh history? (Recommended: yes.)
+
+## As built (12 Nov 2026)
+
+The owner's answers, as cards: R-09 (record under the vibe root), R-10 (which folders), R-11 (limits), R-12 (first version at the first change), R-13 (scoped Undo and Rewind, counted Restore), R-14 (secret files), R-15 (chat apply through `_agent_rel`), R-16 (folder notes off by default), R-17 (sandbox), R-18 (Detach). All ten were built as proposed. The five PRs of the build order became one PR; each part has its own tests.
+
+- **Code:** `codec_vibe_attach.py` (which folders, limits), `codec_vibe_projects.py` (`record_dir` / `files_dir`, attach, detach, stat-only walk, stat cache, scoped restore, `restore_preview`), `codec_vibe_agent.py` and `codec_vibe_runner.py` (record for logs and `run.json`, folder for files and commands), `codec_vibe_agent_cmd.py` (`attached=True`), `routes/vibe_projects.py` (`POST /api/vibe/projects/attach`, `GET .../restore/preview`, `scope` on restore, DELETE detaches), `static/vibe-projects.js` and `codec_vibe.html` (the Attach form in the Projects drawer, the Files list, the banner, the Restore count, Detach).
+- **Tests:** `tests/test_vibe_attach.py` (engine and routes, one test name per card), `tests/test_vibe_attach_sandbox.py` (the real sandbox on this Mac), `tests/test_vibe_attach_page.py` (the page in Node). Created projects: `tests/fixtures/vibe_created_project_before_attach.json` (a created project's files and checkpoint lines from main, times left out) and `tests/fixtures/vibe_agent_profile_created_{off,on}.sb` (today's profile text); no existing test was edited.
+
+Points the note left open, each decided the safer way:
+- Chat apply in an attached folder also refuses the root `AGENTS.md` and `CLAUDE.md` (the same `_agent_rel` the agent has).
+- The folder's `CLAUDE.md` becomes notes only with the tick and `vibe_agent.import_claude_md`, as for a created project.
+- A changed file keeps its permission bits; a new file is 0600 and a new folder 0700. A write goes to a `.vibe-tmp` file next to the target and replaces it (the inode changes), as today.
+- Empty folders left by a delete or a restore are not removed.
+- Paths inside an attached folder may be 400 characters (a created project keeps 200).
+- A restore that would take the folder past the limits is refused (413). A copy of an attached project ("Copy to a new project") is a created project with the created limits.
+- The file server (Show) does not serve secret-looking files of an attached folder.
+- Attaching a folder that already has a record opens that record (`already_attached`); after a Detach the record is in the trash and attaching again starts fresh.
+- With `VIBE_ATTACH_ENABLED=false` an attached record can be neither opened nor detached; it stays as it is until the switch is on again.
+
+Known limits, for later: every checkpoint line still lists the whole file map (`checkpoints.jsonl` grows with the folder); agent commands can still write `.env` and the D-23 folders (R-17 asked for no more refusals than listed); the composer's `@file` list shows only the files open in the editor for an attached folder.
