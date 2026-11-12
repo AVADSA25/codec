@@ -586,7 +586,7 @@ Turning it on sends trigger-matching text to the skill (web_search sends it to
 DuckDuckGo). Status: decided, not a defect. Revisit: if the owner wants skill
 answers in Telegram or iMessage; then also scan at bridge start.
 
-## Plan path blocklist: case, parent folders and anchoring (2026-11-03, P-098 review)
+## Plan path blocklist: case, parent folders and anchoring (2026-11-03, P-098 review) — FIXED 2026-11-12 (R-02: case-folded, a grant containing a blocked folder is refused, system entries anchored at `/`; docs/PLAN-PATH-GUARD-DESIGN.md)
 
 `codec_agent_plan._is_path_blocklisted` (typed paths, `/grant`, and since P-098
 drafted and edited plans) compares path segments exactly. On macOS's
@@ -598,6 +598,9 @@ match a folder of that name anywhere, so a project in `~/work/var/site` is
 refused. Fix (own PR, section 10 file, owner's word on which parents to refuse):
 compare case-folded, refuse a grant whose root contains a blocked location, and
 anchor the system entries at `/`.
+Still open: `~/.codec/notes/**` (and other `~/.codec` folders not on the list) is
+not refused, because it contains no blocked entry; adding `/.codec/notes` to the
+list is the owner's call.
 
 ## The shift report counts background feature runs as completed work (2026-11-03, P-098 review) — FIXED 2026-11-11 (lines with extra.feature are left out of section 1)
 
