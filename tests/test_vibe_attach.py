@@ -174,7 +174,8 @@ def test_r10_attach_refuses_each_broken_rule(tmp_path, monkeypatch):
         (str(tmp_path / "Projects" / "via" / "real"), "goes through a link"),
         ("~", "home folder"),
         (str(tmp_path / "Projects"), "whole top folder"),
-        ("/tmp", "link"),
+        # /tmp is a link on a Mac; on a Linux CI runner it is a real folder owned by root.
+        ("/tmp", "link" if os.path.islink("/tmp") else "another user"),
         (str(tmp_path / "elsewhere" / "x"), "only folders inside"),
         (str(tmp_path / "Projects" / "nothing-here"), "no folder"),
         (str(tmp_path / "Projects" / "file.txt"), "not a folder"),
