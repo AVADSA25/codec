@@ -977,38 +977,106 @@ _PATH_BLOCKLIST_SUBSTRINGS = (
 )
 
 
+# R-02 (owner, 12 Nov 2026): system folders, matched only at the filesystem root,
+# so a project in ~/work/var/site is not /var. Every other entry still matches
+# as a segment sequence anywhere in the path (D-16).
+_PATH_BLOCKLIST_ROOT_ANCHORED = frozenset({
+    "/etc/", "/var/", "/private/", "/System/", "/usr/local/etc",
+})
+
+_GLOB_CHARS = "*?["
+
+
+def _folded_parts(path: str) -> List[str]:
+    """The path's segments, case-folded (the Mac's disk is case-insensitive, so
+    ~/.SSH is ~/.ssh), after expanduser and abspath (which collapses `..` and
+    `.`; a relative path is read against the process's folder, as the runner's
+    realpath reads a relative grant). Raises on an unusable path."""
+    absolute = os.path.abspath(os.path.expanduser(path))
+    return [s.casefold() for s in absolute.split(os.sep) if s]
+
+
+def _pattern_parts(blocked_pattern: str) -> List[str]:
+    return [s.casefold() for s in blocked_pattern.split("/") if s]
+
+
 def _path_segments_match(path: str, blocked_pattern: str) -> bool:
     """Segment-aware match (D-16 closure). Returns True iff
     `blocked_pattern`'s `/`-separated segments appear consecutively in
-    `path`'s segments. `path` is expanduser'd + normalized (collapses
-    `..` and `.`) before comparison.
+    `path`'s segments, compared case-folded (R-02). `path` is expanduser'd +
+    made absolute (collapses `..` and `.`) before comparison. An entry in
+    `_PATH_BLOCKLIST_ROOT_ANCHORED` matches only at the filesystem root (R-02).
 
     Examples:
         _path_segments_match("~/.ssh/config", "/.ssh") → True
+        _path_segments_match("~/.SSH/config", "/.ssh") → True
         _path_segments_match("~/Documents/notes_ssh/", "/.ssh") → False
         _path_segments_match("~/.codec/skills/x.py", "/.codec/skills") → True
         _path_segments_match("/etc/passwd", "/etc/") → True
+        _path_segments_match("~/work/var/site", "/var/") → False
     """
-    try:
-        expanded = os.path.expanduser(path)
-        normalized = os.path.normpath(expanded)
-        path_parts = normalized.split(os.sep)
-    except Exception:
-        return True  # fail-safe: treat unparseable paths as blocked
-    blocked_parts = [s for s in blocked_pattern.split("/") if s]
+    blocked_parts = _pattern_parts(blocked_pattern)
     if not blocked_parts:
         return False
+    try:
+        path_parts = _folded_parts(path)
+    except Exception:
+        return True  # fail-safe: treat unparseable paths as blocked
     n = len(blocked_parts)
+    if blocked_pattern in _PATH_BLOCKLIST_ROOT_ANCHORED:
+        return path_parts[:n] == blocked_parts
     for i in range(len(path_parts) - n + 1):
         if path_parts[i:i + n] == blocked_parts:
             return True
     return False
 
 
+def _blocked_locations() -> List[List[str]]:
+    """R-02: the blocked folders as absolute, case-folded segment lists. A root
+    anchored entry is itself; every other entry is taken both under the home
+    folder (~/.ssh, ~/Library/Keychains) and at the filesystem root
+    (/Library/Keychains)."""
+    home = _folded_parts("~")
+    out = []
+    for b in _PATH_BLOCKLIST_SUBSTRINGS:
+        parts = _pattern_parts(b)
+        out.append(parts)
+        if b not in _PATH_BLOCKLIST_ROOT_ANCHORED:
+            out.append(home + parts)
+    return out
+
+
+def _grant_contains_blocked(path: str) -> bool:
+    """R-02: True iff a grant's root folder is a blocked folder or one of its
+    parents (~, ~/**, ~/.codec/**, ~/Library/**, /Users/**, /, /usr/**), so the
+    runtime gate (realpath prefix) would let the agent into it. The root is the
+    path before its first glob character; a glob inside a segment (~/.co*/**)
+    makes the folder above it the root, and a bare glob (`**`, `*.md`) is rooted
+    at `/`, as the runner's `_path_allowed` reads it. An empty grant grants
+    nothing there and is not refused here."""
+    if not path:
+        return False
+    try:
+        cut = min([i for i in (path.find(c) for c in _GLOB_CHARS) if i >= 0],
+                  default=-1)
+        root = path if cut < 0 else path[:cut]
+        if cut >= 0 and root and not root.endswith("/"):
+            root = root[:root.rfind("/") + 1] or "."
+        root = root or "/"
+        root_parts = _folded_parts(root)
+        n = len(root_parts)
+        return any(loc[:n] == root_parts for loc in _blocked_locations())
+    except Exception:
+        return True  # fail-safe: treat unparseable paths as blocked
+
+
 def _is_path_blocklisted(path: str) -> bool:
     """True iff the path traverses any segment-sequence in
-    `_PATH_BLOCKLIST_SUBSTRINGS`. D-14 + D-16 closure."""
-    return any(_path_segments_match(path, b) for b in _PATH_BLOCKLIST_SUBSTRINGS)
+    `_PATH_BLOCKLIST_SUBSTRINGS` (D-14 + D-16 closure, case-folded and with the
+    system folders anchored at `/` since R-02), or, as a grant, contains a
+    blocked folder (R-02)."""
+    return (any(_path_segments_match(path, b) for b in _PATH_BLOCKLIST_SUBSTRINGS)
+            or _grant_contains_blocked(path))
 
 
 def _blocked_manifest_paths(pm: "PermissionManifest") -> List[str]:
