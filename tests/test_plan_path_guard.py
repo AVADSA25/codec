@@ -32,12 +32,16 @@ def _plan_dict(read_paths=(), write_paths=("~/codec-projects/r02/**",)):
     }
 
 
+# The folder holding the home folder (/Users on a Mac, /home on a CI runner).
+_HOME_PARENT = os.path.dirname(os.path.expanduser("~"))
+
+
 @pytest.mark.parametrize("path", [
     # (a) case-folded
     "~/.SSH/**", "~/.Codec/Skills/x.py", "/ETC/passwd", "/system/Library/x",
     # (b) a grant whose root contains a blocked folder
     "~", "~/", "~/**", "~/.codec/**", "~/.codec", "~/Library/**", "~/.config/**",
-    "/", "/**", "**", "*.md", "/Users/**", "/usr/**", "/Library/**",
+    "/", "/**", "**", "*.md", _HOME_PARENT + "/**", "/usr/**", "/Library/**",
     "~/*/skills/**", "~/.co*/**",
     # system folders at the root are still refused
     "/var/log/**", "/private/etc/hosts", "/usr/local/etc/x",
