@@ -5,7 +5,6 @@ degrade to read-only on invalid/expired license with a 7-day offline grace.
 Uses a throwaway RSA keypair to sign test tokens (no network, no real server).
 """
 import base64
-import importlib
 import json
 import time
 
@@ -38,8 +37,12 @@ def keypair():
 
 @pytest.fixture
 def lic():
+    # Fresh caches, same module. Not importlib.reload: a reload finds the file again on
+    # sys.path, which skills put ~/codec-repo first on, so a worktree run swapped in the main
+    # checkout's copy with the owner's live paths (12 Nov 2026, P-009).
     import codec_license
-    return importlib.reload(codec_license)
+    codec_license._invalidate_caches()
+    return codec_license
 
 
 # ── token verification ──────────────────────────────────────────────────────────

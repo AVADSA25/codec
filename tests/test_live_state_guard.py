@@ -88,6 +88,76 @@ def test_notification_paths_are_temp():
         assert not _under_live(p), "a notifications path still points at the owner's ~/.codec"
 
 
+def test_overlay_and_licence_paths_are_temp():
+    import codec_license
+    import codec_overlays
+    for p in (codec_overlays._EVENTS, codec_license.CONFIG_PATH, codec_license.PUBKEY_CACHE,
+              codec_license.GRACE_STATE_PATH):
+        assert not _under_live(p), "an overlay or licence path still points at the owner's ~/.codec"
+    assert not codec_license.CONFIG_PATH.exists()  # the suite's licence check reads {}: "oss"
+
+
+def test_a_fresh_codec_license_still_uses_the_temp_folder(monkeypatch):
+    """Running the module's code again (what a reload does) keeps the temp paths (CODEC_LICENSE_DIR).
+
+    Executed from this checkout's file under another name, not importlib.reload: a reload finds
+    the file again on sys.path, where skills put ~/codec-repo first."""
+    import importlib.util
+    import codec_license
+    spec = importlib.util.spec_from_file_location("_codec_license_fresh", codec_license.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, fresh)  # @dataclass looks the module up there
+    spec.loader.exec_module(fresh)
+    for p in (fresh.CONFIG_PATH, fresh.PUBKEY_CACHE, fresh.GRACE_STATE_PATH):
+        assert not _under_live(p), "codec_license's own paths point at the owner's ~/.codec again"
+    assert fresh.CODEC_HOME == codec_license.CODEC_HOME
+
+
+def test_a_real_skill_run_writes_its_overlay_line_to_temp(monkeypatch):
+    """The unpatched run_skill: licence gate, skill, skill_fired line (12 Nov 2026 leak)."""
+    from types import SimpleNamespace
+    import codec_dispatch
+    import codec_hooks
+    import codec_license
+    import codec_overlays
+    codec_license._invalidate_caches()
+    monkeypatch.setattr(codec_hooks, "_registry", SimpleNamespace(for_hook=lambda hook, tool: []))
+    monkeypatch.setattr(codec_dispatch, "_skill_off", lambda n: False)
+    monkeypatch.setattr(codec_dispatch.registry, "run", lambda name, task, app="": "4")
+    before = Path(codec_overlays._EVENTS).read_text() if os.path.exists(codec_overlays._EVENTS) else ""
+    assert codec_dispatch.run_skill({"name": "calculator"}, "calculate 2 + 2") == "4"
+    assert codec_license.license_state().mode == "oss"
+    new = Path(codec_overlays._EVENTS).read_text()[len(before):]
+    assert new == '{"type":"skill_fired","name":"calculator"}\n'
+
+
+def test_the_licence_cache_and_grace_state_go_to_temp(monkeypatch):
+    """A fetched public key and a good check's grace time land in the temp folder."""
+    import codec_license
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    pem = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+
+    class _Reply:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self): return pem
+
+    monkeypatch.setattr(codec_license.urllib.request, "urlopen", lambda req, timeout: _Reply())
+    written = [p for p in (codec_license.PUBKEY_CACHE, codec_license.GRACE_STATE_PATH) if not p.exists()]
+    try:
+        codec_license._invalidate_caches()
+        assert codec_license._fetch_pubkey({}) == pem
+        assert codec_license.PUBKEY_CACHE.read_bytes() == pem
+        codec_license._write_grace(123.0, "pro", "2027-01-01")
+        assert json.loads(codec_license.GRACE_STATE_PATH.read_text())["last_good_ts"] == 123.0
+    finally:  # later licence tests start from the same empty temp folder
+        codec_license._invalidate_caches()
+        for p in written:
+            p.unlink(missing_ok=True)
+
+
 # ── Guard on a temp root (runs everywhere, CI included) ──────────────────────
 
 
@@ -96,9 +166,12 @@ def test_guard_refuses_the_protected_names_and_nothing_else(tmp_path):
     for name in ("notifications.json", "notifications.json.lock", "notifications.tmp",
                  "pending_questions.json", "audit.log", "audit.log.1", "memory.db",
                  "memory.db-wal", "shift_report_state.json", "qchat.db", "qchat.db.bak-voice",
-                 "vibe.db", "vibe.db-wal", "vibe.db.pre-v4-20261104-073552.bak"):
+                 "vibe.db", "vibe.db-wal", "vibe.db.pre-v4-20261104-073552.bak",
+                 "overlay_events.jsonl", "license_pubkey.pem", ".license_state.json",
+                 "config.json", "config.json.tmp", "config.json.lock"):
         assert g.protected(tmp_path / name), name
-    for name in ("config.json", "notes", "memory.dbx/../x", "reply_stats.jsonl", "vibe_playbooks_approved.json"):
+    for name in ("notes", "memory.dbx/../x", "reply_stats.jsonl", "vibe_playbooks_approved.json",
+                 "overlay_mark.png", "overlay_input_ab12.json", "config.yaml", "mcp_servers.json"):
         assert g.protected(tmp_path / name) is None, name
     assert g.protected(tmp_path / "sub" / "notifications.json") is None  # other folder
     with pytest.raises(lsg.LiveStateRefused):
@@ -133,7 +206,8 @@ needs_owner_home = pytest.mark.skipif(not lsg.OWNER_HOME_EXISTED,
 def test_installed_guard_refuses_live_path_opens():
     guard = lsg.ACTIVE
     assert guard is not None, "tests/conftest.py did not install the live-state guard"
-    for name in ("notifications.json", "pending_questions.json", "audit.log"):
+    for name in ("notifications.json", "pending_questions.json", "audit.log",
+                 "overlay_events.jsonl", "license_pubkey.pem", ".license_state.json", "config.json"):
         with guard.expected(), pytest.raises(lsg.LiveStateRefused):
             # No O_CREAT and no write: even an unguarded open would change nothing.
             fd = os.open(os.path.join(LIVE, name), os.O_WRONLY | os.O_APPEND)

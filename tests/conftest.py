@@ -66,6 +66,8 @@ os.environ.setdefault("CODEC_HEALTH_DIR", tempfile.mkdtemp(prefix="codec-test-he
 # copy the live key into the test Keychain and blank the live file. Off for the suite;
 # tests/test_license_key_keychain.py turns it on with config files under tmp_path.
 os.environ["LICENSE_KEY_MIGRATION_ENABLED"] = "false"
+# The licence check's folder (config.json it reads, key cache, grace state); see _isolate_licence.
+os.environ.setdefault("CODEC_LICENSE_DIR", tempfile.mkdtemp(prefix="codec-test-licence-"))
 
 
 def _isolate_audit_log() -> None:
@@ -125,13 +127,41 @@ def _isolate_keychain() -> None:
 _isolate_keychain()
 
 
+def _isolate_licence() -> None:
+    """Keep the licence check off the owner's licence files and config (P-009).
+
+    `codec_dispatch.run_skill` asks `codec_license.feature_allowed` before every skill. With
+    the owner's config.json (a paid edition with a key) that fetched the public key from the
+    licence server, rewrote ~/.codec/license_pubkey.pem and ~/.codec/.license_state.json, and
+    one test stored a placeholder key in the live cache (12 Nov 2026). The module builds all
+    four paths from CODEC_LICENSE_DIR (set above), so tests/test_license.py's reload keeps
+    them; config.json there does not exist, so the check reads {} and answers "oss" like on
+    CI (no network call, no key read). Tests that need a paid config pass `cfg` or patch
+    these per test, as before. The assignments cover a module imported before the variable
+    was set. Done at conftest import time, like `_isolate_audit_log`.
+    """
+    try:
+        import codec_license
+    except Exception:
+        return
+    tmp = Path(os.environ["CODEC_LICENSE_DIR"])
+    codec_license.CODEC_HOME = tmp
+    codec_license.CONFIG_PATH = tmp / "config.json"
+    codec_license.PUBKEY_CACHE = tmp / "license_pubkey.pem"
+    codec_license.GRACE_STATE_PATH = tmp / ".license_state.json"
+    codec_license._invalidate_caches()
+
+
+_isolate_licence()
+
+
 def _guard_live_state() -> None:
     """Refuse this process's writes to the owner's live state (P-009).
 
     Only where the owner's ~/.codec existed before the run, so it does nothing on
     CI. Write opens, replace, rename and delete of ~/.codec memory.db*,
-    notifications.*, pending_questions.*, audit.log*, shift_report_state.*, qchat.db*
-    and vibe.db*,
+    notifications.*, pending_questions.*, audit.log*, shift_report_state.*, qchat.db*,
+    vibe.db*, overlay_events.*, license_pubkey.*, .license_state.* and config.json*,
     any sqlite3.connect to them, and any run of the real /usr/bin/security raise
     LiveStateRefused; `_live_state_untouched` then fails the test even if the code
     swallowed the error. Installed early so a write made while the helpers below
@@ -367,7 +397,8 @@ def _isolate_notifications() -> None:
     `_guard_live_state`. Tests that patch these per test keep doing so. Done at
     conftest import time, like `_isolate_audit_log`, after the memory isolation so
     these imports cannot bind memory.db first. The overlay events file goes there
-    too: every full heartbeat trims it (P-082).
+    too: every full heartbeat trims it (P-082), and codec_dispatch's `skill_fired`
+    line and codec_core's input request write through `codec_overlays._EVENTS`.
     """
     tmp = Path(tempfile.mkdtemp(prefix="codec-test-notifications-"))
     notifs = tmp / "notifications.json"

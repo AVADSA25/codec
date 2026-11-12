@@ -271,7 +271,10 @@ def run_skill(skill, task, app="", consent=None, feature=None):
                       correlation_id=cid)
             try:
                 import os as _os
-                _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
+                import codec_overlays
+                # The writer's own path (the heartbeat trims the same one), so a
+                # test's redirect of codec_overlays._EVENTS covers this line too.
+                _events_path = codec_overlays._EVENTS
                 # P-082: the events file is created owner-only (0600).
                 with _os.fdopen(_os.open(_events_path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT,
                                          0o600), "a") as _f:

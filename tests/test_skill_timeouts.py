@@ -48,9 +48,8 @@ def world(tmp_path, monkeypatch):
     audit = tmp_path / "audit.log"
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", audit)
     overlay = tmp_path / "overlay_events.jsonl"
-    real_expand = os.path.expanduser
-    monkeypatch.setattr(os.path, "expanduser",
-                        lambda p: str(overlay) if str(p).endswith("overlay_events.jsonl") else real_expand(p))
+    import codec_overlays  # run_skill's skill_fired line goes to the overlay module's path
+    monkeypatch.setattr(codec_overlays, "_EVENTS", str(overlay))
     monkeypatch.setattr(codec_hooks, "_registry", SimpleNamespace(for_hook=lambda hook, tool: []))
     monkeypatch.setattr(codec_dispatch, "SKILL_TIMEOUT_S", 1.0)
     monkeypatch.setattr(codec_dispatch, "_configured_timeouts", lambda: {})

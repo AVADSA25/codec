@@ -5,7 +5,8 @@ Used by tests/conftest.py; not a test module.
 - `write_fake_security`: a stand-in for /usr/bin/security that codec_keychain is
   pointed at, so no test reads or writes the owner's Keychain.
 - `Guard`: in this process, refuses writes to the owner's ~/.codec memory.db,
-  notifications, pending questions, audit log, shift report state, qchat.db and vibe.db, any
+  notifications, pending questions, audit log, shift report state, qchat.db, vibe.db, the
+  overlay events file, the licence key cache and grace state and config.json, any
   sqlite3.connect to them, and any run of the real /usr/bin/security. Each
   refusal is recorded, so the test that caused it fails even when the code
   under test swallows the error.
@@ -38,8 +39,13 @@ REAL_SECURITY = "/usr/bin/security"
 # qchat.db and vibe.db (chat and Vibe history) were added on 11 Nov 2026: a test or tool opened
 # the live vibe.db on 4 Nov and ran P-077's column migration there; the prefixes also cover the
 # copies their migrations write (qchat.db.bak-voice, vibe.db.pre-v4-*.bak).
+# overlay_events.jsonl, license_pubkey.pem, .license_state.json and config.json were added on
+# 12 Nov 2026: tests that ran the real run_skill appended skill_fired lines to the live overlay
+# file (the Swift overlay may show them) and the licence check rewrote the live key cache and
+# grace state; a test that migrates a key could blank the live config.json. Reads stay allowed.
 PROTECTED_NAMES = ("memory.db", "notifications.", "pending_questions.", "audit.log",
-                   "shift_report_state.", "qchat.db", "vibe.db")
+                   "shift_report_state.", "qchat.db", "vibe.db", "overlay_events.",
+                   "license_pubkey.", ".license_state.", "config.json")
 
 _WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 

@@ -13,14 +13,24 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | deferred-not-fixed: the chat rule is deliberate for questions such as "what was I doing?" (observer_recall), and the wake word has its own consent gate; changing either is its own decision. |
 | **revisit when** | The next change to `_try_skill` or `check_skill`, or if a chat or wake-word false trigger is reported. |
 
-## Tests that run a skill write to the owner's live overlay file (found 2026-11-12, voice skill match fix)
+## Tests still read the owner's live config.json (found 2026-11-12, overlay and licence isolation)
 
 | field | value |
 |---|---|
-| **where** | `codec_dispatch.run_skill` writes `~/.codec/overlay_events.jsonl` through a hard-coded `os.path.expanduser` path; `tests/conftest.py` redirects `codec_overlays._EVENTS` but not this one. The licence gate at the top of `run_skill` may also refresh `~/.codec/license_pubkey.pem`. |
-| **what's wrong** | Suites that call the real `run_skill` (for example `tests/test_voice_wake_consent.py`, `test_skill_loader_unification.py`, chat skill tests) append `skill_fired` lines to the owner's live file, which the Swift overlay reads. Seen on 2026-11-12: calculator and terminal lines after a test run. The heartbeat trims the file to 100 lines, so nothing grows. |
-| **status** | deferred-not-fixed: the fix is a module-level path in `codec_dispatch` that conftest can point at a temp file, plus the same for the licence cache; its own small PR. |
-| **revisit when** | The next change to `tests/conftest.py` live-state guards (P-009). |
+| **where** | About 58 runtime modules build their own `~/.codec/config.json` path (`codec_config.CONFIG_PATH`, `codec_voice._CONFIG_PATH`, `codec_observer._CODEC_CONFIG_PATH`, `codec_watchdog.CONFIG_PATH`, `routes/usage.py`, `routes/memory_page.py`, skills such as `weather` and `timer`, ...). `tests/test_dashboard_host.py` also reloads `codec_config`, which reads the file again and puts `codec_config.DB_PATH` back on the live `memory.db` for the tests after it; in a worktree run that reload loads `~/codec-repo`'s `codec_config.py` (skills put the main checkout first on `sys.path`). |
+| **what's wrong** | On the Studio a test that does not patch the path sees the owner's settings (his models, `edition: paid`, `skills_off`, ports), so results can differ from CI, which has no `~/.codec`. Writes are refused since 12 Nov 2026 (`config.json*` is in the P-009 guard), and the licence check reads a temp folder (`CODEC_LICENSE_DIR`), so nothing is changed and no key is read through the licence path; other reads go on. |
+| **plan** | 1. `codec_config.CONFIG_PATH` honours a `CODEC_CONFIG_PATH` variable (tests only, like `CODEC_LICENSE_DIR`). 2. Every module that builds its own path reads `codec_config.CONFIG_PATH` at call time instead, a mechanical change per module with its tests' patches moved to the one name. 3. conftest sets the variable to a missing temp file before any import, so the suite reads `{}` as on CI; tests that need settings write their own file under tmp_path. 4. The guard then also refuses read opens of the live `config.json`, so a new module with its own path fails the suite. Steps 1-3 touch about 58 runtime files: a design doc and its own PR. |
+| **status** | deferred-not-fixed |
+| **revisit when** | The next P-009 change, or when a test passes on CI and fails on the Studio because of a live setting. |
+
+## FIXED (2026-11-12): Tests that run a skill write to the owner's live overlay file (found 2026-11-12, voice skill match fix)
+
+Fixed: `codec_dispatch.run_skill` and `codec_core._swift_text_input` write through `codec_overlays._EVENTS` (redirected by conftest), `codec_license` builds its paths from `CODEC_LICENSE_DIR` (a temp folder in tests), `tests/test_license.py` clears the module's caches instead of reloading it, and the P-009 guard refuses writes to `overlay_events.*`, `license_pubkey.*`, `.license_state.*` and `config.json*` in the real `~/.codec` (docs/TEST-LIVE-STATE-DESIGN.md, follow-up of 12 Nov).
+
+| field | value |
+|---|---|
+| **where** | `codec_dispatch.run_skill` wrote `~/.codec/overlay_events.jsonl` through a hard-coded path that conftest's redirect of `codec_overlays._EVENTS` did not cover. Its licence gate, with the owner's paid config, fetched the public key and rewrote `~/.codec/license_pubkey.pem` and `.license_state.json`; `tests/test_top10_action_list.py` stored a placeholder key in that cache, and `tests/test_license.py`'s `importlib.reload` (which finds the file on `sys.path`, where skills put `~/codec-repo` first) loaded the main checkout's copy with the live paths in a worktree run. |
+| **what was wrong** | Suites that call the real `run_skill` (`tests/test_voice_wake_consent.py`, `test_skill_loader_unification.py`, chat skill tests) appended `skill_fired` lines (calculator, terminal) to the file the Swift overlay reads, and the licence files changed in the same second as a test run. After R-03 blanked the live `ava.license_key`, `tests/test_agent_plan.py`'s three API tests got 402 on the Studio from the same licence gate (pass on CI). |
 
 ## Vibe agent commands inherit bash start-up variables (found 2026-11-11, P-048 build)
 

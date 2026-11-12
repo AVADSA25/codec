@@ -205,7 +205,8 @@ def _swift_text_input(timeout=120):
     rid = _secrets.token_hex(4)
     base = os.path.expanduser(f"~/.codec/overlay_input_{rid}")
     reply, ack = base + ".json", base + ".ack"
-    events = os.path.expanduser("~/.codec/overlay_events.jsonl")
+    import codec_overlays
+    events = codec_overlays._EVENTS  # the writer's own path, like codec_dispatch
     for p in (reply, ack):
         try:
             os.remove(p)
