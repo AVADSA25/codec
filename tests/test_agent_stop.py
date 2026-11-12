@@ -426,3 +426,56 @@ def test_json_retry_not_sent_after_stop(iso, monkeypatch):
     with pytest.raises(car.StopRequested) as exc:
         car._qwen_next_action(plan_dict, checkpoint, [])
     assert exc.value.status == "aborted" and len(sent) == 1
+
+
+# ── a Pause that lands inside one daemon tick (known-issues 2026-11-03) ─────────
+
+
+def _force_status(status):
+    m = cap.load_manifest(AGENT)
+    m["status"] = status
+    cap.save_manifest(AGENT, m)
+
+
+def test_a_pause_between_the_scan_and_the_crash_resume_is_kept(iso, monkeypatch):
+    """The scan saw `running` with no thread, the owner paused, the daemon's
+    crashed_resumed change was refused: no thread may start (it used to, and its
+    run-start moved paused -> running, so the pause was lost)."""
+    _setup()
+    _force_status("paused")
+    monkeypatch.setattr(car, "_scan_agents", lambda: [{"agent_id": AGENT, "status": "running"}])
+    started = []
+    monkeypatch.setattr(car, "_run_agent", lambda *a, **k: started.append(a))
+    car._daemon_one_tick()
+    assert started == [] and AGENT not in car._active_threads
+    assert cap.load_manifest(AGENT)["status"] == "paused"
+    assert not [e for e, _ in iso.events if e == "agent_resumed"], "no resume announced"
+
+
+def test_an_abort_between_the_scan_and_the_model_check_starts_nothing(iso, monkeypatch):
+    _setup()
+    _force_status("aborted")
+    monkeypatch.setattr(car, "_scan_agents", lambda: [{"agent_id": AGENT, "status": "blocked_on_qwen"}])
+    monkeypatch.setattr(car, "_qwen_chat", lambda *a, **k: "pong")
+    started = []
+    monkeypatch.setattr(car, "_run_agent", lambda *a, **k: started.append(a))
+    car._daemon_one_tick()
+    assert started == [] and cap.load_manifest(AGENT)["status"] == "aborted"
+
+
+def test_the_run_start_never_moves_a_paused_agent(iso, monkeypatch):
+    """The other window: the daemon set `running`, the owner paused, then the
+    thread reached its run-start. paused -> running stays the /resume route's move."""
+    _setup()
+    _force_status("paused")
+    model = FakeModel([_done()])
+    monkeypatch.setattr(car, "_qwen_next_action", model)
+    car._run_agent(AGENT)
+    assert cap.load_manifest(AGENT)["status"] == "paused" and model.calls == 0
+
+
+def test_resume_still_moves_a_paused_agent(iso):
+    _setup()
+    _force_status("paused")
+    cap.set_status(AGENT, "running")          # what the /resume route does
+    assert cap.load_manifest(AGENT)["status"] == "running"
