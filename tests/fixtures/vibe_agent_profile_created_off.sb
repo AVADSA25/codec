@@ -1,0 +1,88 @@
+(version 1)
+(deny default)
+(import "bsd.sb")
+
+;; reads: the system and the toolchains, this project; not the rest of the home folder, other projects, keys or CODEC state
+(allow file-read*)
+(deny file-read* (subpath "/Users/someone"))
+(deny file-read* (subpath "/work/vibe"))
+(allow file-read*
+    (subpath "/Users/someone/.nvm")
+    (subpath "/Users/someone/.pyenv")
+    (subpath "/Users/someone/.volta")
+    (subpath "/Users/someone/.bun")
+    (subpath "/Users/someone/.deno")
+    (subpath "/Users/someone/.cargo")
+    (subpath "/Users/someone/.rustup")
+    (subpath "/Users/someone/.local/bin")
+    (subpath "/Users/someone/.local/lib")
+    (subpath "/Users/someone/.local/pipx/venvs")
+    (subpath "/Users/someone/.local/pipx/shared")
+    (subpath "/Users/someone/.local/pipx/py")
+    (subpath "/Users/someone/.local/share/pipx/venvs")
+    (subpath "/Users/someone/.local/share/pipx/shared")
+    (subpath "/Users/someone/.local/share/pipx/py")
+    (subpath "/Users/someone/.local/share/uv/python")
+    (subpath "/Users/someone/.local/share/uv/tools")
+    (subpath "/Users/someone/.rbenv")
+    (subpath "/Users/someone/.asdf")
+    (subpath "/Users/someone/Library/Python")
+    (subpath "/Users/someone/go")
+    (subpath "/work/vibe/proj-abc123")
+    (subpath "/private/var/folders/x/T/vibe-agent-1"))
+(deny file-read*
+    (subpath "/Users/someone/.ssh") (subpath "/Users/someone/.aws") (subpath "/Users/someone/.gnupg")
+    (subpath "/Users/someone/.config/gh") (subpath "/Users/someone/.codec")
+    (subpath "/Library/Keychains") (subpath "/work/vibe/proj-abc123/.vibe"))
+(allow file-read-metadata (subpath "/Users/someone"))
+
+;; writes: this project (never its .vibe folder) and this command's own temporary folder
+(allow file-write*
+    (subpath "/work/vibe/proj-abc123")
+    (subpath "/private/var/folders/x/T/vibe-agent-1")
+    (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$") (literal "/dev/dtracehelper"))
+(deny file-write* (subpath "/work/vibe/proj-abc123/.vibe"))
+;; nor the parts of its git folder that run code later or send git elsewhere: the hooks and the config, and the
+;; .git entry itself, so it cannot be created, renamed away or swapped for a prepared one (D-23)
+(deny file-write*
+    (literal "/work/vibe/proj-abc123/.git")
+    (literal "/work/vibe/proj-abc123/.git/config")
+    (subpath "/work/vibe/proj-abc123/.git/hooks"))
+
+;; programs it may start, and the few system services a runtime asks for
+(allow process-exec*)
+(allow process-fork)
+(allow signal (target self))
+(allow sysctl-read)
+(allow file-ioctl)
+(allow mach-lookup
+    (global-name "com.apple.system.logger")
+    (global-name "com.apple.system.notification_center")
+    (global-name "com.apple.system.opendirectoryd.libinfo")
+    (global-name "com.apple.system.opendirectoryd.membership")
+    (global-name "com.apple.cfprefsd.daemon")
+    (global-name "com.apple.cfprefsd.agent")
+    (global-name "com.apple.trustd")
+    (global-name "com.apple.trustd.agent")
+    (global-name "com.apple.SystemConfiguration.configd")
+    (global-name "com.apple.SystemConfiguration.DNSConfiguration"))
+(allow ipc-posix-shm*)
+(allow iokit-open (iokit-registry-entry-class "IOSurfaceRootUserClient"))
+
+;; never: other apps, the clipboard, the keychain service, the screen, the camera, the microphone
+(deny mach-lookup
+    (global-name "com.apple.coreservices.appleevents")
+    (global-name "com.apple.pasteboard.1")
+    (global-name "com.apple.SecurityServer")
+    (global-name "com.apple.securityd")
+    (global-name "com.apple.screencapture.interactive")
+    (global-name "com.apple.windowserver.active")
+    (global-name "com.apple.CoreServices.coreservicesd")
+    (global-name "com.apple.lsd.mapdb")
+    (global-name-prefix "com.apple.tccd")
+    (global-name-prefix "com.apple.accessibility"))
+(deny device-camera)
+(deny device-microphone)
+
+;; network
+(deny network*)

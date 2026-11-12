@@ -179,7 +179,7 @@ def settings() -> dict:
 def _project_block(pid: str) -> dict:
     """The "agent" block of the project's .vibe/project.json, or {}. Only the owner writes there by hand."""
     try:
-        meta = json.loads((vp.project_dir(pid) / vp.META_DIR / "project.json").read_text(encoding="utf-8"))
+        meta = json.loads(vp._meta_path(vp.record_dir(pid)).read_text(encoding="utf-8"))     # attached.json (P-050)
     except (OSError, ValueError, VibeError):
         return {}
     block = meta.get("agent") if isinstance(meta, dict) else None
@@ -443,7 +443,7 @@ def _spill_file(pid: str, run_id: str, n) -> "Path | None":
     """Where the engine keeps step n's command output: .vibe/runs/<run>/out/<n>.txt. Only the engine writes there."""
     if not RUN_ID_RE.match(str(run_id)) or not isinstance(n, int) or isinstance(n, bool) or n < 1:
         return None
-    return vp.project_dir(pid) / vp.META_DIR / RUNS_DIR / run_id / OUT_DIR / f"{n}.txt"
+    return vp.record_dir(pid) / vp.META_DIR / RUNS_DIR / run_id / OUT_DIR / f"{n}.txt"
 
 
 def _read_spill(path) -> "bytes | None":
@@ -557,7 +557,7 @@ def _t_list_files(run: "Run", folder: str) -> Result:
         where = f" matching {folder}"
     elif folder:
         try:
-            vp.safe_rel(folder)
+            vp.safe_rel_for(run.pid, folder)
         except VibeError as e:
             return _path_failure(e)
         files = [f for f in files if f["path"].startswith(folder + "/")]
@@ -706,7 +706,7 @@ def _doc_lines(run: "Run", path: str) -> tuple:
             return None, "", _fail("That file is not text.")
         data = info["content"].encode("utf-8")
     else:
-        data = _file_bytes(vp.project_dir(run.pid) / rel)
+        data = _file_bytes(vp.files_dir(run.pid) / rel)
         if data is None:
             return None, "", _fail("The file could not be read.")
     key = (rel, hashlib.sha256(data).hexdigest())
@@ -718,7 +718,7 @@ def _doc_lines(run: "Run", path: str) -> tuple:
         if lines is None:                               # not a notebook's JSON: read as the text it is
             lines, label = _nb_lines(info["content"]), ""
     elif kind == "pdf":
-        lines, pages, bad = _pdf_lines(str(vp.project_dir(run.pid) / rel))
+        lines, pages, bad = _pdf_lines(str(vp.files_dir(run.pid) / rel))
         if bad:
             return None, "", bad
         label = " (PDF text" + (f", {pages} pages" if pages > 1 else "") + ")"
@@ -898,7 +898,7 @@ def _t_search(run: "Run", pattern: str, path: str, regex: bool = False, mode: st
             return _fail(str(e), "path" if e.unsafe else "")
     elif where:
         try:
-            vp.safe_rel(where)
+            vp.safe_rel_for(run.pid, where)
         except VibeError as e:
             return _path_failure(e)
     note = ""
@@ -1035,14 +1035,24 @@ def read_notes(pid: str, limits: dict, kind: str = "local") -> tuple:
     text the model sees, at most notes_chars in all (notes_chars_cloud for a cloud run)."""
     if not limits.get("notes", True):
         return [], ""
-    pdir = vp.project_dir(pid)
+    attached = vp.is_attached(pid)
+    pdir = vp.record_dir(pid) if attached else vp.project_dir(pid)
+    fdir = vp.files_dir(pid) if attached else pdir
+    own = attached and vp.folder_notes(pid)     # the folder's AGENTS.md / CLAUDE.md only when ticked at attach (R-16)
     room = int(limits.get("notes_chars_cloud" if kind == "cloud" else "notes_chars")
                or DEFAULTS["notes_chars_cloud" if kind == "cloud" else "notes_chars"])
     files = NOTES_FILES + ((CLAUDE_MD,) if limits.get("import_claude_md") else ())
     listing, blocks = [], []
     for parts in files:
         label = "/".join(parts)
-        data, why = _notes_bytes(pdir, parts)
+        if attached and parts[0] != vp.META_DIR:
+            if not own:
+                if os.path.lexists(fdir / parts[-1]):
+                    listing.append({"path": label, "skipped": "the folder's own file, not ticked as notes at attach"})
+                continue
+            data, why = _notes_bytes(fdir, parts)
+        else:
+            data, why = _notes_bytes(pdir, parts)
         if data is None:
             if why:
                 listing.append({"path": label, "skipped": why})
@@ -1237,7 +1247,7 @@ class Run:
     # events -------------------------------------------------------------
 
     def _log_path(self) -> Path:
-        return vp.project_dir(self.pid) / vp.META_DIR / RUNS_DIR / f"{self.id}.jsonl"
+        return vp.record_dir(self.pid) / vp.META_DIR / RUNS_DIR / f"{self.id}.jsonl"
 
     def _write_log(self, ev: dict) -> None:
         if self.private:
@@ -1487,7 +1497,9 @@ class Run:
         except Exception as e:
             # A 413 that gets this far is the file scan (start checkpoint or per-step file map): tool writes are
             # answered in _exec. The cap and the scan stay; the run says why it stopped (P-064).
-            if isinstance(e, VibeError) and e.status == 413:
+            if isinstance(e, VibeError) and e.status == 413 and vp.is_attached(self.pid):
+                self._end("failed", e.message)          # an attached folder past its limits says which (R-11)
+            elif isinstance(e, VibeError) and e.status == 413:
                 self._end("failed", f"The project has more than {vp.MAX_FILES} files, which is more than the agent can "
                                     "work with. Remove some files, then start again.")
             else:
@@ -1797,9 +1809,9 @@ class Run:
 
         def invoke() -> Result:
             try:
-                box["res"] = r = _run_command(vp.project_dir(self.pid), vp.vibe_root(), command, network=network,
+                box["res"] = r = _run_command(vp.files_dir(self.pid), vp.vibe_root(), command, network=network,
                                               timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())),
-                                              stop_event=self.stop_event)
+                                              stop_event=self.stop_event, **self._cmd_kw())
             except cmdmod.Refused as e:
                 box["refused"] = True
                 return Result(False, str(e), "The check did not run")
@@ -2242,6 +2254,11 @@ class Run:
         self._emit("decision", step=n, id=self._aid, decision=got["decision"], network=got["network"])
         return got["decision"], got["network"]
 
+    def _cmd_kw(self) -> dict:
+        """attached=True for a command in an attached folder (its extra sandbox refusals, R-17); nothing otherwise, so
+        a created project's command is started exactly as before."""
+        return {"attached": True} if vp.is_attached(self.pid) else {}
+
     def _run_check(self, n: int, call: proto.Call) -> "Result | None":
         """Run one command the owner approved, in the sandbox. None when the run ended while waiting."""
         command = call.args["command"]
@@ -2252,7 +2269,7 @@ class Run:
             return Result(False, f"That command was refused: {e}. Use a plainer one.", "Command refused", blocked="dangerous")
         stored = next((a for a in vp.allowed_commands(self.pid) if a["cmd"] == command), None)
         rule = None if stored else vrules.match([r["rule"] for r in vp.allowed_rules(self.pid)], command,
-                                                vp.project_dir(self.pid))       # after check_command, never instead (P-048)
+                                                vp.files_dir(self.pid))         # after check_command, never instead (P-048)
         if stored:
             decision, network = "stored", bool(stored["network"])
         elif rule:
@@ -2275,9 +2292,9 @@ class Run:
         spill = self._out_path(n) if self._spilled < SPILL_RUN_BYTES else None     # the engine's copy of the output (P-043)
         t0 = _mono()
         try:
-            res = _run_command(vp.project_dir(self.pid), vp.vibe_root(), command, network=network,
+            res = _run_command(vp.files_dir(self.pid), vp.vibe_root(), command, network=network,
                                timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())), stop_event=self.stop_event,
-                               spill=spill)
+                               spill=spill, **self._cmd_kw())
         except cmdmod.Refused as e:
             _drop_spill(spill)
             return Result(False, str(e), "Command not run")
@@ -2621,7 +2638,7 @@ def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = Fal
     if len(goal) > MAX_GOAL_CHARS:
         raise VibeError(400, f"The goal is longer than {MAX_GOAL_CHARS} characters")
     mode, tools = _check_mode(mode), _check_tools(tools)
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud), cloud_id)
     return _launch(Run(pid, goal, _clean_history(history), llm, run_settings(pid), bool(can_run), mode=mode, tools=tools,
                           private=temporary is True))
@@ -2678,7 +2695,7 @@ def _launch(run: Run) -> dict:
 def _file_events(pid: str, run_id: str) -> list:
     if not RUN_ID_RE.match(str(run_id)):
         raise VibeError(404, "No such run")
-    path = vp.project_dir(pid) / vp.META_DIR / RUNS_DIR / f"{run_id}.jsonl"
+    path = vp.record_dir(pid) / vp.META_DIR / RUNS_DIR / f"{run_id}.jsonl"
     if not path.is_file():
         raise VibeError(404, "No such run")
     out = []
@@ -2699,7 +2716,7 @@ def _status_of(events: list) -> str:
 
 
 def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     run = _RUNS.get(run_id)
     if run is not None and run.pid == pid:
         view = run.view(since, wait)
@@ -2720,7 +2737,7 @@ def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
 def run_replies(pid: str, run_id: str, after: int = 0) -> list:
     """The model's replies after step `after`, as the run log keeps them (redacted, at most REPLY_LOG_CHARS), for the
     page's Raw replies switch (P-069). Only asked for by name (?replies=N): get_run never returns them."""
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     after = int(after or 0)
     out = []
     for e in _file_events(pid, run_id):
@@ -2733,7 +2750,7 @@ def run_replies(pid: str, run_id: str, after: int = 0) -> list:
 # ── Continue: a new run that starts with an ended run's turns (P-044, docs/VIBE-AGENT-CONTINUE-DESIGN.md) ──
 
 def _newest_run(pid: str) -> "str | None":
-    d = vp.project_dir(pid) / vp.META_DIR / RUNS_DIR
+    d = vp.record_dir(pid) / vp.META_DIR / RUNS_DIR
     if not d.is_dir():
         return None
     files = [p for p in d.glob("r*.jsonl") if RUN_ID_RE.match(p.stem)]
@@ -2876,7 +2893,7 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     request, not the old run. Nothing of the old run is run again: a cut step is told to the model as cut."""
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     live = _RUNS.get(run_id)
     if live is not None and live.pid == pid and not live.finished:
         raise VibeError(409, "That run is still going")
@@ -2945,7 +2962,7 @@ def plan_decision(pid: str, run_id: str, decision, *, plan=None, note=None, mode
         raise VibeError(404, "The agent is switched off")
     if decision not in PLAN_DECISIONS:
         raise VibeError(400, 'Choose "build" or "again"')
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     live = _RUNS.get(run_id)
     if live is not None and live.pid == pid and not live.finished:
         raise VibeError(409, "That run is still going")
@@ -2991,7 +3008,7 @@ def message_run(pid: str, run_id: str, text) -> dict:
 
 
 def list_runs(pid: str) -> list:
-    d = vp.project_dir(pid) / vp.META_DIR / RUNS_DIR
+    d = vp.record_dir(pid) / vp.META_DIR / RUNS_DIR
     if not d.is_dir():
         return []
     out = []
@@ -3025,7 +3042,7 @@ def live_run() -> dict:
 
 
 def _live(pid: str, run_id: str) -> Run:
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     run = _RUNS.get(run_id)
     if run is None or run.pid != pid:
         raise VibeError(404, "No such run")
@@ -3196,7 +3213,7 @@ def review_run(pid: str, checkpoint, *, playbook="review", focus=None, model: st
     has only reading tools, whatever the playbook lists, and commands are never offered to it."""
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     limits = run_settings(pid)
     if not limits.get("playbooks"):
         raise VibeError(404, "Playbooks are switched off")

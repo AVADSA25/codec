@@ -109,8 +109,9 @@ _TEXTY = ("application/javascript", "application/json", "image/svg+xml", "applic
 class _Serve:
     kind = "serve"
 
-    def __init__(self, project: str, root: Path, port: int):
+    def __init__(self, project: str, root: Path, port: int, *, hide_secrets: bool = False):
         self.project, self.port = project, port
+        self.hide_secrets = hide_secrets        # an attached folder (P-050): secret-looking names are not served
         self.started = self.last_seen = time.time()
         self.command_chars = 0
         self.real_root = os.path.realpath(root)
@@ -200,6 +201,8 @@ def _handler_for(target: _Serve):
             rel = os.path.relpath(real, real_root)
             if any(s.startswith(".") for s in rel.split(os.sep) if s != "."):
                 return self._plain(404)       # a link that points into .vibe or another dot folder
+            if target.hide_secrets and any(vp.looks_secret(s) for s in segs + rel.split(os.sep)):
+                return self._plain(404)       # a key or credentials file of an attached folder
             if os.path.isdir(real):
                 if not path.endswith("/") and segs:      # built from the cleaned segments, never from the raw path
                     return self._plain(301, "", {"Location": "/" + "/".join(urllib.parse.quote(x) for x in segs) + "/"})
@@ -458,8 +461,17 @@ def _ensure_watcher() -> None:
     _WATCHER.start()
 
 
-def start_serve(pid: str) -> dict:
+def _dirs(pid: str) -> tuple[Path, Path, bool]:
+    """(record, files, attached): where run.json goes, where the files are. Both are project_dir() for a created
+    project; an attached folder (P-050) keeps run.json in its record and runs and serves the folder itself."""
+    if vp.is_attached(pid):
+        return vp.record_dir(pid), vp.files_dir(pid), True
     pdir = vp.project_dir(pid)
+    return pdir, pdir, False
+
+
+def start_serve(pid: str) -> dict:
+    _rdir, pdir, attached = _dirs(pid)
     global _TARGET
     with _LOCK:
         _reap_stale_once()
@@ -468,7 +480,7 @@ def start_serve(pid: str) -> dict:
         for _ in range(5):          # a port can be taken between the check and the bind
             port = _free_port()
             try:
-                _TARGET = _Serve(pid, pdir, port)
+                _TARGET = _Serve(pid, pdir, port, hide_secrets=True) if attached else _Serve(pid, pdir, port)
                 break
             except OSError as e:
                 last = e
@@ -480,7 +492,7 @@ def start_serve(pid: str) -> dict:
 
 
 def start_run(pid: str, command, port=None) -> dict:
-    pdir = vp.project_dir(pid)
+    rdir, pdir, _attached = _dirs(pid)
     cmd = _check_command(command)
     listen = _check_port(port)
     global _TARGET
@@ -494,16 +506,16 @@ def start_run(pid: str, command, port=None) -> dict:
                                     start_new_session=True, close_fds=True, preexec_fn=_limits)
         except OSError as e:
             raise VibeError(500, f"Could not start the command: {e.strerror or e}")
-        run = _Run(pid, pdir, cmd, env_port, proc)
+        run = _Run(pid, rdir, cmd, env_port, proc)
         _TARGET = run
-        _write_run_file(pdir, run)
+        _write_run_file(rdir, run)
         _ensure_watcher()
     _audit("vibe_project_run", "Vibe started a command", {"project": pid, "kind": "run", "port": env_port, "command_chars": len(cmd)})
     return status(pid)
 
 
 def status(pid: str, since: int = 0) -> dict:
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     try:
         since = max(0, int(since))
     except (TypeError, ValueError):
@@ -517,7 +529,7 @@ def status(pid: str, since: int = 0) -> dict:
 
 
 def stop(pid: str) -> dict:
-    vp.project_dir(pid)
+    vp.record_dir(pid)
     with _LOCK:
         if _TARGET is None or _TARGET.project != pid:
             return {"stopped": False}

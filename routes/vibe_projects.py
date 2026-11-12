@@ -3,6 +3,8 @@
 Thin HTTP layer over codec_vibe_projects. The disk work runs off the event loop.
 All routes sit behind the dashboard's normal login; nothing here runs code.
 VIBE_PROJECTS_ENABLED=false answers 404 so the page falls back to single-file Vibe.
+Attaching an existing folder and detaching it (P-050, docs/VIBE-ATTACH-FOLDER-DESIGN.md) answer 403 to anything not
+from this Mac: the owner types the folder's path at this Mac (R-10).
 """
 from __future__ import annotations
 
@@ -36,6 +38,24 @@ async def _json(request: Request):
 _BAD_BODY = JSONResponse({"error": "Send a JSON object"}, status_code=400)
 
 
+def _remote(request: Request) -> bool:
+    from routes._shared import _is_remote_request
+    return _is_remote_request(request)
+
+
+@router.post("/api/vibe/projects/attach")
+async def attach_folder(request: Request):
+    """The owner's typed path, at this Mac only (R-10). Never called by a skill, an agent or a file."""
+    if not vp.enabled():
+        return JSONResponse({"error": "Vibe projects are switched off"}, status_code=404)
+    if _remote(request):
+        return JSONResponse({"error": "Attaching a folder works only on this Mac."}, status_code=403)
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _run(vp.attach_folder, body.get("path"), body.get("folder_notes", False))
+
+
 @router.post("/api/vibe/projects")
 async def create_project(request: Request):
     body = await _json(request)
@@ -55,7 +75,10 @@ async def project_info(pid: str):
 
 
 @router.delete("/api/vibe/projects/{pid}")
-async def delete_project(pid: str):
+async def delete_project(pid: str, request: Request):
+    """A created project goes to the trash; an attached folder is detached (R-18), from this Mac only."""
+    if vp.enabled() and _remote(request) and await asyncio.to_thread(vp.is_attached, pid):
+        return JSONResponse({"error": "Detaching a folder works only on this Mac."}, status_code=403)
     return await _run(vp.trash_project, pid)
 
 
@@ -124,7 +147,19 @@ async def restore(pid: str, request: Request):
     body = await _json(request)
     if body is None:
         return _BAD_BODY
-    return await _run(vp.restore, pid, body.get("checkpoint"))
+    scope = body.get("scope")
+    if scope is None:
+        return await _run(vp.restore, pid, body.get("checkpoint"))
+    if scope != "ai":
+        return JSONResponse({"error": 'scope can only be "ai"'}, status_code=400)
+    return await _run(vp.restore, pid, body.get("checkpoint"), "ai")
+
+
+@router.get("/api/vibe/projects/{pid}/restore/preview")
+async def restore_preview(pid: str, checkpoint: str = ""):
+    """How many files a whole-folder restore of an attached folder would change, and how many of them Vibe's AI did
+    not change (R-13). Nothing is written but the record's stat cache."""
+    return await _run(vp.restore_preview, pid, checkpoint)
 
 
 @router.post("/api/vibe/projects/{pid}/undo")
