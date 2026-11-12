@@ -70,7 +70,12 @@ Live: `python3 tools/vibe_agent_eval.py --bar --baseline <P-041 baseline> --out 
 only when no voice call, image job or other eval is running. Pass: no task 1 to 12 that passed in the baseline fails
 both tries; task 13's result is recorded.
 
-## Part 2 (next PR, waits for the owner's word): a check-gated finish
+## Part 2 (its own PR, board card E-09, waits for the owner's word): a check-gated finish
+
+Card text: "you mark one of a project's always-allowed commands (for example its tests) as the check. When the agent says
+it is done, the check runs once in the sandbox; if it fails, the agent gets the output and goes on (at most 2
+retries). Only your click can mark a command." The first sketch (kept below as written on 3 Nov) is filled in by
+"Part 2 as built" after it.
 
 The smallest data model that fits the brief:
 
@@ -95,6 +100,87 @@ The smallest data model that fits the brief:
 Nothing runs without the marker, and the marker comes only from the owner's click. The sandbox profile is not
 widened. Rollback: the owner's Forget removes the marker; reverting part 2 makes the marker an unknown key that
 nothing reads.
+
+### Part 2 as built (11 Nov 2026)
+
+Storage (`codec_vibe_projects`, the only writer of `project.json:allowed_commands`):
+
+- The marker is `"check": true` on one entry, and only there: an entry that is not the check has no key, so the file
+  and `allowed_commands()` stay byte for byte what they are today for a project with no check. Only the JSON value
+  `true` counts; if a hand edit leaves several, only the newest one marked counts.
+- `check_entry(pid)` gives the marked entry (`{cmd, network, check}`) or None. `mark_check(pid, command, on)` sets the
+  marker on that exact entry and clears it from every other one (`on` true), or clears it from that entry (`on`
+  false). A command that is not on the list is 404; the text must match byte for byte, as for Forget.
+- `allow_command` keeps the marker of an entry it adds again. The cap of 20 drops the oldest entry that is not the
+  check, so approving more commands never removes the check quietly. `forget_command` removes the entry and its
+  marker with it.
+- `mark_check` is called by exactly one route and nothing else (a test reads the sources): no skill, agent tool,
+  model reply, timer, playbook or file. Audit: `vibe_agent_allow` with `action` `check` or `uncheck` and the entry's
+  `network` flag, never the command text (no new event).
+
+Route: `POST /api/vibe/projects/{id}/agent/commands/check` with `{command, on}`; 403 to anything not from this Mac
+(`_mac_only`, as approve, list and forget), 400 unless `command` is text and `on` is a JSON boolean, 404 for a
+command not on the list. It answers the new list.
+
+When a finish is gated. The marker is read when the run's own `@@ finish` comes (a helper's finish inside
+`delegate` is never gated), so a click during a run counts for its finish. Three cases:
+
+| The run | What happens at finish |
+|---|---|
+| no command marked, a plan run (P-047), or a review run (P-071) | as today; the end event has no `check` field |
+| a command is marked, but the run has no `run_check` | not gated; the end event and the report say the check did not run and why (`reason`, below) |
+| a command is marked and the run has `run_check` | the check runs once, then the rules below |
+
+`reason` for a check that did not run: `away` (the run was started away from this Mac), `no_sandbox`
+(`/usr/bin/sandbox-exec` is missing), `commands_off` (commands are switched off in Settings or in the project's
+agent block, or the run's tools list or a playbook took `run_check` away), `refused` (the stored text no longer
+passes `check_command`, which only a hand edit can cause), `not_run` (the runner refused at that moment), `vetoed`
+(a plugin's `pre_tool` vetoed `vibe:run_check`, P-067).
+
+Running it: through `_run_command`, which is `codec_vibe_agent_cmd.run`, so the same per-command sandbox profile
+(`profile()` is not touched), the stored network flag, the same time rule as `run_check` (60 s, never past the
+run's own time budget, at least 5 s), the run's stop flag, the perl watchdog, and the plugin hooks as `vibe:run_check`
+(P-067; a veto means it did not run). It is never run when the sandbox is
+missing: then the run has no `run_check` and falls in the second row. No approval is asked: the command is one the
+owner allowed for good, and the marker is his own click. A `note` event says the check is running; the audit line
+is `vibe_agent_command` with `decision` `check` (program name and exit code, never the text). Files the check changes
+become a checkpoint, as after `run_check`.
+
+- Exit 0: the finish step's result is ok, the run ends `done`, and the report ends with one line: the check, that it
+  passed, the exit code and the seconds.
+- Anything else (a non-zero exit, a timeout): the finish step's result is a failed result,
+  `[RESULT n finish: FAILED]`, holding the check's command, its exit code and its output (cut to head and tail like
+  any command output, P-040) as data inside the marker-safe wrapper, and how many tries are left. The run goes on.
+- At most 2 retries: the third failing finish of one run ends it `limit` (continuable, P-044; Continue starts a new
+  run with a fresh count, since going on is then the owner's own choice). Its report starts with the failure and the
+  last 1,200 characters of the check's output, then the agent's own report, within the 2,000-character report cap.
+- Stop during the check ends the run `stopped` as today (report "Stopped."); the end event's check state is
+  `stopped` and the report has no check line. A step or time limit reached after a failed check ends it as today,
+  with the check's state in the end event and its line in the report.
+
+The end event gets `check: {command, state, tries, exit_code, seconds, reason}` (`state` `passed`, `failed`,
+`stopped` or `skipped`; `tries` counts the times it ran in this run) whenever the run reached a finish while a
+command was marked (a plan or review run never does). A run that ends before any finish (Stop, a step or time
+limit), and any run on a project with no check, logs exactly what it logs today. The system prompt is unchanged: a gated run learns of the check from its first
+failed finish, so a run with no check sees the same prompt as the baseline.
+
+Page (`static/vibe-agent.js`): the "Commands allowed here without asking" list under a run card gets a "Use as check"
+checkbox on each row (at most one ticked; ticking one clears the others on the page as on the server). The list is
+shown after a run that ran a command or whose finish ran or skipped the check. The report already carries the
+check's line. Text goes in with `textContent` only. The boxes follow the list the server answers
+(`checkedCommand(list)`, a plain function tested in Node); a refused click (403 away from this Mac) unticks the box
+again.
+
+Eval: task 14 is taken (P-049's long run), so the failing marked check is task 16 (`needs: run_check`, outside the
+bar). `calc.py` has a broken `add`, the goal asks for a new `subtract`, the harness stores and marks
+`python3 -m unittest -q` the way the owner's click would; pass when the tests pass and the end event says the check
+passed.
+
+Tests: `tests/test_vibe_agent_check_finish.py` (storage, the gate through scripted runs with a recording runner,
+the route, one run through the real sandbox marked `vibe-run-test`), plus Node tests of `checkedCommand` and the wiring
+in `tests/test_vibe_agent_page.py`, and task 16 in `tests/test_vibe_agent_eval.py`.
+
+Rollback: untick the box (or Forget the command); reverting the PR leaves `"check": true` as a key nothing reads.
 
 ## Tests (part 1)
 

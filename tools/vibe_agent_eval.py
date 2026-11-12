@@ -11,6 +11,9 @@ script approves each command once, the way the owner would, and they run in the 
 starts with a Python file that does not parse; the check note after the agent's edit names the line to fix.
 Task 14 (P-049) is a long run (45 pages, one misspelled word each, up to 100 steps and an hour) that fills the
 context; it runs only with --compaction off (masking alone) or --compaction on, or when compaction is switched on.
+Task 16 (P-045 part 2) marks the project's tests as its check, the way the owner's "Use as check" click does; the
+goal names only a new function, the tests also cover a broken one, so a finish that leaves it broken fails the
+check and goes back to the agent; the run ends done only when the check passes.
 
 Each task gets up to 2 tries. The second try is a fresh copy of the project and the same goal, plus one line that
 says why the first try failed. A task passes when either try passes; the first-try result is kept too.
@@ -209,6 +212,24 @@ def check_syntax_fixed(files, events, report, pdir=None):
         return False, "app.py parses but the tests fail: " + (r.stderr.strip().splitlines() or ["no output"])[-1]
     noted = any(e.get("type") == "result" and "does not parse as Python" in str(e.get("output", "")) for e in events)
     return True, "app.py parses and the tests pass" + (" (after a check note)" if noted else " (fixed before any check note)")
+
+
+def check_gated_finish(files, events, report, pdir=None):
+    """P-045 part 2: the tests pass (run outside the sandbox: this script is the owner's side), the run ended done
+    and its end event says the marked check passed. How many finishes it took is in the detail."""
+    r = subprocess.run([sys.executable, "-m", "unittest", "-q"], cwd=str(pdir), capture_output=True, text=True, timeout=60)
+    end = next((e for e in events if e["type"] == "end"), {})
+    check = end.get("check") if isinstance(end.get("check"), dict) else {}
+    problems = []
+    if r.returncode != 0:
+        problems.append("the tests still fail: " + (r.stderr.strip().splitlines() or ["no output"])[-1])
+    if end.get("status") != "done":
+        problems.append(f"ended as {end.get('status')}")
+    if check.get("state") != "passed":
+        problems.append(f"the check is {check.get('state') or 'missing'}"
+                        + (f" ({check.get('reason')})" if check.get("reason") else ""))
+    tries = check.get("tries", 0)
+    return not problems, "; ".join(problems) or f"tests pass; the check passed at finish {tries} of {tries}"
 
 
 PLAN_TASK_FILES = {"index.html": page(), "style.css": BASE_CSS, "app.js": "// the page script\n"}
@@ -413,6 +434,14 @@ TASKS = [
     {"id": 15, "kind": "behaviour", "title": "plan mode: a plan, and no file changed (P-047)", "needs": "plan_mode",
      "mode": "plan", "check": check_plan, "files": PLAN_TASK_FILES,
      "goal": "Add a dark mode toggle button to the page. Clicking it switches between light and dark colours, and the choice is remembered after reloading the page."},
+    {"id": 16, "kind": "file", "title": "the project's check gates the finish (P-045 part 2)", "needs": "run_check",
+     "check": check_gated_finish, "check_cmd": "python3 -m unittest -q",
+     "files": {"calc.py": "def add(a, b):\n    return a - b\n",
+               "test_calc.py": ("import unittest\nfrom calc import add, subtract\n\n\nclass CalcTest(unittest.TestCase):\n"
+                                "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\n"
+                                "    def test_subtract(self):\n        self.assertEqual(subtract(5, 3), 2)\n\n\n"
+                                "if __name__ == '__main__':\n    unittest.main()\n")},
+     "goal": "Add a function subtract(a, b) to calc.py that returns a minus b."},
 ]
 
 
@@ -521,6 +550,9 @@ def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None):
     pid = vp.create_project(f"eval {task['id']}", root_files)["id"]
     for name, content in (task.get("secret") or {}).items():
         (vp.project_dir(pid) / name).write_text(content)
+    if task.get("check_cmd"):                       # P-045 part 2: what the owner's "Use as check" click does
+        vp.allow_command(pid, task["check_cmd"], False)
+        va.mark_check(pid, task["check_cmd"], True)
     cfg = dict(real_cfg)
     cfg["vibe_agent"] = {**(real_cfg.get("vibe_agent") or {}), **(task.get("limits") or {})}
     if compaction in ("off", "on") and task.get("needs") == "compaction":     # P-049: off = masking alone

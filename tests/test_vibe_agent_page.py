@@ -471,3 +471,34 @@ def test_a_compact_event_draws_one_row_whose_note_opens_under_it():
     draw = SRC[SRC.index("function drawCompact(eff) {"):SRC.index("function drawContext(m) {")]
     assert "el('summary', null, eff.head)" in draw and "el('div', 'agc-fold-t', eff.summary)" in draw and "innerHTML" not in draw
     assert "else if (eff.t === 'compact') drawCompact(eff);" in SRC and ".agc-fold-t{" in PAGE
+
+
+# ── P-045 part 2: the owner's "Use as check" box on an always-allowed command ──
+
+@node
+def test_the_marked_check_is_read_from_the_servers_list_only_when_it_is_true():
+    out = run("[A.checkedCommand([]), A.checkedCommand(null), A.checkedCommand({cmd: 'x', check: true}), "
+              "A.checkedCommand([{cmd: 'npm test', network: false}, {cmd: 'npm run lint', network: true, check: true}]), "
+              "A.checkedCommand([{cmd: 'a', check: 'true'}, {cmd: 'b', check: 1}]), "
+              "A.checkedCommand([{cmd: 'a', check: true}, {cmd: 'b', check: true}]), A.checkedCommand([{check: true}])]")
+    assert out == ["", "", "", "npm run lint", "", "b", ""]
+
+
+@node
+def test_an_end_that_names_a_check_shows_the_allowed_list_and_one_without_does_not():
+    out = run("(function () { var a = A.newRun('p'), b = A.newRun('p'); "
+              "A.applyEvent(a, {seq: 1, type: 'end', status: 'limit', report: 'x', check: {command: 'npm test', state: 'failed', tries: 3}}); "
+              "A.applyEvent(b, {seq: 1, type: 'end', status: 'done', report: 'y'}); "
+              "return [a.ranCommands, a.status, a.end.report, b.ranCommands]; })()")
+    assert out == [True, "limit", "x", False]
+
+
+def test_the_use_as_check_box_posts_the_owners_click_only_and_shows_the_command_as_text():
+    body = SRC[SRC.index("function drawAllowed() {"):SRC.index("function drawNote(eff) {")]
+    assert SRC.count("'/commands/check'") == 1 and "'/commands/check'" in body          # nothing else marks a check
+    change = body[body.index("use.addEventListener('change'"):body.index("row.appendChild(label);")]
+    assert "api('POST', base(run.pid, '/commands/check'), { command: item.cmd, on: on })" in change
+    assert "settle(checkedCommand(got))" in change and "use.checked = !on" in change        # the server's list decides the boxes
+    assert "el('span', null, 'Use as check')" in body and "use.checked = item.check === true" in body
+    assert "el('code', 'agc-cmd', item.cmd" in body and "innerHTML" not in body and "createTextNode" not in body
+    assert "e.status === 403" in change
