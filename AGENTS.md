@@ -520,7 +520,7 @@ Combined, the out-of-box state for a fresh CODEC install is *secure-by-default*:
 
 `_PATH_BLOCKLIST_SUBSTRINGS` in `codec_agent_plan.py` is the auto-extract blocklist for paths the user types in a plan description. Since P-098 `plan_from_dict` and `approve_plan` also refuse a plan whose `read_paths` or `write_paths` hit it. Extended in PR-1D to cover the full security-sensitive `~/.codec/` set:
 
-  `/.ssh`, `/.aws`, `/.gnupg`, `/.config/gh`, `/Library/Keychains`, `/Library/Application Support/com.apple`, `/.codec/secrets`, `/.codec/auth`, `/etc/`, `/var/`, `/private/`, `/System/`, `/usr/local/etc`, **`/.codec/skills`, `/.codec/plugins`, `/.codec/oauth_state.json`, `/.codec/audit.log`, `/.codec/agents`, `/.codec/agent_global_grants.json`, `/.codec/config.json`, `/.codec/memory.db`**.
+  `/.ssh`, `/.aws`, `/.gnupg`, `/.config/gh`, `/Library/Keychains`, `/Library/Application Support/com.apple`, `/.codec/secrets`, `/.codec/auth`, `/etc/`, `/var/`, `/private/`, `/System/`, `/usr/local/etc`, **`/.codec/skills`, `/.codec/plugins`, `/.codec/oauth_state.json`, `/.codec/audit.log`, `/.codec/agents`, `/.codec/agent_global_grants.json`, `/.codec/config.json`, `/.codec/memory.db`**, and since 12 Nov 2026 **`/.codec/notes`** (the owner's notes).
 
 **Segment-aware matching (D-16 closure).** Each entry is matched as a sequence of consecutive `/`-separated path SEGMENTS — not raw substring. So `~/Documents/notes_ssh/foo.md` no longer false-positive-matches `/.ssh` (the segment is `notes_ssh`, not `.ssh`), but `~/.ssh/config` does. Sequence matching also covers multi-segment entries like `/Library/Application Support/com.apple/<x>`.
 
