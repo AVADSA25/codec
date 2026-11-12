@@ -43,6 +43,8 @@ _HOME_PARENT = os.path.dirname(os.path.expanduser("~"))
     "~", "~/", "~/**", "~/.codec/**", "~/.codec", "~/Library/**", "~/.config/**",
     "/", "/**", "**", "*.md", _HOME_PARENT + "/**", "/usr/**", "/Library/**",
     "~/*/skills/**", "~/.co*/**",
+    # the owner's notes (12 Nov 2026)
+    "~/.codec/notes/**", "~/.CODEC/Notes/abc123.json", "~/.codec/notes/.trash/**",
     # system folders at the root are still refused
     "/var/log/**", "/private/etc/hosts", "/usr/local/etc/x",
 ])

@@ -974,6 +974,9 @@ _PATH_BLOCKLIST_SUBSTRINGS = (
     "/.codec/agent_global_grants.json",
     "/.codec/config.json",
     "/.codec/memory.db",
+    # Owner, 12 Nov 2026: the owner's own notes (docs/NOTES-DESIGN.md) are
+    # never read or written by an agent.
+    "/.codec/notes",
 )
 
 
