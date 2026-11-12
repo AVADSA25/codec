@@ -232,6 +232,7 @@ def test_result_file_holds_model_url_sha_time_and_every_number(tmp_path, monkeyp
         for key in ("steps", "seconds", "format_failures", "failed_edits", "error", "timeout", "tries", "pass", "first_try_pass", "attempts"):
             assert key in r
     assert [r["id"] for r in doc["results"]] == [1, 2] and doc["results"][0]["attempts"][0]["try"] == 1
+    assert "kind" not in doc and "spent_usd" not in doc["results"][0]          # a local file is as it was (E-13)
 
 
 @pytest.mark.skipif(not (REPO / ".git").exists(), reason="not a git checkout")
@@ -254,7 +255,7 @@ def test_refuses_a_model_url_that_is_not_on_this_mac(monkeypatch, capsys):
     with pytest.raises(ev.NotLocal):
         ev.require_local("https://api.openai.com/v1")
     assert ev.require_local("http://127.0.0.1:8083/v1") == "http://127.0.0.1:8083/v1"
-    with pytest.raises(SystemExit):                                  # there is no --cloud flag
+    with pytest.raises(SystemExit):                                  # --cloud needs an entry id (card E-13)
         ev.main(["--cloud"])
 
 
@@ -318,3 +319,182 @@ def test_a_baseline_is_valid_only_for_the_model_it_records(tmp_path, monkeypatch
     monkeypatch.setattr(ev, "run_task", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran against a baseline of another model")))
     assert ev.main(["--bar", "--baseline", str(a)]) == 2
     assert ev.main(["--compare", str(a), "--baseline", str(a)]) == 0     # same file, same model: fine
+
+
+# ── one scored run on a cloud entry, and its estimate (card E-13) ──
+
+CLOUD = {"id": "fake-cloud", "label": "Fake Cloud", "base_url": "https://cloud.example.invalid/v1", "key_slot": "fake_cloud_key",
+         "price_in_per_m": 1.0, "price_out_per_m": 2.0, "monthly_cap_usd": 5}
+
+
+@pytest.fixture
+def cloud_cfg(agent_env, cfg, tmp_path, monkeypatch):  # noqa: F811
+    """One fake cloud entry, seen by both config readers (the agent's _cfg and the plain JSON read), a fake ledger with
+    $0.25 spent this month, and a Keychain that fails the test when read."""
+    import codec_cloud_models as ccm
+    cfg["extra_models"] = [dict(CLOUD)]
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(cfg))
+    monkeypatch.setattr(ccm, "CONFIG_PATH", str(path))
+    Path(ccm.SPEND_PATH).write_text(json.dumps({ccm._month(): {"fake-cloud": {"usd": 0.25, "calls": 3}}}))
+    monkeypatch.setattr(ccm, "get_key", lambda entry: pytest.fail("a key was read"))
+    return cfg
+
+
+def nothing_starts(monkeypatch):
+    def must_not_run(*a, **k):
+        raise AssertionError("a run or a model was reached")
+    for mod, name in ((va, "start_run"), (va, "_resolve_llm"), (ev, "run_task")):
+        monkeypatch.setattr(mod, name, must_not_run)
+
+
+def test_cloud_without_the_spend_flag_shows_entry_prices_and_spend_and_refuses(cloud_cfg, scripted, monkeypatch, capsys):
+    model = scripted([])
+    nothing_starts(monkeypatch)
+    monkeypatch.setattr(va, "_cfg", lambda: pytest.fail("the refusal read config through codec_config (its import reads keys)"))
+    assert ev.main(["--cloud", "fake-cloud"]) == 2
+    out = capsys.readouterr().out
+    assert "CLOUD fake-cloud  (Fake Cloud)  at cloud.example.invalid" in out
+    assert "$1 per million input tokens, $2 per million output tokens" in out
+    assert "$0.2500 of the $5.00 monthly cap; headroom $4.75" in out
+    assert "EVAL REFUSED" in out and "--yes-spend" in out and "fake_cloud_key" not in out
+    assert model.calls == []
+    assert ev.main(["--cloud", "nope"]) == 2
+    assert "not a registered cloud entry" in capsys.readouterr().out
+    for argv in (["--estimate"], ["--yes-spend"], ["--cloud", "fake-cloud", "--yes-spend", "--only", "13"]):
+        with pytest.raises(SystemExit):                     # no flag without --cloud; a cloud run is tasks 1 to 12 only
+            ev.main(argv)
+
+
+def test_the_cap_refuses_a_cloud_run_before_any_call(cloud_cfg, scripted, monkeypatch, capsys):
+    import codec_cloud_models as ccm
+    monkeypatch.setattr(ccm, "get_key", lambda entry: "fake-key")
+    Path(ccm.SPEND_PATH).write_text(json.dumps({ccm._month(): {"fake-cloud": {"usd": 5.0}}}))
+    model = scripted([])
+    monkeypatch.setattr(ev, "run_task", lambda *a, **k: (_ for _ in ()).throw(AssertionError("a try started over the cap")))
+    assert ev.main(["--cloud", "fake-cloud", "--yes-spend", "--only", "1"]) == 2
+    assert "monthly spend cap reached" in capsys.readouterr().out and model.calls == []
+
+
+def test_no_try_starts_once_the_cap_is_reached_mid_run(cloud_cfg, monkeypatch, capsys):
+    import codec_cloud_models as ccm
+    monkeypatch.setattr(ccm, "get_key", lambda entry: "fake-key")
+    seen = []
+
+    def expensive(task, va_, vp_, real_cfg, verbose, note="", compaction=None, cloud_id=None):
+        seen.append(task["id"])                     # this try alone spends $5 (2.5 M output tokens at $2)
+        ccm.record(ccm.entry_for_id("fake-cloud", real_cfg), {"prompt_tokens": 0, "completion_tokens": 2_500_000})
+        return attempt_rec(True)
+    monkeypatch.setattr(ev, "run_task", expensive)
+    assert ev.main(["--cloud", "fake-cloud", "--yes-spend", "--only", "1,2"]) == 1
+    assert seen == [1] and "not started: this month's spend on the cloud entry has reached its cap" in capsys.readouterr().out
+
+
+def baseline_doc():
+    """Tasks 1 to 12 with 1,000 + 100 tokens in 4 steps each, except: task 3 has a second try with no token counts
+    (2 steps), and task 5 is missing."""
+    one = {"steps": 4, "prompt_tokens": 1000, "completion_tokens": 100}
+    results = []
+    for i in range(1, 13):
+        if i == 5:
+            continue
+        tries = [one, {"steps": 2, "prompt_tokens": None, "completion_tokens": None}] if i == 3 else [one]
+        results.append({"id": i, "pass": True, "skipped": False, "attempts": [dict(a, try_=n) for n, a in enumerate(tries, 1)]})
+    return result_file("mlx-community/Fake-1", results, time="2026-10-29T09:00:00+00:00", git_sha="c" * 40)
+
+
+def test_the_estimate_makes_no_model_call_and_gives_low_high_and_headroom(cloud_cfg, scripted, tmp_path, monkeypatch, capsys):
+    import codec_cloud_models as ccm
+    cloud_cfg["vibe_agent"] = {"max_context_tokens": 4000, "max_reply_tokens": 1000}   # read from config: 6,000 + 1,000 a call
+    Path(ccm.CONFIG_PATH).write_text(json.dumps(cloud_cfg))
+    model = scripted([])
+    nothing_starts(monkeypatch)
+    ledger = Path(ccm.SPEND_PATH).read_bytes()
+    b = tmp_path / "b.json"
+    b.write_text(json.dumps(baseline_doc()))
+    assert ev.main(["--cloud", "fake-cloud", "--estimate", "--baseline", str(b)]) == 0
+    out = capsys.readouterr().out
+    # LOW: 10 tasks x (1,000 + 100); task 3: 1,000 + 100, then 2 steps x (6,000 + 1,000); task 5: 30 steps x (6,000 + 1,000)
+    assert "LOW  203,000 input + 33,100 output tokens = $0.2692" in out and "13 tries, 76 steps" in out
+    # HIGH: 2 tries x (11 tasks x 30 steps + task 12's 6 steps) = 672 calls x (6,000 + 1,000)
+    assert "HIGH 4,032,000 input + 672,000 output tokens = $5.38" in out and "24 tries, 672 calls" in out
+    assert "headroom $4.75: LOW fits in it, HIGH is over it" in out
+    assert "counted at one try's ceiling in LOW: 5" in out and "counted as steps at the ceiling in LOW: 3" in out
+    assert "no model call made" in out and "--cloud fake-cloud --yes-spend --bar --out" in out
+    assert model.calls == [] and Path(ccm.SPEND_PATH).read_bytes() == ledger
+
+
+def test_the_estimate_reads_the_newest_local_baseline_and_refuses_a_cloud_one(cloud_cfg, tmp_path, monkeypatch, capsys):
+    nothing_starts(monkeypatch)
+    folder = tmp_path / "vibe-eval"
+    folder.mkdir()
+    (folder / "baseline-2026-10-01-old.json").write_text(json.dumps(baseline_doc()))
+    (folder / "baseline-2026-10-29-new.json").write_text(json.dumps(baseline_doc()))
+    monkeypatch.setattr(ev, "PRIVATE_EVAL_DIR", folder)
+    assert ev.main(["--cloud", "fake-cloud", "--estimate"]) == 0
+    assert "BASELINE baseline-2026-10-29-new.json: mlx-community/Fake-1" in capsys.readouterr().out
+    cloud = tmp_path / "c.json"
+    cloud.write_text(json.dumps(dict(baseline_doc(), kind="cloud")))
+    assert ev.main(["--cloud", "fake-cloud", "--estimate", "--baseline", str(cloud)]) == 2
+    assert "is a cloud result" in capsys.readouterr().out
+    monkeypatch.setattr(ev, "PRIVATE_EVAL_DIR", tmp_path / "empty")
+    assert ev.main(["--cloud", "fake-cloud", "--estimate"]) == 2
+
+
+def test_compaction_doubles_the_ceiling():
+    lim = {"max_steps": 10, "max_context_tokens": 2000, "max_reply_tokens": 500}
+    task = [{"id": 1}]
+    off = ev.estimate({"results": []}, task, lambda t: lim, 1.0, 1.0)["high"]
+    on = ev.estimate({"results": []}, task, lambda t: dict(lim, compact=True), 1.0, 1.0)["high"]
+    assert (off["calls"], off["prompt"], off["completion"]) == (20, 60000, 10000) and on["calls"] == 40
+
+
+def test_a_cloud_try_goes_to_the_entry_the_way_the_page_does(cloud_cfg, scripted, monkeypatch):
+    import codec_cloud_models as ccm
+    monkeypatch.setattr(ccm, "get_key", lambda entry: "fake-key")
+    model = scripted(["Done.\n@@ finish\nChanged nothing.\n"])
+    task = {"id": 1, "kind": "file", "title": "t", "files": {"index.html": "<h1>Hi</h1>\n"}, "goal": "Look.",
+            "check": lambda files, events, report, pdir=None: (True, "ok")}
+    rec = ev.run_task(task, va, vp, cloud_cfg, False, cloud_id="fake-cloud")     # confirm_cloud, or start_run refuses
+    assert rec["status"] == "done"
+    assert model.kwargs[0]["base_url"] == "https://cloud.example.invalid/v1" and model.kwargs[0]["model"] == "fake-cloud"
+
+
+def test_a_cloud_result_records_kind_entry_and_spend(cloud_cfg, tmp_path, monkeypatch):
+    import codec_cloud_models as ccm
+    monkeypatch.setattr(ccm, "get_key", lambda entry: "fake-key")
+    seen = []
+
+    def one_try(task, va_, vp_, real_cfg, verbose, note="", compaction=None, cloud_id=None):
+        seen.append((task["id"], cloud_id))         # what codec_llm charges for one reply: 1,000 + 500 tokens = $0.002
+        ccm.record(ccm.entry_for_id("fake-cloud", real_cfg), {"prompt_tokens": 1000, "completion_tokens": 500})
+        return attempt_rec(True)
+    monkeypatch.setattr(ev, "run_task", one_try)
+    monkeypatch.setattr(ev, "git_info", lambda: ("b" * 40, False))
+    out = tmp_path / "c.json"
+    assert ev.main(["--cloud", "fake-cloud", "--yes-spend", "--only", "1,2", "--out", str(out)]) == 0
+    text = out.read_text()
+    doc = json.loads(text)
+    assert seen == [(1, "fake-cloud"), (2, "fake-cloud")]
+    assert (doc["kind"], doc["cloud_id"], doc["model"], doc["base_url"]) == ("cloud", "fake-cloud", "fake-cloud", "https://cloud.example.invalid/v1")
+    assert doc["spent_usd"] == pytest.approx(0.004) and doc["results"][0]["spent_usd"] == pytest.approx(0.002)
+    assert doc["results"][0]["attempts"][0]["spent_usd"] == pytest.approx(0.002)
+    assert (doc["price_in_per_m"], doc["price_out_per_m"], doc["cap_usd"]) == (1.0, 2.0, 5)
+    assert "fake_cloud_key" not in text and "fake-key" not in text
+
+
+def test_a_cloud_result_is_never_a_baseline_for_the_local_model(tmp_path, monkeypatch, capsys):
+    local, cloud = result_file("m1", full()), result_file("m1", full(), kind="cloud", cloud_id="m1")    # same id: the kind decides
+    for pair in ((cloud, local), (local, cloud)):
+        with pytest.raises(ev.BaselineMismatch):
+            ev.compare(*pair)
+    assert ev.compare(cloud, dict(cloud))["ok"]                         # the same cloud entry again is fine
+    a, b = tmp_path / "cloud.json", tmp_path / "local.json"
+    a.write_text(json.dumps(cloud))
+    b.write_text(json.dumps(local))
+    assert ev.main(["--compare", str(b), "--baseline", str(a)]) == 2
+    assert "never a baseline" in capsys.readouterr().out
+    monkeypatch.setattr(va, "_resolve_llm", lambda kind, confirm_cloud=False: va._Llm("local", LOCAL, "m1", "Local"))
+    monkeypatch.setattr(ev, "run_task", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran against a cloud baseline")))
+    assert ev.main(["--bar", "--baseline", str(a)]) == 2
+    assert "never a baseline" in capsys.readouterr().out
