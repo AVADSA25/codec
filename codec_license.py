@@ -103,8 +103,15 @@ def _is_paid_edition(cfg: dict) -> bool:
 
 
 def _license_token(cfg: dict) -> str:
+    """The licence JWT. The two legacy names first (nothing writes them any more),
+    then ava.license_key through codec_config.get_license_key: the Keychain, a key
+    found in config.json is moved there on first read (R-03)."""
     ava = cfg.get("ava") or {}
-    return cfg.get("license_token") or ava.get("license_token") or ava.get("license_key") or ""
+    legacy = cfg.get("license_token") or ava.get("license_token")
+    if legacy:
+        return legacy
+    import codec_config
+    return codec_config.get_license_key(cfg, CONFIG_PATH) or ""
 
 
 def _pubkey_url(cfg: dict) -> str:

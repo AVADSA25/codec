@@ -332,7 +332,9 @@ bootstrap runs (and on a dev box is correctly refused by the PM2 guard). Fix: ma
 `ai.avadigital.codec.<service>` labels only, excluding the `application.` prefix.
 Found while diffing `open` vs direct-exec behaviour of the Mach-O launcher.
 
-## `ava.license_key` is stored as plain text in `config.json` (2026-09-27)
+## FIXED (2026-11-12): `ava.license_key` is stored as plain text in `config.json` (2026-09-27)
+
+Fixed: the key lives in the Keychain slot `ai.avadigital.codec.license_key`; a key found in `ava.license_key` is moved there on first read and the field is blanked (`codec_config.get_license_key`, R-03, docs/LICENSE-KEY-KEYCHAIN-DESIGN.md).
 
 `~/.codec/config.json:ava.license_key` holds the buyer's licence key (a signed JWT)
 in plain text. PR-2B/2B-2 moved every provider secret to the Keychain, and

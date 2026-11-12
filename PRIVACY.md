@@ -23,7 +23,7 @@ Everything below lives on your Mac's disk. Nothing is synced anywhere.
 | `~/.codec/notes/` | Your CODEC Notes | Deleted notes go to `notes/.trash/` |
 | `~/.codec/agents/` | Project-mode agents: plans, grants, messages | Project files go to `~/codec-projects/`; Vibe projects to `~/codec-workspace/` |
 | `~/.codec/google_token.json`, `~/.codec/google_credentials.json` | Google sign-in token and OAuth client | On disk (0600), not in the Keychain |
-| `~/.codec/config.json` | Settings | Provider API keys are in the Keychain (below). The paid app's licence key is in this file, and so is the e-mail alert password if you set one. |
+| `~/.codec/config.json` | Settings | Provider API keys and the paid app's licence key are in the Keychain (below); the installer writes the licence key here and CODEC moves it to the Keychain on first read. This file still holds the e-mail alert password if you set one. |
 | `~/.codec/mcp_servers.json` | Connectors you added | Includes any API-key header you typed for one |
 | `~/.codec/backups/` | Checked copies of `memory.db` and a daily state archive | Made daily, and before a clean-up |
 | `~/.codec/pre_update/` | A copy of the databases and the state archive taken before each update | 0600; CODEC never deletes these: remove old ones by hand |
@@ -43,6 +43,7 @@ Each secret is a generic password whose service is `ai.avadigital.codec.<name>`:
 | `ai.avadigital.codec.internal_token` | The token CODEC's own processes use to call the dashboard |
 | `ai.avadigital.codec.dashboard_token` | The dashboard login token, if you set one |
 | `ai.avadigital.codec.oauth_state` | Sign-ins of apps connected to CODEC over MCP HTTP (claude.ai) |
+| `ai.avadigital.codec.license_key` | The paid app's licence key |
 | `ai.avadigital.codec.llm_api_key` | The key for the model provider you chose (the licence key when you use the AVA proxy) |
 | `ai.avadigital.codec.gemini_api_key` | Your Google Gemini key, if you added one |
 | `ai.avadigital.codec.pexels_api_key` | Your Pexels key, if you added one |
@@ -190,4 +191,4 @@ This page is versioned with the code; changes go through the same review. Materi
 - Security disclosure: see `SECURITY.md`.
 - Anything else: `github.com/AVADSA25/codec/issues` or `privacy@avadigital.ai`.
 
-*Last updated: 2026-11-03.*
+*Last updated: 2026-11-12.*
