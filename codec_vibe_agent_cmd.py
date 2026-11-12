@@ -93,8 +93,44 @@ def _q(path: str) -> str:
     return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def profile(project: str, vibe_root: str, home: str, temp: str, network: bool) -> str:
-    """The sandbox profile for one command. Paths are real paths."""
+_RX_META = set(".^$*+?()[]{}|\\")
+
+
+def _rx(path: str) -> str:
+    """A real path as regex text that matches only itself."""
+    return "".join("\\" + c if c in _RX_META else c for c in path)
+
+
+def _ci(word: str) -> str:
+    """A name as regex text that matches it in any letter case (APFS is case-insensitive)."""
+    return "".join(f"[{c.upper()}{c.lower()}]" if c.isalpha() else ("[.]" if c == "." else _rx(c)) for c in word)
+
+
+def _attached_rules(project: str) -> str:
+    """The lines an attached folder adds (owner decision R-17, docs/VIBE-ATTACH-FOLDER-DESIGN.md). They only take
+    rights away: no write to a .git entry at any depth, to a git config or hooks folder at any depth (nested repos,
+    submodules under .git/modules, worktrees), and no reading of a secret-looking file's content."""
+    if any(c in project for c in '"\\\n\r') or not project.startswith("/"):
+        raise Refused("The attached folder's path has characters the sandbox cannot use, so no command was run.")
+    import codec_vibe_projects as vp
+    at = "^" + _rx(project.rstrip("/")) + "/(.+/)?"
+    git = at + _ci(".git")
+    writes = [git + "$",
+              git + "/(.+/)?" + _ci("config") + "$",
+              git + "/(.+/)?" + _ci("config.worktree") + "$",
+              git + "/(.+/)?" + _ci("hooks") + "$",
+              git + "/(.+/)?" + _ci("hooks") + "/"]
+    reads = ([at + _ci(pre) + "[^/]*$" for pre in vp._BLOCKED_NAME_PREFIXES]
+             + [at + "[^/]*" + _ci(ext) + "$" for ext in vp._BLOCKED_EXTS])
+    return (";; an attached folder: no write to a .git entry, a git config or a hooks folder at any depth (R-17)\n"
+            "(deny file-write*\n" + "\n".join(f'    (regex #"{r}")' for r in writes) + ")\n"
+            ";; nor reading what is in a secret-looking file of it (.env, keys, credentials; R-14)\n"
+            "(deny file-read-data\n" + "\n".join(f'    (regex #"{r}")' for r in reads) + ")\n")
+
+
+def profile(project: str, vibe_root: str, home: str, temp: str, network: bool, *, attached: bool = False) -> str:
+    """The sandbox profile for one command. Paths are real paths. attached: the project is a folder the owner
+    attached (P-050); its extra refusals are added. Without it the text is exactly what it was before."""
     chains = "\n".join(f"    (subpath {_q(os.path.join(home, t))})" for t in TOOLCHAINS)
     net = ('(allow network-outbound (literal "/private/var/run/mDNSResponder") (remote udp "*:53") (remote tcp "*:53") '
            '(remote ip "*:80") (remote ip "*:443"))\n(deny network-outbound (remote ip "localhost:*"))'
@@ -129,7 +165,7 @@ def profile(project: str, vibe_root: str, home: str, temp: str, network: bool) -
     (literal {_q(os.path.join(project, ".git"))})
     (literal {_q(os.path.join(project, ".git", "config"))})
     (subpath {_q(os.path.join(project, ".git", "hooks"))}))
-
+{_attached_rules(project) if attached else ""}
 ;; programs it may start, and the few system services a runtime asks for
 (allow process-exec*)
 (allow process-fork)
@@ -308,10 +344,11 @@ def _stop_group(proc: subprocess.Popen) -> None:
 
 
 def run(project, vibe_root, command: str, *, network: bool = False, timeout: float = DEFAULT_TIMEOUT,
-        stop_event: threading.Event | None = None, spill=None) -> Result:
+        stop_event: threading.Event | None = None, spill=None, attached: bool = False) -> Result:
     """Run one command in the sandbox, in the project folder. Never raises for what the command does.
 
-    `spill` is a path CODEC chose for a copy of the output (P-043); this process writes it, never the command."""
+    `spill` is a path CODEC chose for a copy of the output (P-043); this process writes it, never the command.
+    `attached`: the project is an attached folder (P-050), so the profile adds its refusals (R-17)."""
     if not available():
         raise Refused("The sandbox is not available on this computer, so no command was run.")
     timeout = max(1.0, min(float(timeout), MAX_TIMEOUT))
@@ -325,7 +362,8 @@ def run(project, vibe_root, command: str, *, network: bool = False, timeout: flo
     try:
         fd, prof_file = tempfile.mkstemp(prefix="vibe-agent-", suffix=".sb", dir=temp)
         with os.fdopen(fd, "w") as f:
-            f.write(profile(proj, root, home, temp, bool(network)))
+            f.write(profile(proj, root, home, temp, bool(network), attached=True) if attached
+                    else profile(proj, root, home, temp, bool(network)))
         proc = subprocess.Popen(argv(prof_file, command, timeout), cwd=proj, env=command_env(temp),
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 start_new_session=True, preexec_fn=_limits)
