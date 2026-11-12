@@ -492,7 +492,10 @@ _HTTP_CONSENT_REQUIRED = ["delegate", "scheduler", "chrome_fill",
                           "screenshot_text",
                           "chrome_read", "chrome_extract", "chrome_tabs",
                           "chrome_open", "chrome_search", "chrome_close",
-                          "chrome_automate"]
+                          "chrome_automate",
+                          # 2026-11-12 (board card E-01): text saved here later
+                          # reaches local chat prompts.
+                          "memory_save", "thread_note"]
 
 
 def _mcp_blocked_tools(transport: str, config: dict) -> list:

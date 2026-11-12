@@ -12,7 +12,8 @@ Pins:
     normally over stdio, and NOT in _HTTP_BLOCKED (which would also refuse them
     over stdio via codec_consent.is_destructive_skill)
   - delegate / scheduler / chrome_fill / chrome_click_cdp / mouse_control /
-    clipboard / screenshot_text, and since 28 Sep every other chrome_* tool
+    clipboard / screenshot_text, memory_save / thread_note (board card E-01,
+    12 Nov: their text later reaches local chat prompts), and since 28 Sep every other chrome_* tool
     except chrome_scroll: over HTTP each call waits for the owner's PWA
     approval (codec_ask_user strict consent); over stdio no prompt
 """
@@ -39,7 +40,8 @@ FIRST_CONSENT_TOOLS = ["delegate", "scheduler", "chrome_fill", "chrome_click_cdp
                        "mouse_control", "clipboard", "screenshot_text"]
 CHROME_CONSENT_TOOLS = ["chrome_read", "chrome_extract", "chrome_tabs", "chrome_open",
                         "chrome_search", "chrome_close", "chrome_automate"]
-CONSENT_TOOLS = FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS
+MEMORY_CONSENT_TOOLS = ["memory_save", "thread_note"]  # board card E-01, 12 Nov 2026
+CONSENT_TOOLS = FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS + MEMORY_CONSENT_TOOLS
 
 
 # ── blocklist composition (pure) ─────────────────────────────────────────────
@@ -74,10 +76,10 @@ def test_consent_list_only_grows_and_chrome_scroll_stays_open():
     """The list is add-only (AGENTS.md §10): the first seven stay, the seven
     chrome tools are added, and chrome_scroll (moves the page, reads nothing)
     runs over HTTP without a prompt."""
-    assert set(FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS) <= set(codec_config._HTTP_CONSENT_REQUIRED)
+    assert set(FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS + MEMORY_CONSENT_TOOLS) <= set(codec_config._HTTP_CONSENT_REQUIRED)
     assert codec_consent.mcp_http_consent_required("chrome_scroll") is False
     reg = _registry()
-    for name in CHROME_CONSENT_TOOLS + ["chrome_scroll"]:
+    for name in CHROME_CONSENT_TOOLS + MEMORY_CONSENT_TOOLS + ["chrome_scroll"]:
         assert reg.get_meta(name) is not None, f"{name} is not a skill any more"
 
 
