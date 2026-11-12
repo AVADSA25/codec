@@ -73,9 +73,9 @@ Neither is bundled (both are on-demand downloads; the VL-7B is the smaller one).
 not affected there: with no `vision_model` it names the model the chat server holds (P-013).
 
 Left as literals, on an explicit allowlist the test reads: `setup_codec.py` (the setup wizard's
-prompts and values; it imports nothing from CODEC), and `codec_agent_runner.py` /
-`codec_agent_plan.py` (one fallback line each: Step 9 design-gate files, waiting for the owner's
-word; they read `codec_config.QWEN_MODEL`, which now comes from `resolve("chat")`). Not Python and
+prompts and values; it imports nothing from CODEC). `codec_agent_runner.py` / `codec_agent_plan.py`
+were the other two until E-14 (docs/RUNNER-PLANNER-MODEL-ROLE-DESIGN.md): they now ask
+`resolve("agent")` / `resolve("plan")` per call. Not Python and
 not touched: `scripts/start_model_server.sh` (its own default stays the 35B), the manifests, and
 `config.json.example`.
 
