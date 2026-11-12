@@ -147,6 +147,7 @@ _NOT_RUN = re.compile(
     r"^\s*(?:"
     r"Warning: '[^']*' is a destructive operation and wasn't confirmed"  # chat consent declined
     r"|Not saved: this is a temporary chat"                              # temporary chat
+    r"|Not searched: web search is off"                                  # R-01 search switch off
     r"|The skill '[^']*' is turned off\."                                # Skills page switch
     r"|Skill '[^']*' was vetoed by plugin"                               # plugin pre_tool veto
     r"|\W*Skill execution requires an active CODEC license"              # licence lock

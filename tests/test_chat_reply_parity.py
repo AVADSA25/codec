@@ -62,7 +62,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(prompts, "_load_prompt_overrides", lambda: {})
     monkeypatch.setattr(chat, "_identity_block", lambda meta, temporary: "")
     monkeypatch.setattr(chat, "_recall_memory", lambda messages, meta=None, temporary=False: [])
-    monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False: (None, None))
+    monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False, search=True: (None, None))
 
     st = SimpleNamespace(reply=REPLY, limit=5, llm_calls=[], skills=[], gate=[], classifier=[],
                          audits=[], budget=[])
@@ -71,7 +71,7 @@ def env(tmp_path, monkeypatch):
         st.gate.append((text, session_id))
         return {"escalate": True, **SUGGESTION}
 
-    def skill(name, query, temporary=False):
+    def skill(name, query, temporary=False, search=True):
         st.skills.append((name, query))
         return name, "12:00"
 
@@ -215,7 +215,7 @@ def test_a_declined_skill_does_not_back_the_claim_on_both_paths(env, monkeypatch
 
 def test_a_skill_that_acted_backs_the_claim_on_both_paths(env, monkeypatch):
     monkeypatch.setattr(chat, "_try_skill_by_name",
-                        lambda name, query, temporary=False: (name, "Wrote ~/Desktop/summary.md"))
+                        lambda name, query, temporary=False, search=True: (name, "Wrote ~/Desktop/summary.md"))
     env.state.reply = SAVE_REPLY
     for out in (env.post(True, SAVE_ASK), env.post(False, SAVE_ASK)):
         assert "**Wrote ~/Desktop/summary.md**" in out.text
@@ -246,7 +246,7 @@ def test_a_disallowed_tag_uses_a_step_and_is_dropped_on_both_paths(env):
 
 @pytest.mark.parametrize("outcome", ["nothing", "error"])
 def test_a_tag_whose_skill_gives_nothing_or_fails_is_dropped_on_both_paths(env, monkeypatch, outcome):
-    def skill(name, query, temporary=False):
+    def skill(name, query, temporary=False, search=True):
         if outcome == "error":
             raise RuntimeError("skill broke")
         return name, None

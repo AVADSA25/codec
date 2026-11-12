@@ -137,11 +137,11 @@ def test_no_observer_summary_or_open_threads_but_standing_rules_stay(monkeypatch
 
 def test_the_route_passes_the_flag_to_every_path():
     for needle in ('_temporary = bool(body.get("temporary"))',
-                   "asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary)",
-                   "asyncio.to_thread(_try_skill, last_user_text, _temporary)",
+                   "asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary, search=_search_on)",
+                   "asyncio.to_thread(_try_skill, last_user_text, _temporary, search=_search_on)",
                    "temporary=_temporary, web=_web)", "meta=_mem_meta, temporary=_temporary",
-                   "_try_skill_by_name(s_name, s_query, _temporary)",
-                   "asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)"):
+                   "_try_skill_by_name(s_name, s_query, _temporary, search=_search_on)",
+                   "asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary, search=_search_on)"):
         assert needle in SRC, needle
 
 
