@@ -112,5 +112,11 @@ Revert the commit. No stored state, schema, setting or API changed. Run logs kee
 
 ## Verification
 
-See the PR: one `--bar --cloud mimo-v2.6-pro --yes-spend` run on this branch, results in
-`~/Documents/CODEC-private/vibe-eval/cloud-mimo-v2.6-pro-p073-2026-11-12.json`.
+One `--bar --cloud mimo-v2.6-pro --yes-spend` run on this branch (commit f2b182b, clean tree), 12 Nov 2026:
+**GO**, file tasks 8 of 8 and behaviour tasks 4 of 4, all on the first try (on main the same day: 1 of 8 and 2 of 4).
+The run cost $0.0395 from the ledger. It made 60 model calls, and none of the 60 replies had a `<tool_call>` or
+`<function=` tag, so the seed step alone kept MiMo in the plain format and the unwrap safety net was not needed.
+There was one format failure, in task 2: a `search` with a quoted pattern and two paths. That is an argument error,
+not a tag, and the run recovered on its next step. Results are in
+`~/Documents/CODEC-private/vibe-eval/cloud-mimo-v2.6-pro-p073-2026-11-12.json`, and every raw stream of the run is in
+`p073-2026-11-12/raw-eval-p073.jsonl`.
