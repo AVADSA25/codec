@@ -3,8 +3,10 @@
 
 Not part of CI: it needs the real model and takes minutes, and it holds the one local model server while it runs
 (no voice call, image job or Auguste run at the same time). It never calls a cloud model: it refuses to start when
-the active model URL is not on this Mac. Every task is a made-up project, a goal in plain words, and an automatic
-check of the files afterwards. Behaviour tasks (9 to 12) check that the agent asks, ignores instructions inside
+the active model URL is not on this Mac. The one exception is --cloud ID with --yes-spend (card E-13,
+docs/VIBE-EVAL-CLOUD-DESIGN.md): tasks 1 to 12 on that registered cloud entry, under its monthly cap.
+Every task is a made-up project, a goal in plain words, and an automatic check of the files afterwards.
+Behaviour tasks (9 to 12) check that the agent asks, ignores instructions inside
 files (task 10 also has an AGENTS.md, read as project notes, that says to ignore the owner: P-046), leaves secrets
 alone and stops cleanly. Tasks 4 and 8 let the agent run its tests with `run_check`: this
 script approves each command once, the way the owner would, and they run in the real sandbox. Task 13 (P-045)
@@ -25,6 +27,13 @@ says why the first try failed. A task passes when either try passes; the first-t
     python3 tools/vibe_agent_eval.py --compare r.json --baseline b.json     compare two result files; no model needed
     python3 tools/vibe_agent_eval.py --only 14 --compaction off --out r.json    the long run with masking alone
     python3 tools/vibe_agent_eval.py --bar --playbooks --baseline b.json   every task with the four shipped playbooks listed (P-071)
+    python3 tools/vibe_agent_eval.py --cloud ID --estimate        the cloud run's tokens and dollars; no model call (E-13)
+    python3 tools/vibe_agent_eval.py --cloud ID --yes-spend --bar --out c.json    tasks 1 to 12 on that cloud entry: spends money
+
+A cloud run starts each try the way the Vibe page does for a cloud run (cloud_id and confirm_cloud), so the monthly cap
+and codec_cloud_models.block_message apply to every call. It prints the entry, its prices and this month's spend first,
+and refuses without --yes-spend. Its result file says kind cloud, the entry id and spent_usd; a cloud result is never
+a baseline for the local model.
 
 The eval never reads the owner's playbooks or approvals: without --playbooks none is approved, so the prompt is the
 one the baseline saw; with it the four shipped ones are approved in a temp file (P-071).
@@ -44,6 +53,7 @@ import argparse
 import ast
 import datetime
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -470,6 +480,252 @@ class BaselineMismatch(ValueError):
     """The baseline was taken on another model, or is not a result file."""
 
 
+class CloudRefused(RuntimeError):
+    """The --cloud id is not a registered cloud entry that can be priced."""
+
+
+# ── a cloud entry (card E-13, docs/VIBE-EVAL-CLOUD-DESIGN.md) ───────────────
+
+PRIVATE_EVAL_DIR = Path.home() / "Documents" / "CODEC-private" / "vibe-eval"   # stored result files, outside the repo
+CEILING_TOKEN_FACTOR = 1.5      # server tokens per estimated token: the top of the 1.1-1.5 measured (codec_vibe_agent.TOKEN_FACTOR)
+
+
+def kind_of(doc):
+    """"cloud" for a result file a cloud run wrote, "local" for every other one (local files have no kind field)."""
+    return "cloud" if isinstance(doc, dict) and doc.get("kind") == "cloud" else "local"
+
+
+def usd(x):
+    return f"${x:.2f}" if x >= 1 else f"${x:.4f}"
+
+
+def cost_usd(prompt_tokens, completion_tokens, price_in, price_out):
+    """The ledger's own sum (codec_cloud_models.record): tokens at the entry's prices per million."""
+    return prompt_tokens * price_in / 1e6 + completion_tokens * price_out / 1e6
+
+
+def cloud_entry(cfg, entry_id):
+    """The registered cloud entry named `entry_id`, with both prices set. Reads no key (block_message would)."""
+    import codec_cloud_models as ccm
+    e = ccm.entry_for_id(entry_id, cfg)
+    if e is None:
+        ids = ", ".join(x["id"] for x in ccm.entries(cfg)) or "none"
+        raise CloudRefused(f"{entry_id!r} is not a registered cloud entry in config.json extra_models (registered: {ids}).")
+    if ccm.prices(e) is None:
+        raise CloudRefused(f"{e.get('label') or e['id']} has no price set, so its spend can be neither estimated nor capped.")
+    return e
+
+
+def cloud_facts(entry):
+    """What the owner sees before any spend: the entry, its prices and cap, and this month's spend on it (the ledger,
+    read only). Never the key or its slot."""
+    import urllib.parse
+    import codec_cloud_models as ccm
+    p_in, p_out = ccm.prices(entry)
+    month, cap = ccm._month(), ccm.cap_usd(entry)
+    spent = ccm.spent_usd(entry["id"], month)
+    return {"id": entry["id"], "label": str(entry.get("label") or entry["id"]),
+            "host": urllib.parse.urlparse(entry["base_url"]).hostname or "", "price_in_per_m": p_in, "price_out_per_m": p_out,
+            "cap_usd": cap, "month": month, "spent_usd": round(spent, 6), "headroom_usd": round(max(0.0, cap - spent), 6)}
+
+
+def print_cloud(f, say=print):
+    say(f"CLOUD {f['id']}  ({f['label']})  at {f['host']}")
+    say(f"PRICES ${f['price_in_per_m']:g} per million input tokens, ${f['price_out_per_m']:g} per million output tokens")
+    say(f"SPENT in {f['month']}: {usd(f['spent_usd'])} of the {usd(f['cap_usd'])} monthly cap; headroom {usd(f['headroom_usd'])}")
+
+
+def spend_mark(entry_id):
+    """(month, spend so far this month) on the entry, to measure what one try adds."""
+    import codec_cloud_models as ccm
+    month = ccm._month()
+    return month, ccm.spent_usd(entry_id, month)
+
+
+def spent_since(entry_id, mark):
+    """What the ledger gained on the entry since `mark`, across a change of month."""
+    import codec_cloud_models as ccm
+    month, before = mark
+    spent = ccm.spent_usd(entry_id, month) - before
+    now = ccm._month()
+    if now != month:
+        spent += ccm.spent_usd(entry_id, now)
+    return round(max(0.0, spent), 6)
+
+
+def owner_cfg():
+    """config.json read as plain JSON, for the paths that spend nothing: importing codec_config (what
+    codec_vibe_agent._cfg does) reads CODEC's own Keychain secrets."""
+    import codec_cloud_models as ccm
+    return ccm._load_config()
+
+
+def cloud_preflight(cfg, entry_id, wanted, say=print):
+    """Show the entry, its prices, this month's spend and what a run sends where. (entry, facts), or None after
+    printing why the entry is refused. Reads no key."""
+    try:
+        entry = cloud_entry(cfg, entry_id)
+    except CloudRefused as e:
+        say(f"EVAL REFUSED: {e}")
+        return None
+    facts = cloud_facts(entry)
+    print_cloud(facts, say)
+    say(f"SENDS the eval's made-up project files and goals (tasks {', '.join(str(i) for i in sorted(wanted))}) to {facts['host']} "
+        "and spends API money on this entry, up to its monthly cap.")
+    return entry, facts
+
+
+def cap_reached(entry):
+    import codec_cloud_models as ccm
+    return ccm.spent_usd(entry["id"]) >= ccm.cap_usd(entry)
+
+
+def cloud_fields(facts, results):
+    """What a cloud result file adds to the local one's fields."""
+    return {"kind": "cloud", "cloud_id": facts["id"], "cloud_label": facts["label"], "cloud_host": facts["host"],
+            "price_in_per_m": facts["price_in_per_m"], "price_out_per_m": facts["price_out_per_m"], "cap_usd": facts["cap_usd"],
+            "month": facts["month"], "spent_usd": round(sum(r.get("spent_usd") or 0 for r in results), 6)}
+
+
+def task_cfg(real_cfg, task, compaction=None):
+    """The config one try's run reads: the owner's config with the task's own limits on top (and P-049's switch)."""
+    cfg = dict(real_cfg)
+    cfg["vibe_agent"] = {**(real_cfg.get("vibe_agent") or {}), **(task.get("limits") or {})}
+    if compaction in ("off", "on") and task.get("needs") == "compaction":     # P-049: off = masking alone
+        cfg["vibe_agent"]["compact"] = compaction == "on"
+    return cfg
+
+
+def task_limits(va, cfg):
+    """settings() as a run under `cfg` reads them (an eval project has no agent block of its own)."""
+    saved = va._cfg
+    va._cfg = lambda: cfg
+    try:
+        return va.settings()
+    finally:
+        va._cfg = saved
+
+
+def _count(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
+def estimate(baseline, tasks, limits_for, price_in, price_out, tries=MAX_TRIES):
+    """LOW and HIGH token and dollar figures for one cloud run of `tasks`. Makes no call and reads nothing but its arguments.
+
+    LOW: the tokens the baseline used on each task, each try as recorded; a try without token counts counts as its
+    steps at the ceiling per call, and a task missing from the baseline as one try at its ceiling.
+    HIGH: the ceiling the agent's limits allow: `tries` tries of max_steps calls each, every call a full prompt
+    (max_context_tokens x CEILING_TOKEN_FACTOR) and a full reply (max_reply_tokens); twice the calls with compaction on
+    (a fold is one more call in a step)."""
+    by_id = {r.get("id"): r for r in baseline.get("results") or [] if isinstance(r, dict) and not r.get("skipped")}
+    low = {"prompt": 0, "completion": 0, "tries": 0, "steps": 0}
+    high = {"prompt": 0, "completion": 0, "tries": 0, "calls": 0}
+    missing, no_counts = [], []
+    for task in tasks:
+        lim = limits_for(task)
+        per_in, per_out = math.ceil(lim["max_context_tokens"] * CEILING_TOKEN_FACTOR), lim["max_reply_tokens"]
+        calls = lim["max_steps"] * (2 if lim.get("compact") else 1)
+        high["tries"] += tries
+        high["calls"] += tries * calls
+        high["prompt"] += tries * calls * per_in
+        high["completion"] += tries * calls * per_out
+        rec = by_id.get(task["id"])
+        attempts = (rec.get("attempts") or [rec]) if rec else []
+        if not attempts:
+            missing.append(task["id"])
+            low["tries"] += 1
+            low["steps"] += calls
+            low["prompt"] += calls * per_in
+            low["completion"] += calls * per_out
+            continue
+        for a in attempts:
+            steps = _count(a.get("steps")) or 0
+            low["tries"] += 1
+            low["steps"] += steps
+            if _count(a.get("prompt_tokens")):
+                low["prompt"] += a["prompt_tokens"]
+                low["completion"] += _count(a.get("completion_tokens")) or 0
+            else:
+                no_counts.append(task["id"])
+                low["prompt"] += steps * per_in
+                low["completion"] += steps * per_out
+    for fig in (low, high):
+        fig["usd"] = round(cost_usd(fig["prompt"], fig["completion"], price_in, price_out), 6)
+    return {"low": low, "high": high, "missing": missing, "no_counts": sorted(set(no_counts))}
+
+
+def format_estimate(est, facts, baseline_name, baseline, ids):
+    lo, hi, room = est["low"], est["high"], facts["headroom_usd"]
+    span = f"{min(ids)} to {max(ids)}" if ids == list(range(min(ids), max(ids) + 1)) else ", ".join(str(i) for i in ids)
+    lines = [f"BASELINE {baseline_name}: {baseline.get('model')} at {baseline.get('time')}, git {str(baseline.get('git_sha') or '')[:8]}",
+             f"TASKS {span}, up to {MAX_TRIES} tries each",
+             f"LOW  {lo['prompt']:,} input + {lo['completion']:,} output tokens = {usd(lo['usd'])}  (a run like the baseline's: "
+             f"{lo['tries']} tries, {lo['steps']} steps; counted by the local model's tokenizer)",
+             f"HIGH {hi['prompt']:,} input + {hi['completion']:,} output tokens = {usd(hi['usd'])}  (the ceiling the limits allow: "
+             f"{hi['tries']} tries, {hi['calls']} calls, each a full prompt and a full reply)"]
+    if est["missing"]:
+        lines.append("NOTE not in the baseline, counted at one try's ceiling in LOW: " + ", ".join(str(i) for i in est["missing"]))
+    if est["no_counts"]:
+        lines.append("NOTE no token counts in the baseline, counted as steps at the ceiling in LOW: "
+                     + ", ".join(str(i) for i in est["no_counts"]))
+
+    def fits(x):
+        return "fits in" if x <= room else "is over"
+    lines.append(f"CAP headroom {usd(room)}: LOW {fits(lo['usd'])} it, HIGH {fits(hi['usd'])} it "
+                 "(the agent refuses every call once the cap is reached, and no new try starts)")
+    return "\n".join(lines)
+
+
+def newest_baseline(folder=None):
+    """The newest baseline-*.json (the name carries the date) in the private eval folder, or None."""
+    files = sorted(Path(folder or PRIVATE_EVAL_DIR).glob("baseline-*.json"))
+    return files[-1] if files else None
+
+
+def run_estimate(args, wanted):
+    """--cloud ID --estimate: the figures, from config, the ledger and a stored local result. No model call, no run,
+    no key read, no file written."""
+    import codec_vibe_agent as va
+    real_cfg = owner_cfg()
+    try:
+        facts = cloud_facts(cloud_entry(real_cfg, args.cloud))
+    except CloudRefused as e:
+        print(f"ESTIMATE REFUSED: {e}")
+        return 2
+    path = Path(args.baseline) if args.baseline else newest_baseline()
+    if path is None:
+        print(f"ESTIMATE REFUSED: no baseline-*.json in {PRIVATE_EVAL_DIR}; name a local result file with --baseline FILE.")
+        return 2
+    try:
+        doc = load_result_file(path)
+        if not isinstance(doc, dict) or not doc.get("model") or not isinstance(doc.get("results"), list):
+            raise BaselineMismatch(f"{path} is not a result file written by this script (no model id or results).")
+        if kind_of(doc) != "local":
+            raise BaselineMismatch(f"{path} is a cloud result; the estimate starts from a local one.")
+    except BaselineMismatch as e:
+        print(f"ESTIMATE REFUSED: {e}")
+        return 2
+    ids = sorted(wanted)
+    tasks = [t for t in TASKS if t["id"] in wanted]
+    est = estimate(doc, tasks, lambda t: task_limits(va, task_cfg(real_cfg, t, args.compaction)),
+                   facts["price_in_per_m"], facts["price_out_per_m"])
+    print("ESTIMATE for one cloud eval run: no model call made, no run started, no key read")
+    print_cloud(facts)
+    print(format_estimate(est, facts, path.name, doc, ids))
+    print("NEXT the paid run, after the owner's word: " + " ".join(paid_command(facts["id"], ids)))
+    return 0
+
+
+def paid_command(entry_id, ids, today=None):
+    """The command line of the paid run: the same tasks on the entry, the bar, and a result file next to the baseline."""
+    import re
+    day = today or datetime.date.today().isoformat()
+    out = f"~/Documents/CODEC-private/vibe-eval/cloud-{re.sub(r'[^A-Za-z0-9._-]', '-', entry_id)}-{day}.json"
+    only = [] if ids == list(BAR_IDS) else ["--only", ",".join(str(i) for i in ids)]
+    return ["python3", "tools/vibe_agent_eval.py", "--cloud", entry_id, "--yes-spend", "--bar", *only, "--out", out]
+
+
 def require_local(base_url):
     """This eval spends nothing and sends nothing away: refuse any model URL that is not on this Mac."""
     import codec_cloud_models as ccm
@@ -544,8 +800,9 @@ def follow_run(task, va, pid, run_id, verbose):
     return events, capped
 
 
-def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None):
-    """One try at one task, on a fresh project. Returns the numbers of that try."""
+def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None, cloud_id=None):
+    """One try at one task, on a fresh project. Returns the numbers of that try. With cloud_id the run goes to that
+    cloud entry exactly as a Vibe page cloud run does (confirm_cloud, so the entry's cap and block_message apply)."""
     root_files = [{"path": p, "content": c} for p, c in task["files"].items()]
     pid = vp.create_project(f"eval {task['id']}", root_files)["id"]
     for name, content in (task.get("secret") or {}).items():
@@ -553,13 +810,11 @@ def run_task(task, va, vp, real_cfg, verbose, note="", compaction=None):
     if task.get("check_cmd"):                       # P-045 part 2: what the owner's "Use as check" click does
         vp.allow_command(pid, task["check_cmd"], False)
         va.mark_check(pid, task["check_cmd"], True)
-    cfg = dict(real_cfg)
-    cfg["vibe_agent"] = {**(real_cfg.get("vibe_agent") or {}), **(task.get("limits") or {})}
-    if compaction in ("off", "on") and task.get("needs") == "compaction":     # P-049: off = masking alone
-        cfg["vibe_agent"]["compact"] = compaction == "on"
+    cfg = task_cfg(real_cfg, task, compaction)
     va._cfg = lambda: cfg
-    started = va.start_run(pid, task["goal"] + note, model="local", can_run=task.get("needs") == "run_check",
-                           mode=task.get("mode", "default"))
+    model = {"model": "cloud", "confirm_cloud": True, "cloud_id": cloud_id} if cloud_id else {"model": "local"}
+    started = va.start_run(pid, task["goal"] + note, can_run=task.get("needs") == "run_check",
+                           mode=task.get("mode", "default"), **model)
     run_id = started["run"]
     try:
         events, capped = follow_run(task, va, pid, run_id, verbose)
@@ -591,7 +846,8 @@ def task_record(task, attempts):
     """One task's line in the result file: the totals over its tries, and each try under `attempts`."""
     def total(key):
         return sum((a.get(key) or 0) for a in attempts)
-    return {"id": task["id"], "title": task["title"], "kind": task["kind"], "needs": task.get("needs"), "skipped": False,
+    spent = {"spent_usd": round(total("spent_usd"), 6)} if any("spent_usd" in a for a in attempts) else {}
+    return {"id": task["id"], "title": task["title"], "kind": task["kind"], "needs": task.get("needs"), "skipped": False, **spent,
             "pass": any(a["pass"] for a in attempts), "first_try_pass": bool(attempts[0]["pass"]), "tries": len(attempts),
             "detail": attempts[-1]["detail"], "status": attempts[-1]["status"],
             "steps": total("steps"), "seconds": round(total("seconds"), 1),
@@ -663,6 +919,9 @@ def compare(baseline, new):
     for name, doc in (("baseline", baseline), ("new result", new)):
         if not isinstance(doc, dict) or not doc.get("model") or not isinstance(doc.get("results"), list):
             raise BaselineMismatch(f"The {name} is not a result file written by this script (no model id or results).")
+    if kind_of(baseline) != kind_of(new):
+        raise BaselineMismatch(f"The baseline is a {kind_of(baseline)} result and this one is a {kind_of(new)} result. "
+                               "A cloud result is never a baseline for the local model, nor a local one for a cloud entry.")
     if baseline["model"] != new["model"]:
         raise BaselineMismatch(f"The baseline was taken on {baseline['model']} but this result is for {new['model']}. "
                                "A baseline is valid only for the model it records: take a new baseline for the new model.")
@@ -701,11 +960,14 @@ def git_info():
         return "", None
 
 
-def build_document(llm, results, bar, git, started_at, wanted=None):
+def build_document(llm, results, bar, git, started_at, wanted=None, cloud=None):
     sha, dirty = git
-    return {"schema": SCHEMA, "rule": RULE, "model": llm.model, "base_url": llm.base_url, "git_sha": sha, "git_dirty": dirty,
-            "time": started_at, "only": sorted(wanted) if wanted else None, "max_tries": MAX_TRIES, "bar": bar, "go": bar["met"],
-            "results": results}
+    doc = {"schema": SCHEMA, "rule": RULE, "model": llm.model, "base_url": llm.base_url, "git_sha": sha, "git_dirty": dirty,
+           "time": started_at, "only": sorted(wanted) if wanted else None, "max_tries": MAX_TRIES, "bar": bar, "go": bar["met"],
+           "results": results}
+    if cloud is not None:                           # card E-13: a local file has no kind field
+        doc.update(cloud_fields(cloud, results))
+    return doc
 
 
 def load_result_file(path):
@@ -736,11 +998,31 @@ def main(argv=None):
     ap.add_argument("--compare", metavar="RESULT", help="do not run anything: compare this result file with --baseline")
     ap.add_argument("--compaction", choices=("off", "on"), help="run task 14 (needs compaction): off measures masking alone (P-049)")
     ap.add_argument("--playbooks", action="store_true", help="approve the four shipped playbooks in a temp file for every task (P-071)")
+    ap.add_argument("--cloud", metavar="ENTRY_ID", help="score this registered extra_models cloud entry instead of the local model, "
+                    "tasks 1 to 12 only (card E-13). It spends API money: it needs --yes-spend")
+    ap.add_argument("--yes-spend", action="store_true", help="with --cloud: go ahead and spend API money on the entry, under its monthly cap")
+    ap.add_argument("--estimate", action="store_true", help="with --cloud: the run's tokens and dollars from a stored local result "
+                    "(--baseline FILE, else the newest baseline-*.json in ~/Documents/CODEC-private/vibe-eval/); no model call")
     args = ap.parse_args(argv)
     if args.compare:
         if not args.baseline:
             ap.error("--compare needs --baseline")
         return compare_files(args.baseline, args.compare)
+    if (args.yes_spend or args.estimate) and not args.cloud:
+        ap.error("--yes-spend and --estimate go with --cloud ENTRY_ID")
+    if args.cloud:
+        try:
+            wanted = {int(x) for x in args.only.split(",")} if args.only else set(BAR_IDS)
+        except ValueError:
+            ap.error("--only takes task numbers, for example 1 or 1,2,9")
+        if not wanted <= set(BAR_IDS):
+            ap.error("a cloud run takes tasks 1 to 12 only (card E-13)")
+        if args.estimate:
+            return run_estimate(args, wanted)
+        if not args.yes_spend:                      # the confirm step: show what would be spent, start nothing
+            if cloud_preflight(owner_cfg(), args.cloud, wanted) is not None:
+                print("EVAL REFUSED: a cloud run spends money. See the cost first with --estimate, then add --yes-spend to run it.")
+            return 2
 
     work = tempfile.mkdtemp(prefix="vibe-agent-eval-")
     try:
@@ -756,20 +1038,42 @@ def run_eval(args, work):
     import codec_vibe_agent_cmd as cmdmod
     import codec_vibe_playbooks as vpb
     import codec_vibe_projects as vp
+    from codec_vibe_projects import VibeError
 
     real_cfg = va._cfg()
     if args.playbooks:                              # P-071: on for this eval even if config.json switched them off
         real_cfg = {**real_cfg, "vibe_agent": {**(real_cfg.get("vibe_agent") or {}), "playbooks": True}}
-    llm = va._resolve_llm("local")
-    try:
-        require_local(llm.base_url)
-    except NotLocal as e:
-        print(f"EVAL REFUSED: {e}")
-        return 2
+    wanted = {int(x) for x in args.only.split(",")} if args.only else None
+    entry = cloud = None
+    if args.cloud:                                  # card E-13: the entry, its prices and spend first; money needs --yes-spend
+        if wanted is None:
+            wanted = set(BAR_IDS)
+        checked = cloud_preflight(real_cfg, args.cloud, wanted)
+        if checked is None:
+            return 2
+        entry, cloud = checked
+        if not args.yes_spend:                      # main() refuses first; kept for a direct caller
+            print("EVAL REFUSED: a cloud run spends money. See the cost first with --estimate, then add --yes-spend to run it.")
+            return 2
+        try:
+            llm = va._resolve_llm("cloud", True, args.cloud)
+        except VibeError as e:
+            print(f"EVAL REFUSED: {e.message}")
+            return 2
+    else:
+        llm = va._resolve_llm("local")
+        try:
+            require_local(llm.base_url)
+        except NotLocal as e:
+            print(f"EVAL REFUSED: {e}")
+            return 2
     baseline = None
     if args.baseline:
         try:
             baseline = load_result_file(args.baseline)
+            if kind_of(baseline) != ("cloud" if cloud else "local"):
+                raise BaselineMismatch(f"The baseline is a {kind_of(baseline)} result and this run is a {'cloud' if cloud else 'local'} run. "
+                                       "A cloud result is never a baseline for the local model, nor a local one for a cloud entry.")
             if baseline.get("model") != llm.model:
                 raise BaselineMismatch(f"The baseline was taken on {baseline.get('model')} but the running model is {llm.model}. "
                                        "A baseline is valid only for the model it records: take a new baseline for this model.")
@@ -786,13 +1090,22 @@ def run_eval(args, work):
     playbooks = use_playbooks(vpb, work, args.playbooks)
     print(f"PLAYBOOKS {', '.join(playbooks) if playbooks else 'none'}", flush=True)
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    wanted = {int(x) for x in args.only.split(",")} if args.only else None
 
     def attempt(task, note):
+        if entry is None:
+            try:
+                return run_task(task, va, vp, real_cfg, args.verbose, note, args.compaction)
+            except Exception as e:                  # a crash of the harness counts as a failed try
+                return failed_attempt(f"harness error: {e}")
+        if cap_reached(entry):                      # the agent would refuse every call: start nothing
+            return failed_attempt("not started: this month's spend on the cloud entry has reached its cap")
+        mark = spend_mark(entry["id"])
         try:
-            return run_task(task, va, vp, real_cfg, args.verbose, note, args.compaction)
-        except Exception as e:                      # a crash of the harness counts as a failed try
-            return failed_attempt(f"harness error: {e}")
+            rec = run_task(task, va, vp, real_cfg, args.verbose, note, args.compaction, cloud_id=entry["id"])
+        except Exception as e:
+            rec = failed_attempt(f"harness error: {e}")
+        rec["spent_usd"] = spent_since(entry["id"], mark)
+        return rec
     try:
         feats = features_available(cmdmod, args.compaction, va.settings().get("compact", False))
         results = run_suite(TASKS, attempt, feats, wanted, MAX_TRIES, args.quiet, args.verbose)
@@ -806,8 +1119,12 @@ def run_eval(args, work):
     if other:
         print(f"EVAL (other tasks, not in the bar): {sum(1 for r in other if r['pass'])} passed, "
               f"{sum(1 for r in other if r['skipped'])} skipped, {sum(1 for r in other if not r['pass'] and not r['skipped'])} failed")
+    if cloud is not None:
+        after = cloud_facts(entry)
+        print(f"SPENT {usd(cloud_fields(cloud, results)['spent_usd'])} on this run (from the ledger); "
+              f"{after['month']}: {usd(after['spent_usd'])} of the {usd(after['cap_usd'])} cap")
     if args.out:
-        doc = build_document(llm, results, bar, git_info(), started_at, wanted)
+        doc = build_document(llm, results, bar, git_info(), started_at, wanted, cloud)
         doc["playbooks"] = playbooks
         Path(args.out).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
         print(f"WROTE {args.out}")
@@ -817,7 +1134,7 @@ def run_eval(args, work):
         print(("EVAL BAR MET  GO" if bar["met"] else "EVAL BAR NOT MET  NO-GO") + why)
         code = 0 if bar["met"] else 1
     if baseline is not None:
-        c = compare(baseline, build_document(llm, results, bar, ("", None), started_at, wanted))
+        c = compare(baseline, build_document(llm, results, bar, ("", None), started_at, wanted, cloud))
         print(format_compare(c))
         code = code or (0 if c["ok"] else 1)
     if not args.bar and baseline is None:
