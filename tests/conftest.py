@@ -61,6 +61,11 @@ os.environ.setdefault("CODEC_USER_SKILLS_DIR", tempfile.mkdtemp(prefix="codec-te
 os.environ.setdefault("CODEC_NOTES_DIR", tempfile.mkdtemp(prefix="codec-test-notes-"))
 # P-017: the bridges' main() loops write a health beat a round (codec_health); keep them off ~/.codec/health.
 os.environ.setdefault("CODEC_HEALTH_DIR", tempfile.mkdtemp(prefix="codec-test-health-"))
+# R-03: a licence key read from config.json moves to the Keychain and the field is blanked.
+# Some tests (/version, licence checks) read the owner's live config.json; with the move on, one would
+# copy the live key into the test Keychain and blank the live file. Off for the suite;
+# tests/test_license_key_keychain.py turns it on with config files under tmp_path.
+os.environ["LICENSE_KEY_MIGRATION_ENABLED"] = "false"
 
 
 def _isolate_audit_log() -> None:

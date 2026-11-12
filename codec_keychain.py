@@ -110,6 +110,8 @@ KEY_GEMINI_API_KEY = "gemini_api_key"
 KEY_PEXELS_API_KEY = "pexels_api_key"
 KEY_SERPER_API_KEY = "serper_api_key"
 KEY_TELEGRAM_BOT_TOKEN = "telegram_bot_token"
+# R-03 — the paid app's licence key (was config.json:ava.license_key)
+KEY_LICENSE_KEY = "license_key"
 
 
 # ── Backend selection ────────────────────────────────────────────────────────

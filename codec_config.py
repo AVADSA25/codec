@@ -356,6 +356,100 @@ def get_telegram_bot_token() -> str:
     return v or os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 
+# ── R-03: the paid app's licence key (ava.license_key) ────────────────────────
+#
+# Same story as PR-2B-2, with two differences (docs/LICENSE-KEY-KEYCHAIN-DESIGN.md):
+# every reader reads config.json fresh with its own CONFIG_PATH, so the getter
+# takes the caller's config and path; and the buyer's installer writes the key
+# into config.json on every run, so a key found there is newer than the stored one.
+
+class _LicenseKeyUnchanged(Exception):
+    """Raised inside update_config's change function so nothing is written."""
+
+
+def _ava_license_field(conf) -> str:
+    ava = conf.get("ava") if isinstance(conf, dict) else None
+    value = ava.get("license_key", "") if isinstance(ava, dict) else ""
+    return value if isinstance(value, str) else ""
+
+
+def _license_key_on_disk(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return _ava_license_field(json.load(f))
+    except (OSError, ValueError):
+        return ""
+
+
+def _blank_license_key_on_disk(path: str, value: str) -> bool:
+    """Blank ava.license_key in the file at `path` while it still holds `value`.
+    Every other key is kept. True when the field was blanked."""
+    def _change(data):
+        ava = data.get("ava")
+        if not isinstance(ava, dict) or ava.get("license_key") != value:
+            raise _LicenseKeyUnchanged
+        ava["license_key"] = ""
+    try:
+        update_config(_change, path=path)
+    except _LicenseKeyUnchanged:
+        return False
+    return True
+
+
+def _move_license_key(conf: dict, path: str, plaintext: str) -> str:
+    """Move a licence key found in config.json into the Keychain, then blank the field.
+    Returns the key. Nothing is stored or written unless the file holds this value."""
+    try:
+        import codec_keychain as kc
+    except Exception:
+        return plaintext
+    if _license_key_on_disk(path) != plaintext:
+        return plaintext  # not this file's value (a test's dict, or an old copy): store nothing
+
+    def _blank():
+        if _blank_license_key_on_disk(path, plaintext):
+            for d in (conf, cfg):
+                if _ava_license_field(d) == plaintext:
+                    d["ava"]["license_key"] = ""  # in-process copies match the file
+
+    stored = kc.keychain_get(kc.KEY_LICENSE_KEY)
+    try:
+        if stored is None:
+            kc.migrate_from_plaintext(kc.KEY_LICENSE_KEY, plaintext, _blank)
+        elif stored == plaintext:
+            _blank()  # already stored; an old copy wrote the field back
+        elif kc.keychain_set(kc.KEY_LICENSE_KEY, plaintext):
+            _blank()  # a newer key (the installer wrote one): it replaces the stored one
+    except Exception as e:
+        print(f"[CODEC] Warning: licence key move failed: {type(e).__name__}")
+    _invalidate_secret_cache("license_key")
+    return plaintext
+
+
+def get_license_key(conf: dict | None = None, path=None) -> str:
+    """The paid app's licence key. Keychain (ai.avadigital.codec.license_key) ->
+    config.json ava.license_key (moved to the Keychain on first read, the field
+    blanked, sibling keys kept) -> CODEC_LICENSE_KEY env. `conf` and `path` are the
+    config a caller just read and the file it came from (default: this module's
+    cfg and CONFIG_PATH). LICENSE_KEY_MIGRATION_ENABLED=false moves nothing."""
+    conf = cfg if conf is None else conf
+    plaintext = _ava_license_field(conf)
+    if plaintext:
+        if os.environ.get("LICENSE_KEY_MIGRATION_ENABLED", "true").lower() == "false":
+            return plaintext
+        return _move_license_key(conf, str(path or CONFIG_PATH), plaintext)
+
+    def _read():
+        try:
+            from codec_keychain import KEY_LICENSE_KEY, keychain_get
+        except Exception:
+            return ""
+        return keychain_get(KEY_LICENSE_KEY)
+
+    v = _cached_secret("license_key", _read)
+    return v or os.environ.get("CODEC_LICENSE_KEY", "")
+
+
 # Module-level constants kept for back-compat with callers that import them
 # as `from codec_config import LLM_API_KEY`. Eager-evaluated at import time;
 # the getter functions above are the canonical accessors for runtime

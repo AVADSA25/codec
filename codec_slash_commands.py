@@ -253,7 +253,8 @@ def _ava_license_status(cfg: dict) -> str:
     ava = cfg.get("ava") or {}
     if not ava.get("enabled"):
         return "(disabled)"
-    key = ava.get("license_key", "")
+    import codec_config  # R-03: the key is in the Keychain; one left in the file moves there
+    key = codec_config.get_license_key(cfg, CONFIG_PATH)
     if not key:
         return "(no key)"
     # Decode JWT payload to show tier+expiry without verification
@@ -335,8 +336,7 @@ def _cmd_who(args: list[str]) -> str:
         f"## CODEC identity\n\n"
         f"- Agent name: **{cfg.get('agent_name', 'CODEC')}**\n"
         f"- Nickname: **{cfg.get('agent_nickname', '(none)')}**\n"
-        f"- Wake phrases: {', '.join(f'`{p}`' for p in cfg.get('wake_phrases', []))}\n"
-        f"- License email: **{(cfg.get('ava') or {}).get('license_key', 'n/a')[:16]}…**"
+        f"- Wake phrases: {', '.join(f'`{p}`' for p in cfg.get('wake_phrases', []))}"
     )
 
 

@@ -180,8 +180,10 @@ def set_provider(mode: str, *, model: str = "", base_url: str = "",
         cfg["llm_model"] = model or ava.get("default_cloud_model") or AVA_DEFAULT_MODEL
         cfg["llm_provider"] = "ava"
         # The proxy is authorised by the licence key, so THAT is the bearer the
-        # chat path must send. Put it where the chat path looks.
-        _store_key(ava.get("license_key", ""))
+        # chat path must send. Put it where the chat path looks. The key itself is
+        # in the Keychain (R-03); one still in this file moves there now and the
+        # field is blanked in `cfg` too, so the save below does not write it back.
+        _store_key(_license_key(cfg))
     else:  # custom
         if not base_url:
             return {"ok": False, "error": "a base URL is required"}
@@ -204,6 +206,13 @@ def set_provider(mode: str, *, model: str = "", base_url: str = "",
             pass
     return {"ok": True, "provider": mode,
             "model": cfg.get("llm_model", ""), "base_url": cfg.get("llm_base_url", "")}
+
+
+def _license_key(cfg: Dict[str, Any]) -> str:
+    """The licence key: Keychain, or ava.license_key in this file, moved to the
+    Keychain on first read (codec_config.get_license_key, R-03)."""
+    import codec_config
+    return codec_config.get_license_key(cfg, CONFIG_PATH)
 
 
 def _store_key(key: str) -> None:
@@ -363,7 +372,7 @@ def status() -> Dict[str, Any]:
         "verified_at": cfg.get("llm_verified_at", ""),
         "local_models": discover_local_models(),
         "bundled_model": BUNDLED_LOCAL_MODEL,
-        "has_license": bool((cfg.get("ava") or {}).get("license_key")),
+        "has_license": bool(_license_key(cfg)),
     }
 
 

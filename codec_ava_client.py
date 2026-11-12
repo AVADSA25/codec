@@ -10,7 +10,7 @@ Config lives under `ava:` in ~/.codec/config.json:
   "ava": {
     "enabled": true,
     "proxy_url": "https://ava-proxy.lucyvpa.com",
-    "license_key": "eyJhbGci...",
+    "license_key": "",   (R-03: kept in the Keychain; a key written here moves there on first read)
     "default_cloud_model": "gemini-2.5-flash-lite",
     "available_cloud_models": [ ... ]
   }
@@ -63,10 +63,11 @@ def load_config() -> AvaConfig | None:
     ava = data.get("ava")
     if not ava or not isinstance(ava, dict):
         return None
+    import codec_config  # R-03: the key is in the Keychain; a key in the file moves there
     return AvaConfig(
         enabled=bool(ava.get("enabled", False)),
         proxy_url=(ava.get("proxy_url") or "").rstrip("/"),
-        license_key=ava.get("license_key", ""),
+        license_key=codec_config.get_license_key(data, CONFIG_PATH),
         default_cloud_model=ava.get("default_cloud_model", "gemini-2.5-flash-lite"),
         available_cloud_models=list(ava.get("available_cloud_models", [])),
     )
@@ -280,7 +281,7 @@ if __name__ == "__main__":
     if not cfg:
         print("❌ no ava block in ~/.codec/config.json"); raise SystemExit(1)
     print(f"  proxy: {cfg.proxy_url}")
-    print(f"  license: {cfg.license_key[:30]}…")
+    print(f"  license: {'set' if cfg.license_key else 'missing'}")
     print(f"  default model: {cfg.default_cloud_model}")
 
     print("\nChecking license status…")
