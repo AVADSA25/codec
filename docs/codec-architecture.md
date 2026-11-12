@@ -532,7 +532,7 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 
 `codec_config._HTTP_ONLY_BLOCKED`: `standing_rules`, `create_skill` — also never reachable over HTTP MCP, but kept out of `_HTTP_BLOCKED` so stdio MCP and local chat are unchanged (`_HTTP_BLOCKED` membership marks a skill destructive on every path).
 
-`codec_config._HTTP_CONSENT_REQUIRED`: `delegate`, `scheduler`, `chrome_fill`, `chrome_click_cdp`, `mouse_control`, `clipboard`, `screenshot_text` — reachable over HTTP MCP only after the owner approves each call in the PWA (`codec_consent.mcp_http_consent_ok` → `codec_ask_user` strict consent, 120s timeout). Stdio unchanged.
+`codec_config._HTTP_CONSENT_REQUIRED`: `delegate`, `scheduler`, `chrome_fill`, `chrome_click_cdp`, `mouse_control`, `clipboard`, `screenshot_text`, `memory_save`, `thread_note` (the last two since 12 Nov 2026, board card E-01), plus the `chrome_*` tools except `chrome_scroll` — reachable over HTTP MCP only after the owner approves each call in the PWA (`codec_consent.mcp_http_consent_ok` → `codec_ask_user` strict consent, 120s timeout). Stdio unchanged.
 
 ### Config schema versioning (A-15)
 - `~/.codec/config.json` carries a `config_version` stamp; `codec_config.CONFIG_SCHEMA_VERSION` is the current generation (currently **1**).
