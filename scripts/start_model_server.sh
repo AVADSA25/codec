@@ -27,12 +27,41 @@ DEFAULT_PORT=8083
 # must reach it.
 HOST="${CODEC_MODEL_HOST:-127.0.0.1}"
 
+# Never write .pyc into a signed bundle; it invalidates the code signature.
+# Set before the first Python run (the config read below).
+export PYTHONDONTWRITEBYTECODE=1
+
+# Interpreter resolution, in order:
+#   1. CODEC_MODEL_VENV        — explicit override (dev / CI)
+#   2. the app's bundled Python — when this script ships inside the .app at
+#      Contents/Resources/app/scripts/, the interpreter with mlx_vlm is at
+#      Contents/Resources/python/bin/python3. A buyer's Mac has nothing else.
+#   3. ~/codec-qwen38-venv     — the developer machine
+#   4. system python3          — last resort, will almost certainly lack mlx_vlm
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BUNDLED_PY="$HERE/../../python/bin/python3"
+PY=""
+if [ -n "${CODEC_MODEL_VENV:-}" ] && [ -x "$CODEC_MODEL_VENV/bin/python" ]; then
+  PY="$CODEC_MODEL_VENV/bin/python"
+elif [ -x "$BUNDLED_PY" ]; then
+  PY="$BUNDLED_PY"
+elif [ -x "$VENV/bin/python" ]; then
+  PY="$VENV/bin/python"
+else
+  PY="$(command -v python3)"
+  echo "start_model_server: no venv and no bundled interpreter — using $PY" >&2
+fi
+
 # Model and port both come from config.json so there is ONE source of truth.
+# Read with the interpreter chosen above, never a bare python3: on a Mac
+# without the Command Line Tools /usr/bin/python3 is only Apple's install stub,
+# which fails, and the server would then load DEFAULT_MODEL (the 35B), a model
+# a buyer's Mac does not have.
 # Any failure here (missing file, bad JSON, no key) falls through to the
 # defaults rather than refusing to start — a mute CODEC is the worse outcome.
 read -r MODEL PORT <<<"$(
   CONFIG="$CONFIG" DEFAULT_MODEL="$DEFAULT_MODEL" DEFAULT_PORT="$DEFAULT_PORT" \
-  python3 - <<'PY' 2>/dev/null || echo "$DEFAULT_MODEL $DEFAULT_PORT"
+  "$PY" - <<'PY' 2>/dev/null || echo "$DEFAULT_MODEL $DEFAULT_PORT"
 import json, os
 from urllib.parse import urlparse
 cfg = {}
@@ -63,29 +92,6 @@ PY
 [ -n "${MODEL:-}" ] || MODEL="$DEFAULT_MODEL"
 [ -n "${PORT:-}" ] || PORT="$DEFAULT_PORT"
 
-# Interpreter resolution, in order:
-#   1. CODEC_MODEL_VENV        — explicit override (dev / CI)
-#   2. the app's bundled Python — when this script ships inside the .app at
-#      Contents/Resources/app/scripts/, the interpreter with mlx_vlm is at
-#      Contents/Resources/python/bin/python3. A buyer's Mac has nothing else.
-#   3. ~/codec-qwen38-venv     — the developer machine
-#   4. system python3          — last resort, will almost certainly lack mlx_vlm
-HERE="$(cd "$(dirname "$0")" && pwd)"
-BUNDLED_PY="$HERE/../../python/bin/python3"
-PY=""
-if [ -n "${CODEC_MODEL_VENV:-}" ] && [ -x "$CODEC_MODEL_VENV/bin/python" ]; then
-  PY="$CODEC_MODEL_VENV/bin/python"
-elif [ -x "$BUNDLED_PY" ]; then
-  PY="$BUNDLED_PY"
-elif [ -x "$VENV/bin/python" ]; then
-  PY="$VENV/bin/python"
-else
-  PY="$(command -v python3)"
-  echo "start_model_server: no venv and no bundled interpreter — using $PY" >&2
-fi
-
-# Never write .pyc into a signed bundle; it invalidates the code signature.
-export PYTHONDONTWRITEBYTECODE=1
 echo "start_model_server: python=$PY model=$MODEL port=$PORT host=$HOST" >&2
 [ -z "${CODEC_LAUNCHER_DRY_RUN:-}" ] || exit 0   # tests: print the choice, start nothing
 exec "$PY" -m mlx_vlm.server --model "$MODEL" --port "$PORT" --host "$HOST"
