@@ -2183,10 +2183,14 @@ class Run:
         site = self._map() + f"\n\n(This is helper step {k} of {budget}." + (
             " It is the last one: use finish now.)" if k >= budget else ")")
         modes = ["full" if i >= len(turns) - SUB_FULL else "short" for i in range(len(turns))]
+        seed = self._seed(self._helper_tools())
         shrink = None
         while True:
             msgs = [system]
             users = [first]
+            if seed:                                                    # P-073, as in _messages
+                msgs += [{"role": "user", "content": first}, {"role": "assistant", "content": proto.SEED_REPLY}]
+                users.append(seed)
             for i, t in enumerate(turns):
                 msgs.append({"role": "user", "content": users[-1]})
                 msgs.append({"role": "assistant", "content": t.assistant if modes[i] == "full" else t.assistant_short})
@@ -2365,6 +2369,15 @@ class Run:
             parts.append("Work in the project folder. Start with the smallest step that moves toward the goal.")
         return "\n\n".join(parts)
 
+    def _seed(self, tools) -> str:
+        """The result of the step a cloud run's prompt starts with (P-073, docs/VIBE-AGENT-CLOUD-FORMAT-DESIGN.md), or ""
+        for a local run or one without list_files. The engine lists the project's files and shows that step as the
+        model's own reply in the plain tool format (proto.SEED_REPLY): MiMo V2.6 wrote its own tool-call tags until it
+        had seen the format used once. Result 0 is never a step: read_output cannot ask for it."""
+        if self.llm.kind != "cloud" or "list_files" not in tools:
+            return ""
+        return proto.wrap_result(0, "list_files", "", _for_model(_t_list_files(self, "").text))
+
     def _map(self) -> str:
         files = [f for f in vp.list_files(self.pid) if not vp.looks_secret(f["path"])]
         if not files:
@@ -2521,10 +2534,14 @@ class Run:
             if extra:
                 site += "\n\n" + extra
         first = self._first_user() + self._summary_text()             # the goal first, unchanged
+        seed = self._seed(self.allowed)
         shrink = None
         while True:
             msgs = [system]
             users = [first]
+            if seed:                                                    # P-073: one step in the plain format first
+                msgs += [{"role": "user", "content": first}, {"role": "assistant", "content": proto.SEED_REPLY}]
+                users.append(seed)
             for i, t in enumerate(turns):
                 msgs.append({"role": "user", "content": users[-1]})
                 msgs.append({"role": "assistant", "content": t.assistant if modes[i] == "full" else t.assistant_short})
