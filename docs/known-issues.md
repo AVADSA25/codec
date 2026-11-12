@@ -4,6 +4,24 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
+## Chat and wake word: a trigger phrase inside a long statement still fires a skill (found 2026-11-12, voice skill match fix)
+
+| field | value |
+|---|---|
+| **where** | `routes/chat.py:_try_skill` (an allowlisted match is honoured even when `_is_conversational` says conversation) and `codec._dispatch_inner` -> `codec_dispatch.check_skill` (no statement check at all) |
+| **what's wrong** | A long chat message or wake-word sentence that only mentions a trigger phrase ("search for", "remind me to", "timer for") runs that skill. The voice call stopped doing this in docs/VOICE-SKILL-MATCH-DESIGN.md (a phrase counts only in a sentence of 15 words or fewer, or when it opens a longer one); the bare google_tasks "to do" / "todo" triggers that caused the 11 Nov call are gone on every path. |
+| **status** | deferred-not-fixed: the chat rule is deliberate for questions such as "what was I doing?" (observer_recall), and the wake word has its own consent gate; changing either is its own decision. |
+| **revisit when** | The next change to `_try_skill` or `check_skill`, or if a chat or wake-word false trigger is reported. |
+
+## Tests that run a skill write to the owner's live overlay file (found 2026-11-12, voice skill match fix)
+
+| field | value |
+|---|---|
+| **where** | `codec_dispatch.run_skill` writes `~/.codec/overlay_events.jsonl` through a hard-coded `os.path.expanduser` path; `tests/conftest.py` redirects `codec_overlays._EVENTS` but not this one. The licence gate at the top of `run_skill` may also refresh `~/.codec/license_pubkey.pem`. |
+| **what's wrong** | Suites that call the real `run_skill` (for example `tests/test_voice_wake_consent.py`, `test_skill_loader_unification.py`, chat skill tests) append `skill_fired` lines to the owner's live file, which the Swift overlay reads. Seen on 2026-11-12: calculator and terminal lines after a test run. The heartbeat trims the file to 100 lines, so nothing grows. |
+| **status** | deferred-not-fixed: the fix is a module-level path in `codec_dispatch` that conftest can point at a temp file, plus the same for the licence cache; its own small PR. |
+| **revisit when** | The next change to `tests/conftest.py` live-state guards (P-009). |
+
 ## Vibe agent commands inherit bash start-up variables (found 2026-11-11, P-048 build)
 
 | field | value |
