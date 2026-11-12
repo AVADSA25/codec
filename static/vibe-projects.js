@@ -7,7 +7,12 @@
    calls the page's globals (ed, addMsg, addOut, esc, detectLang) only when it runs.
 
    Nothing here runs a file. Every file name and label is put on the page with
-   textContent, never as HTML. */
+   textContent, never as HTML.
+
+   An attached folder (P-050, docs/VIBE-ATTACH-FOLDER-DESIGN.md) is opened by the path the owner types at this Mac.
+   Its files are listed by name and opened one by one from the Files drawer (a repo is too big to load whole);
+   Revert and the agent card's undo put back only the files Vibe's AI changed; a whole-folder Restore says first how
+   many other files it changes; deleting it detaches it and leaves the folder as it is. */
 (function () {
   'use strict';
 
@@ -20,7 +25,10 @@
   // files[path] = { model, base, fresh }   base = what is on disk, fresh = made during this answer
   var P = { id: null, title: '', files: {}, active: null, canUndo: false, disabled: false,
     scratch: null, live: null, lastAi: null, saveTimer: null, tabTimer: null,
-    run: null, agent: false, changes: null };   // run: what is live on this Mac { mode, url, since, timer, ready }
+    run: null, agent: false, changes: null,     // run: what is live on this Mac { mode, url, since, timer, ready }
+    attached: null, list: [], locked: false };  // an attached folder (P-050): its state, its listed files, read-only
+  var NAMES_SHOWN = 300;          // file names of an attached folder told to the model at most
+  var FILES_SHOWN = 500;          // rows of the Files drawer at most
   // Showing or running a project works only on this Mac (the server says no to anything else).
   var ON_MAC = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
@@ -46,6 +54,59 @@
   }
   function base(path) { return '/api/vibe/projects/' + P.id + path; }
   function fileUrl(path) { return base('/file?path=' + encodeURIComponent(path)); }
+
+  // ── an attached folder: plain functions (tested in Node, tests/test_vibe_attach_page.py) ──
+  function attachRequest(path, notes) {
+    var p = String(path == null ? '' : path).trim();
+    if (!p) return { error: 'Type the folder\'s path, for example ~/Projects/my-app.' };
+    if (p.charAt(0) !== '/' && p.charAt(0) !== '~') return { error: 'Type the full path, starting with / or ~/.' };
+    return { body: { path: p, folder_notes: notes === true } };
+  }
+
+  function attachedState(att) {
+    if (!att) return null;
+    var where = String(att.path || '');
+    if (att.missing) return { kind: 'missing', locked: true, text: String(att.missing) };
+    if (att.read_only) return { kind: 'readonly', locked: true, text: where + ': ' + String(att.read_only) };
+    return { kind: 'attached', locked: false, text: 'Attached folder: ' + where +
+      (att.folder_notes ? ' (its AGENTS.md is used as notes)' : '') };
+  }
+
+  function filterList(files, query, cap) {
+    var q = String(query || '').trim().toLowerCase();
+    var all = (files || []).map(function (f) { return typeof f === 'string' ? f : f.path; })
+      .filter(function (p) { return !q || p.toLowerCase().indexOf(q) !== -1; });
+    return { shown: all.slice(0, cap), more: Math.max(0, all.length - cap) };
+  }
+
+  function namesLine(paths, cap) {
+    var shown = paths.slice(0, cap);
+    return shown.join(', ') + (paths.length > cap ? ', ... and ' + (paths.length - cap) + ' more' : '');
+  }
+
+  function restoreAsk(cp, pv) {
+    var label = cp.label || cp.id;
+    if (!pv || !pv.attached) {
+      return { title: 'Restore this version?', message: 'Your files go back to "' + label +
+        '". The files as they are now are saved as a version first, so nothing is lost.', confirm: 'Restore' };
+    }
+    var n = pv.files || 0, other = pv.other || 0;
+    return { title: 'Restore the whole folder?', confirm: 'Restore', danger: other > 0,
+      message: 'The whole folder goes back to "' + label + '": ' + n + (n === 1 ? ' file changes' : ' files change') +
+        (other ? ', and ' + other + (other === 1 ? ' of them is a file' : ' of them are files') +
+          ' Vibe\'s AI did not change (your own work, git, a build)' : '') +
+        '. The files as they are now are saved as a version first.' };
+  }
+
+  function detachAsk() {
+    return { title: 'Detach this folder?', confirm: 'Detach',
+      message: 'Vibe forgets this folder: its versions, run logs and allowed commands go to the trash folder, and so ' +
+        'does this chat. Nothing in the folder is moved, changed or deleted.' };
+  }
+
+  function restoreBody(cid, attached) {
+    return attached ? { checkpoint: cid, scope: 'ai' } : { checkpoint: cid };
+  }
 
   // ── editor models ───────────────────────────────────────────────────────
   function makeModel(path, text) {
@@ -78,6 +139,9 @@
 
   function activate(path) {
     var f = P.files[path];
+    if (!f && P.attached && listed(path)) {        // an attached folder's file is loaded when it is first opened
+      return loadFiles([path]).then(function () { if (P.files[path]) activate(path); });
+    }
     if (!f || !window.ed) return;
     P.active = path;
     if (window.ed.getModel() !== f.model) window.ed.setModel(f.model);
@@ -107,9 +171,10 @@
       b.addEventListener('click', function () { activate(p); });
       bar.appendChild(b);
     });
-    var undo = $('undoBtn'), ver = $('verBtn'), runb = $('runBtn');
-    if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo || P.agent; }
+    var undo = $('undoBtn'), ver = $('verBtn'), runb = $('runBtn'), fb = $('filesBtn');
+    if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo || P.agent || P.locked; }
     if (ver) ver.hidden = !P.id;
+    if (fb) fb.hidden = !(P.id && P.attached);
     if (runb) runb.hidden = !(P.id && ON_MAC);
     var sv = $('saveLbl'), svb = $('saveBtn');      // in a project, Save keeps the files as a version
     if (sv) sv.textContent = P.id ? 'Save version' : 'Save';
@@ -139,6 +204,7 @@
 
   function flush(keepalive) {
     if (!P.id || P.agent) return Promise.resolve();      // while the agent works the folder is its own
+    if (P.locked) return Promise.resolve();              // an attached folder past its limits, or missing: read-only
     var id = P.id;
     var jobs = dirtyPaths().map(function (p) {
       var f = P.files[p], text = f.model.getValue();
@@ -170,6 +236,9 @@
     if (Object.keys(P.files).length && window.ed && window.monaco) window.ed.setModel(scratch());
     dispose();
     P.id = null; P.title = ''; P.active = null; P.canUndo = false; P.live = null; P.lastAi = null;
+    P.attached = null; P.list = []; P.locked = false;
+    closeFiles();
+    showAttached();
     if (window.VibeAgent) window.VibeAgent.leave();
     setBusy(false);
     var fn = $('fn'), lg = $('lg');
@@ -187,7 +256,10 @@
     return api('GET', '/api/vibe/projects/' + id).then(function (info) {
       detach();
       P.id = id; P.title = info.title || id; P.canUndo = !!info.can_undo;
-      return loadFiles(info.files.map(function (f) { return f.path; })).then(function () {
+      takeAttached(info);
+      // An attached folder opens with one file at most; the Files drawer opens the others.
+      var want = P.attached ? order(P.list.map(function (f) { return f.path; })).slice(0, 1) : info.files.map(function (f) { return f.path; });
+      return loadFiles(want).then(function () {
         var first = pickFirst(Object.keys(P.files));
         if (first) activate(first); else renderTabs();
         refreshPreview();
@@ -226,10 +298,35 @@
     });
   }
 
+  // An attached folder's state from project info: its listed files, read-only or missing, the banner.
+  function takeAttached(info) {
+    P.attached = info && info.attached ? info.attached : null;
+    P.list = P.attached && Array.isArray(info.files) ? info.files : [];
+    var st = attachedState(P.attached);
+    P.locked = !!(st && st.locked);
+    if (window.ed && window.ed.updateOptions) window.ed.updateOptions({ readOnly: P.agent || P.locked });
+    showAttached();
+  }
+
+  function listed(path) {
+    return P.list.some(function (f) { return f.path === path; });
+  }
+
+  function isAttached(id) { return !!(P.attached && P.id === id); }
+
+  function showAttached() {
+    var b = $('attBanner'), t = $('attText');
+    var st = attachedState(P.id ? P.attached : null);
+    if (b) { b.hidden = !st; b.className = 'abn' + (st && st.locked ? ' abn-warn' : ''); }
+    if (t) t.textContent = st ? st.text : '';
+  }
+
   // After an undo or a restore: make the editor match the folder again.
   function reload() {
     return api('GET', '/api/vibe/projects/' + P.id).then(function (info) {
+      takeAttached(info);
       var want = info.files.map(function (f) { return f.path; });
+      if (P.attached) want = want.filter(function (p) { return !!P.files[p]; });     // only the files already open
       Object.keys(P.files).forEach(function (p) {
         if (want.indexOf(p) === -1) {
           if (window.ed && window.ed.getModel() === P.files[p].model) window.ed.setModel(scratch());
@@ -296,7 +393,9 @@
       return meaningful(editorText || '') ? '\n\n[CURRENT CODE]\n```\n' + editorText + '\n```' : '';
     }
     paths = [P.active].concat(paths.filter(function (p) { return p !== P.active; })).filter(Boolean);
-    var used = 0, parts = ['\n\n[PROJECT FILES]\nOpen file: ' + P.active + '\nAll files: ' + paths.join(', ')];
+    var names = P.attached ? namesLine(order(P.list.map(function (f) { return f.path; })), NAMES_SHOWN) +
+      '\nOpen in the editor (shown below): ' + paths.join(', ') : paths.join(', ');
+    var used = 0, parts = ['\n\n[PROJECT FILES]\nOpen file: ' + P.active + '\nAll files: ' + names];
     paths.forEach(function (p) {
       var text = P.files[p].model.getValue();
       if (used + text.length > CONTEXT_CHARS) { parts.push('(' + p + ' is not shown: too long for this message)'); return; }
@@ -380,6 +479,7 @@
         blocks.forEach(function (b) {
           var f = P.files[b.path];
           if (f) { setText(f.model, b.code); f.base = b.code; f.fresh = false; }
+          if (P.attached && !listed(b.path)) P.list.push({ path: b.path });      // a new file of an attached folder
         });
         if (res.checkpoint) { P.canUndo = true; P.lastAi = res.checkpoint.id; }
         renderTabs();
@@ -405,7 +505,7 @@
       chip.title = 'Open ' + c.path;
       chip.appendChild(el('span', 'chip-n', c.path));
       chip.appendChild(el('span', 'chip-s', c.status === 'added' ? 'new' : '+' + c.added + ' −' + c.removed));
-      chip.addEventListener('click', function () { if (P.files[c.path]) activate(c.path); });
+      chip.addEventListener('click', function () { if (P.files[c.path] || (P.attached && listed(c.path))) activate(c.path); });
       chips.appendChild(chip);
     });
     if (!(res.changed || []).length) chips.appendChild(el('span', 'chip-none', 'No file changed'));
@@ -466,6 +566,7 @@
     if (names.length) why.push('in ' + names.join(', '));
     if (u.large) why.push(u.large + ' over 1 MB');
     if (u.links) why.push(u.links + (u.links === 1 ? ' link' : ' links'));
+    if (u.secrets) why.push(u.secrets + (u.secrets === 1 ? ' secret-looking file' : ' secret-looking files') + ', never copied');
     return (u.capped ? 'More than ' : '') + u.count + (u.count === 1 ? ' file is' : ' files are') + ' not versioned' +
       (why.length ? ' (' + why.join(', ') + ')' : '') + '. Versions, Restore and Copy leave them as they are.';
   }
@@ -505,14 +606,16 @@
 
   function revertTo(beforeId, cpId, btn) {
     var later = P.lastAi && P.lastAi !== cpId;
+    var att = !!P.attached;
     var ask = window.CodecShell && window.CodecShell.ask
       ? window.CodecShell.ask({ title: 'Go back to before this change?',
-          message: (later ? 'Later changes are removed from your files too. ' : '') + 'Every version stays in Versions, so you can come back.',
+          message: (att ? 'Only the files Vibe\'s AI changed go back; your own changes to other files stay. ' :
+            later ? 'Later changes are removed from your files too. ' : '') + 'Every version stays in Versions, so you can come back.',
           confirm: 'Go back' })
       : Promise.resolve(true);
     return Promise.resolve(ask).then(function (ok) {
       if (!ok) return;
-      return flush().then(function () { return api('POST', base('/restore'), { checkpoint: beforeId }); })
+      return flush().then(function () { return api('POST', base('/restore'), restoreBody(beforeId, att)); })
         .then(reload).then(function () { toast('Went back to before that change'); if (btn) btn.disabled = true; })
         .catch(function (e) { toast('Could not go back: ' + e.message); });
     });
@@ -553,7 +656,7 @@
     P.changes = null;
     return flush().catch(function () {}).then(function () { return api('GET', base('/checkpoints?limit=200')); }).then(function (cps) {
       listEl.textContent = '';
-      if (!cps.length) { listEl.appendChild(el('div', 'vmsg', 'No versions yet.')); return; }
+      if (!cps.length) { listEl.appendChild(el('div', 'vmsg', P.attached ? 'Versions start with your first change.' : 'No versions yet.')); return; }
       listEl.appendChild(changesRow(cps[0]));
       cps.forEach(function (cp, i) { listEl.appendChild(versionRow(cp, i === 0)); });
       var id = P.id;
@@ -668,11 +771,14 @@
   }
 
   function restoreTo(cp, btn) {
-    var ask = window.CodecShell && window.CodecShell.ask
-      ? window.CodecShell.ask({ title: 'Restore this version?', message: 'Your files go back to "' + (cp.label || cp.id) +
-          '". The files as they are now are saved as a version first, so nothing is lost.', confirm: 'Restore' })
-      : Promise.resolve(true);
-    return Promise.resolve(ask).then(function (ok) {
+    // An attached folder: how many files a whole-folder restore changes, asked first (R-13).
+    var pv = P.attached ? flush().catch(function () {}).then(function () {
+      return api('GET', base('/restore/preview?checkpoint=' + encodeURIComponent(cp.id)));
+    }) : Promise.resolve(null);
+    return pv.then(function (d) {
+      var q = restoreAsk(cp, d);
+      return window.CodecShell && window.CodecShell.ask ? window.CodecShell.ask(q) : true;
+    }, function (e) { toast('Could not check the folder: ' + e.message); return false; }).then(function (ok) {
       if (!ok) return;
       btn.disabled = true;
       return flush().then(function () { return api('POST', base('/restore'), { checkpoint: cp.id }); })
@@ -809,6 +915,7 @@
     if (!P.id) return;
     var d = $('rd');
     if (!d) return;
+    var an = $('rdAttNote'); if (an) an.hidden = !P.attached;      // a command runs the folder's own scripts
     // The chips after an agent run (P-069) pass { mode: 'serve' | 'run', command } to open it on their option.
     var opts = arguments[0] && typeof arguments[0] === 'object' && typeof arguments[0].mode === 'string' ? arguments[0] : {};
     var s = suggestCommand();
@@ -851,14 +958,88 @@
   // While an agent run holds the project the editor can be looked at but not typed in.
   function setBusy(on) {
     P.agent = !!on;
-    if (window.ed && window.ed.updateOptions) window.ed.updateOptions({ readOnly: !!on });
+    if (window.ed && window.ed.updateOptions) window.ed.updateOptions({ readOnly: !!on || P.locked });
     var b = $('agentBanner'); if (b) b.hidden = !on;
     renderTabs();
   }
 
   function restoreId(cid) {
-    return flush().catch(function () {}).then(function () { return api('POST', base('/restore'), { checkpoint: cid }); }).then(reload);
+    var att = !!P.attached;      // an agent card's undo puts back only what Vibe's AI changed (R-13)
+    return flush().catch(function () {}).then(function () { return api('POST', base('/restore'), restoreBody(cid, att)); }).then(reload);
   }
+
+  // ── attaching a folder, its Files drawer, detaching it (P-050) ─────────
+  // The attach form sits in the Projects drawer (opened and closed with its button), so it needs no dialog of its own.
+  function attachDialog() {
+    var box = $('attachBox');
+    if (!box || !ON_MAC) return;
+    if (!box.hidden) { closeAttach(); return; }
+    $('adErr').textContent = '';
+    $('adNotes').checked = false;          // off by default (R-16)
+    box.hidden = false;
+    var b = $('attachBtn'); if (b) b.setAttribute('aria-expanded', 'true');
+    var inp = $('adPath'); if (inp) inp.focus();
+  }
+
+  function closeAttach() {
+    var box = $('attachBox'); if (box) box.hidden = true;
+    var b = $('attachBtn'); if (b) b.setAttribute('aria-expanded', 'false');
+  }
+
+  function attachGo() {
+    var err = $('adErr'), go = $('adGo');
+    var req = attachRequest($('adPath').value, $('adNotes').checked);
+    err.textContent = '';
+    if (req.error) { err.textContent = req.error; return Promise.resolve(); }
+    go.disabled = true;
+    return api('POST', '/api/vibe/projects/attach', req.body).then(function (info) {
+      closeAttach();
+      $('adPath').value = '';
+      if (typeof window.openAttached === 'function') return window.openAttached(info);
+      return open(info.id);
+    }).catch(function (e) { err.textContent = e.message; })
+      .then(function () { go.disabled = false; });
+  }
+
+  // The Files list opens above the editor (a panel, not a dialog): type part of a name, click a file to open it.
+  function filesDrawer() {
+    if (!P.id || !P.attached) return;
+    var d = $('fpick'); if (!d) return;
+    if (!d.hidden) { closeFiles(); return; }
+    var q = $('fdQ'); if (q) q.value = '';
+    renderFiles();
+    d.hidden = false;
+    var fb = $('filesBtn'); if (fb) fb.setAttribute('aria-expanded', 'true');
+    if (q) q.focus();
+  }
+
+  function renderFiles() {
+    var box = $('fdList'); if (!box) return;
+    var q = $('fdQ');
+    var got = filterList(order(P.list.map(function (f) { return f.path; })), q ? q.value : '', FILES_SHOWN);
+    box.textContent = '';
+    if (!got.shown.length) { box.appendChild(el('div', 'vmsg', P.list.length ? 'No file matches.' : 'No files.')); return; }
+    got.shown.forEach(function (p) {
+      var b = el('button', 'vfile vfile-open' + (P.files[p] ? ' sel' : ''), p);
+      b.type = 'button'; b.title = 'Open ' + p;
+      b.addEventListener('click', function () { closeFiles(); activate(p); });
+      box.appendChild(b);
+    });
+    if (got.more) box.appendChild(el('div', 'vmsg', got.more + ' more: type part of a name to find them.'));
+  }
+
+  function closeFiles() {
+    var d = $('fpick'); if (d) d.hidden = true;
+    var fb = $('filesBtn'); if (fb) fb.setAttribute('aria-expanded', 'false');
+  }
+
+  (function () {               // + Attach a folder is offered at this Mac only (the server says 403 elsewhere)
+    var ab = $('attachBtn'); if (ab) ab.hidden = !ON_MAC;
+    var inp = $('adPath');
+    if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); attachGo(); } });
+    var q = $('fdQ');
+    if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); closeFiles(); } });
+  })();
 
   // ── small hooks for the page ───────────────────────────────────────────
   // The page the inline preview shows: the open file when it is a page, else index.html.
@@ -895,6 +1076,8 @@
     detach: detach, undo: undo, versions: versions, closeVersions: closeVersions, messageNode: messageNode,
     previewSource: previewSource, setActiveText: setActiveText, previewPath: previewPath, fileText: fileText,
     setFileText: setFileText, saveVersion: saveVersion,
+    attachDialog: attachDialog, closeAttach: closeAttach, attachGo: attachGo, filesDrawer: filesDrawer,
+    filterFiles: renderFiles, closeFiles: closeFiles, isAttached: isAttached, detachAsk: detachAsk,
     savedTurnNode: savedTurnNode, forkFrom: forkFrom, unversionedText: unversionedText, leftOff: leftOff, setTitle: setTitle,
     runDialog: runDialog, closeRun: closeRun, runGo: runGo, stopLive: stopLive, liveActive: liveActive,
     liveReload: liveReload, reload: reload, activate: activate, restoreId: restoreId, setBusy: setBusy, diffNode: diffNode,
