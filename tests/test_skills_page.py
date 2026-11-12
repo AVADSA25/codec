@@ -110,8 +110,9 @@ def test_every_path_refuses_a_skill_that_is_off(sk, monkeypatch):
     assert "turned off" in out
     fake_reg = SimpleNamespace(load=lambda n: pytest.fail("loaded a skill that is off"))
     assert "turned off" in codec_agents._make_lazy_fn(fake_reg, "timer")("5 minutes")
-    voice = SimpleNamespace(skills={"timer": {"triggers": ["set a timer"]}}, _VOICE_SKIP_SKILLS=set(),
-                            _skill_registry=SimpleNamespace(load=lambda n: pytest.fail("voice loaded it")))
+    voice = SimpleNamespace(_VOICE_SKIP_SKILLS=set(),
+                            _skill_registry=SimpleNamespace(match_all_triggers=lambda t, **kw: ["timer"],
+                                                            load=lambda n: pytest.fail("voice loaded it")))
     assert codec_voice.VoicePipeline._match_skill(voice, "set a timer for 5 minutes") is None
     assert "timer" not in pickable_skills()
     mcp = (REPO / "codec_mcp.py").read_text(encoding="utf-8")

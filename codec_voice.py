@@ -573,6 +573,7 @@ class VoicePipeline:
         self._ws_alive = True
 
         self.skills = {}
+        self._skill_registry = None   # set by _load_skills; None means no skill fires
         self._http  = httpx.AsyncClient(timeout=120.0)
         # Which model answers this session: the pinned local one, or the cloud
         # model the picker is switched to (docs/CLOUD-FALLBACK-MODEL-DESIGN.md).
@@ -690,22 +691,28 @@ class VoicePipeline:
     _VOICE_SKIP_SKILLS = {"calculator", "app_switch", "brightness", "clipboard"}
 
     def _match_skill(self, text: str) -> Optional[dict]:
-        text_lower = text.lower().strip()
-        best_match, best_len = None, 0
+        """The skill a spoken turn asks for, or None for the model.
+
+        The chat's and the wake word's matching (codec_skill_registry: whole words,
+        custom_triggers.json), on trigger phrases of two words or more, and only
+        where the phrase reads as a command: anywhere in a sentence of at most
+        LONG_MESSAGE_WORDS words, or opening a longer one (codec_voice_filters.
+        command_parts). Before, any phrase anywhere fired: "to do" inside a long
+        opinion read the task list aloud (docs/VOICE-SKILL-MATCH-DESIGN.md)."""
+        reg = self._skill_registry
+        if reg is None:
+            return None
+        from codec_chat_pipeline import LONG_MESSAGE_WORDS
         from codec_skill_switches import is_off
-        for name, skill in self.skills.items():
-            if name in self._VOICE_SKIP_SKILLS or is_off(name):  # P3.6: switched off on the Skills page
-                continue
-            for trigger in skill["triggers"]:
-                if len(trigger.split()) < 2:
+        from codec_voice_filters import command_parts
+        for part, at_start in command_parts(text, LONG_MESSAGE_WORDS):
+            for name in reg.match_all_triggers(part, min_words=2, at_start=at_start):
+                if name in self._VOICE_SKIP_SKILLS or is_off(name):  # P3.6: switched off on the Skills page
                     continue
-                if trigger in text_lower and len(trigger) > best_len:
-                    best_len   = len(trigger)
-                    # Lazy-load: get run function from registry on match
-                    mod = self._skill_registry.load(name)
-                    if mod and hasattr(mod, "run"):
-                        best_match = {"name": name, "run": mod.run}
-        return best_match
+                mod = reg.load(name)  # lazy-load the run function on match
+                if mod and hasattr(mod, "run"):
+                    return {"name": name, "run": mod.run}
+        return None
 
     # ── VAD ───────────────────────────────────────────────────────────────
 
@@ -1114,7 +1121,7 @@ class VoicePipeline:
         its audio starts. False when the owner interrupted."""
         live = self._live_speech()
         if live is None:
-            await self.ws.send_json({"type": "transcript_chunk", "text": shown})
+            await self._safe_send_json({"type": "transcript_chunk", "text": shown})
             return await self._speak(spoken)
 
         async def show():
@@ -1662,6 +1669,10 @@ class VoicePipeline:
                             # User intentionally ending the call — no resume needed
                             self._disconnect_reason = "user"
                             log.info("User ended call intentionally")
+                            # The page has stopped its audio and closes the socket next:
+                            # a turn still running stops, and nothing more is sent.
+                            self._ws_alive = False
+                            self.interrupted.set()
                             await self.utterance_queue.put(None)
                             return
 
@@ -1746,6 +1757,8 @@ class VoicePipeline:
         A typed turn (a str from the Type box, P2.9) skips STT and is not echoed:
         the page already shows it.
         Checks self.interrupted before/after each TTS chunk.
+        Every send goes through _safe_send_json, so a turn still running when the
+        socket closes stops sending instead of raising out of the call (11 Nov 2026).
         """
         while True:
             try:
@@ -1753,13 +1766,15 @@ class VoicePipeline:
             except asyncio.TimeoutError:
                 continue
 
-            if utterance is None:  # disconnect signal
+            # Disconnect signal, or the socket is gone (closed by the page, or the
+            # owner ended the call): nothing more can be sent, so stop here.
+            if utterance is None or not self._ws_alive:
                 break
 
             self.interrupted.clear()
             self.processing = True
-            await self.ws.send_json({"type": "status", "status": "processing"})
-            await self.ws.send_json({"type": "hint", "text": "Speak to interrupt"})
+            await self._safe_send_json({"type": "status", "status": "processing"})
+            await self._safe_send_json({"type": "hint", "text": "Speak to interrupt"})
 
             try:
                 # 1. STT (a typed turn is already text)
@@ -1767,12 +1782,12 @@ class VoicePipeline:
                 user_text = utterance if typed else await self.transcribe(utterance)
                 if not user_text:
                     self.processing = False
-                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    await self._safe_send_json({"type": "status", "status": "listening"})
                     continue
 
                 log.info(f"User{' (typed)' if typed else ''}: {user_text}")
                 if not typed:
-                    await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
+                    await self._safe_send_json({"type": "transcript", "role": "user", "text": user_text})
 
                 # Phase 1 Step 3 §5.3 — single-question listen mode.
                 # If an AskUserQuestion is awaiting an answer for THIS
@@ -1786,7 +1801,7 @@ class VoicePipeline:
                     self._awaiting_ask_user = None  # consume the slot
                     await self._handle_voice_ask_user_answer(qid, user_text)
                     self.processing = False
-                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    await self._safe_send_json({"type": "status", "status": "listening"})
                     continue
 
                 # Otherwise: poll pending_questions.json for a question
@@ -1802,13 +1817,13 @@ class VoicePipeline:
                     self._awaiting_ask_user = _q.get("id")
                     self._announced_question_ids.add(_q.get("id"))
                     self.processing = False
-                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    await self._safe_send_json({"type": "status", "status": "listening"})
                     continue
 
                 # 1b. Screenshot + Vision — "look at my screen" etc.
                 if self._is_screen_request(user_text):
                     log.info("Screen analysis requested")
-                    await self.ws.send_json({"type": "status", "status": "analyzing_screen"})
+                    await self._safe_send_json({"type": "status", "status": "analyzing_screen"})
                     # Camera shutter sound + overlay for visual feedback
                     self._spawn_detached(["afplay", "/System/Library/Sounds/Tink.aiff"])
                     self._spawn_detached(
@@ -1825,7 +1840,7 @@ class VoicePipeline:
                     log.info(f"Screenshot taken: {'OK' if screenshot_b64 else 'FAILED'}")
                     if screenshot_b64:
                         self.interrupted.clear()
-                        await self.ws.send_json({"type": "status", "status": "processing"})
+                        await self._safe_send_json({"type": "status", "status": "processing"})
                         log.info("Sending to vision model...")
                         vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
                         log.info(f"Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
@@ -1833,7 +1848,7 @@ class VoicePipeline:
                         if self.interrupted.is_set():
                             log.info("Interrupted during vision inference — discarding result")
                             self.processing = False
-                            await self.ws.send_json({"type": "status", "status": "listening"})
+                            await self._safe_send_json({"type": "status", "status": "listening"})
                             continue
                         if vision_desc:
                             # Speak the vision description directly — no LLM needed
@@ -1846,20 +1861,20 @@ class VoicePipeline:
                             self.interrupted.clear()
                             # Send transcript and speak
                             response_text = f"Here's what I see on your screen. {clean_desc}"
-                            await self.ws.send_json({
+                            await self._safe_send_json({
                                 "type": "transcript", "role": "assistant",
                                 "text": response_text
                             })
                             await self._speak(response_text)
                             self.processing = False
-                            await self.ws.send_json({"type": "status", "status": "listening"})
+                            await self._safe_send_json({"type": "status", "status": "listening"})
                             continue
                     # Screenshot failed — tell user and fall through to normal LLM
                     fail_msg = "Sorry, I couldn't capture your screen right now. What would you like help with?"
-                    await self.ws.send_json({"type": "transcript", "role": "assistant", "text": fail_msg})
+                    await self._safe_send_json({"type": "transcript", "role": "assistant", "text": fail_msg})
                     await self._speak(fail_msg)
                     self.processing = False
-                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    await self._safe_send_json({"type": "status", "status": "listening"})
                     continue
 
                 # 2a0. Mode switch by voice command ("flash mode" / "think
@@ -1874,10 +1889,10 @@ class VoicePipeline:
                                "think": "Think mode. I can run tools while we talk.",
                                "default": "Normal mode."}[_new_mode]
                         await self._safe_send_json({"type": "mode", "mode": _new_mode})
-                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": ack})
+                        await self._safe_send_json({"type": "transcript", "role": "assistant", "text": ack})
                         await self._speak(ack)
                         self.processing = False
-                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        await self._safe_send_json({"type": "status", "status": "listening"})
                         continue
 
                 # 2a. Crew dispatch
@@ -1885,10 +1900,10 @@ class VoicePipeline:
                 if crew_result:
                     self.messages.append({"role": "user",      "content": user_text})
                     self.messages.append({"role": "assistant", "content": crew_result})
-                    await self.ws.send_json({"type": "transcript", "role": "assistant", "text": crew_result})
+                    await self._safe_send_json({"type": "transcript", "role": "assistant", "text": crew_result})
                     await self._speak(crew_result)
                     self.processing = False
-                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    await self._safe_send_json({"type": "status", "status": "listening"})
                     continue
 
                 # 2b. Skill dispatch
@@ -1899,10 +1914,10 @@ class VoicePipeline:
                         spoken = await self._skill_to_speech(raw_result)
                         self.messages.append({"role": "user",      "content": user_text})
                         self.messages.append({"role": "assistant", "content": spoken})
-                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": spoken})
+                        await self._safe_send_json({"type": "transcript", "role": "assistant", "text": spoken})
                         await self._speak(spoken)
                         self.processing = False
-                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        await self._safe_send_json({"type": "status", "status": "listening"})
                         continue
                     # skill returned nothing → fall through to LLM
 
@@ -1910,15 +1925,15 @@ class VoicePipeline:
                 # single-skill fast path, before plain chat). Falls through to
                 # the LLM if the agent declines or errors.
                 if VOICE_MODES_ENABLED and self.mode == "think":
-                    await self.ws.send_json({"type": "status", "status": "tool_running"})
+                    await self._safe_send_json({"type": "status", "status": "tool_running"})
                     think_result = await self.dispatch_think_agent(user_text)
                     if think_result:
                         self.messages.append({"role": "user",      "content": user_text})
                         self.messages.append({"role": "assistant", "content": think_result})
-                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": think_result})
+                        await self._safe_send_json({"type": "transcript", "role": "assistant", "text": think_result})
                         await self._speak(think_result)
                         self.processing = False
-                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        await self._safe_send_json({"type": "status", "status": "listening"})
                         continue
 
                 # 3. LLM streaming path
@@ -1948,7 +1963,7 @@ class VoicePipeline:
                 if await self._speech_drain():
                     interrupted_mid = True
 
-                await self.ws.send_json({
+                await self._safe_send_json({
                     "type": "transcript", "role": "assistant",
                     "text": full_text.strip() + (" [interrupted]" if interrupted_mid else "")
                 })
@@ -1962,7 +1977,7 @@ class VoicePipeline:
                     await self._speech.cancel(reset=False)     # nothing queued may leak into the next turn
                 self.interrupted.clear()
                 self.processing = False
-                await self.ws.send_json({"type": "status", "status": "listening"})
+                await self._safe_send_json({"type": "status", "status": "listening"})
 
     # ── Main entry point ──────────────────────────────────────────────────
 

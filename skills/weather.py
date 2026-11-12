@@ -2,7 +2,11 @@
 SKILL_NAME = "weather"
 SKILL_DESCRIPTION = "Get current weather for a location"
 SKILL_MCP_EXPOSE = True
-SKILL_TRIGGERS = ["weather", "temperature", "forecast", "how hot", "how cold", "is it raining"]
+SKILL_TRIGGERS = ["weather", "temperature", "forecast", "how hot", "how cold", "is it raining",
+                  # The voice call fires on phrases of two words or more only, so it
+                  # never matched "weather" alone (docs/VOICE-SKILL-MATCH-DESIGN.md).
+                  "what's the weather", "what is the weather", "how's the weather",
+                  "how is the weather", "weather today", "weather tomorrow", "weather forecast"]
 
 def run(task, app="", ctx=""):
     """Fetch weather using wttr.in"""
