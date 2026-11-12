@@ -86,6 +86,15 @@ def test_the_commands_environment_has_no_secrets_and_tools_are_told_to_stay_loca
     assert env["npm_config_cache"].startswith("/private/tmp/x") and "/opt/homebrew/bin" in env["PATH"].split(os.pathsep)
 
 
+def test_the_commands_environment_drops_variables_that_make_a_shell_run_extra_code(monkeypatch):
+    for name in ("BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4", "BASH_FUNC_ls%%"):
+        monkeypatch.setenv(name, "/tmp/x")
+    monkeypatch.setenv("KEEP_ME", "1")
+    env = cmd.command_env("/private/tmp/x")
+    assert not [k for k in env if k in ("BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4") or k.startswith("BASH_FUNC_")]
+    assert env["KEEP_ME"] == "1"
+
+
 def test_output_keeps_the_start_and_the_end_and_counts_what_it_left_out():
     box = cmd._Collector()
     box.add(b"small output\n")

@@ -942,6 +942,8 @@ def unversioned(pid: str) -> dict:
 
 # ── commands the owner has allowed for this project (docs/VIBE-AGENT-DESIGN.md, section 7) ──
 # Stored as exact text in .vibe/project.json: a command with other spacing asks again.
+# One of them may carry "check": true, the project's check that gates the agent's finish (P-045 part 2,
+# docs/VIBE-AGENT-EDIT-CHECKS-DESIGN.md). The key is on that entry only; only mark_check sets it, on the owner's click.
 
 MAX_ALLOWED_COMMANDS = 20
 
@@ -954,7 +956,25 @@ def allowed_commands(pid: str) -> list[dict]:
         for e in raw:
             if isinstance(e, dict) and isinstance(e.get("cmd"), str) and e["cmd"]:
                 out.append({"cmd": e["cmd"], "network": bool(e.get("network"))})
-    return out[-MAX_ALLOWED_COMMANDS:]
+                if e.get("check") is True:          # the JSON value true only
+                    for o in out[:-1]:              # a hand edit with several: the newest one marked counts
+                        o.pop("check", None)
+                    out[-1]["check"] = True
+    return _capped(out)
+
+
+def _capped(items: list) -> list:
+    """The newest MAX_ALLOWED_COMMANDS entries, dropping the oldest one that is not the check first."""
+    items = list(items)
+    while len(items) > MAX_ALLOWED_COMMANDS:
+        drop = next((i for i, e in enumerate(items) if not e.get("check")), 0)
+        items.pop(drop)
+    return items
+
+
+def check_entry(pid: str) -> dict | None:
+    """The command marked as the project's check ({cmd, network, check}), or None (P-045 part 2)."""
+    return next((e for e in allowed_commands(pid) if e.get("check")), None)
 
 
 def allow_command(pid: str, command: str, network: bool = False) -> list[dict]:
@@ -962,13 +982,40 @@ def allow_command(pid: str, command: str, network: bool = False) -> list[dict]:
         raise VibeError(400, "Bad command")
     pdir = project_dir(pid)
     with _lock(pid):
-        items = [e for e in allowed_commands(pid) if e["cmd"] != command]
-        items.append({"cmd": command, "network": bool(network)})
+        old = allowed_commands(pid)
+        was_check = any(e["cmd"] == command and e.get("check") for e in old)
+        items = [e for e in old if e["cmd"] != command]
+        items.append({"cmd": command, "network": bool(network), **({"check": True} if was_check else {})})
+        items = _capped(items)
         meta = _read_meta(pdir)
-        meta["allowed_commands"] = items[-MAX_ALLOWED_COMMANDS:]
+        meta["allowed_commands"] = items
         _write_json_atomic(_meta_path(pdir), meta)
     _audit("vibe_agent_allow", "Vibe command allowed for a project", {"project": pid, "action": "allow", "network": bool(network)})
-    return items[-MAX_ALLOWED_COMMANDS:]
+    return items
+
+
+def mark_check(pid: str, command: str, on: bool) -> list[dict]:
+    """The owner's click (P-045 part 2): mark this exact allowed command as the check, clearing any other mark, or
+    clear its mark. Called only by the Mac-only route POST .../agent/commands/check, never by a run, a skill or a file."""
+    if not isinstance(command, str) or not isinstance(on, bool):
+        raise VibeError(400, "Send the command text and on: true or false")
+    pdir = project_dir(pid)
+    with _lock(pid):
+        items = allowed_commands(pid)
+        entry = next((e for e in items if e["cmd"] == command), None)
+        if entry is None:
+            raise VibeError(404, "That command is not on the list")
+        for e in items:
+            if on or e is entry:
+                e.pop("check", None)
+        if on:
+            entry["check"] = True
+        meta = _read_meta(pdir)
+        meta["allowed_commands"] = items
+        _write_json_atomic(_meta_path(pdir), meta)
+    _audit("vibe_agent_allow", "Vibe check marked for a project" if on else "Vibe check cleared for a project",
+           {"project": pid, "action": "check" if on else "uncheck", "network": bool(entry["network"])})
+    return items
 
 
 def forget_command(pid: str, command: str) -> list[dict]:

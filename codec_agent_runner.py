@@ -402,11 +402,14 @@ def _qwen_url() -> str:
 
 
 def _qwen_model() -> str:
+    """The model id the runner sends: codec_models' "agent" role (config llm_model),
+    read per call so a model switch is followed without a restart (P-057, E-14;
+    docs/RUNNER-PLANNER-MODEL-ROLE-DESIGN.md). _local_llm still keeps it local."""
+    import codec_models
     try:
-        from codec_config import QWEN_MODEL as _m
-        return _m
+        return codec_models.resolve("agent")
     except Exception:
-        return "mlx-community/Qwen3.6-35B-A3B-4bit"
+        return codec_models.default_for("agent")
 
 
 def _qwen_base() -> str:
@@ -1327,7 +1330,8 @@ def _audit(event: str, source: str = "codec-agent-runner",
 
 
 def _atomic_set_status(agent_id: str, new_status: str,
-                       reason: Optional[str] = None) -> bool:
+                       reason: Optional[str] = None,
+                       refuse_from: tuple = ()) -> bool:
     """Apply a manifest status transition. Returns True if it was applied,
     False if it was NOT — an illegal/externally-superseded transition
     (`InvalidStatusTransition`) or a write failure. Never raises (C-5).
@@ -1347,7 +1351,7 @@ def _atomic_set_status(agent_id: str, new_status: str,
                   agent_id, e)
         return False
     try:
-        set_status(agent_id, new_status, reason=reason)
+        set_status(agent_id, new_status, reason=reason, refuse_from=refuse_from)
         return True
     except InvalidStatusTransition as e:
         # Usually a benign race: status changed under us by an external actor
@@ -1449,7 +1453,10 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
         # C-5 guard: if the transition doesn't apply (e.g. the agent was aborted
         # or paused via the PWA between approval and now), STOP — never execute
         # checkpoints on a superseded agent. The daemon reconciles next tick.
-        if not _atomic_set_status(agent_id, "running"):
+        # Never out of `paused`: an owner's Pause that lands between the daemon's
+        # scan and this line wins (paused -> running is the /resume route's move,
+        # which goes back through the daemon; docs/AGENT-RUNNER-PAUSE-RACE-DESIGN.md).
+        if not _atomic_set_status(agent_id, "running", refuse_from=("paused",)):
             # The transition can fail BENIGNLY when the daemon already flipped us
             # to running (a crash-recovery / qwen-resume branch pre-set it) — that
             # is not supersession, it's a redundant set. Only bail if we were
@@ -1854,7 +1861,8 @@ def _daemon_one_tick() -> None:
                 # chains with the agent_started/checkpoint/completed emits that
                 # follow (Step 1 §1.4 paired-cid contract; review I4).
                 recovery_cid = secrets.token_hex(6)
-                _atomic_set_status(agent_id, "crashed_resumed")
+                if not _atomic_set_status(agent_id, "crashed_resumed"):
+                    continue  # paused/aborted since the scan: that change wins, no thread
                 _audit(AGENT_RESUMED,
                        message=f"resumed {agent_id} after crash/restart",
                        correlation_id=recovery_cid,
@@ -1890,7 +1898,8 @@ def _daemon_one_tick() -> None:
                 log.debug("[%s] qwen probe error: %s", agent_id, e)
                 qwen_alive = False
             if qwen_alive:
-                _atomic_set_status(agent_id, "running")
+                if not _atomic_set_status(agent_id, "running"):
+                    continue  # aborted since the scan: that change wins, no thread
                 t = threading.Thread(target=_run_agent, args=(agent_id,), daemon=True,
                                       name=f"agent-{agent_id}")
                 t.start()

@@ -33,9 +33,6 @@ ALLOWED = {
     ("setup_codec.py", 'config["llm_model"] = ask_text("Model name", "mlx-community/Qwen3.6-35B-A3B-4bit")'),
     ("setup_codec.py", 'config["tts_model"] = "mlx-community/Kokoro-82M-bf16"'),
     ("setup_codec.py", 'config["stt_model"] = ask_text("Whisper model", "mlx-community/whisper-large-v3-turbo")'),
-    # Step 9 design-gate files: their fallback waits for the owner's word (own design note).
-    ("codec_agent_plan.py", 'return "mlx-community/Qwen3.6-35B-A3B-4bit"'),
-    ("codec_agent_runner.py", 'return "mlx-community/Qwen3.6-35B-A3B-4bit"'),
 }
 
 
@@ -167,6 +164,19 @@ def test_crews_name_the_agent_role(monkeypatch):
     assert codec_agents._qwen_model() == codec_models.DEFAULT_MODEL
     monkeypatch.setattr(codec_agents, "_cfg", lambda: {"llm_model": "org/crew"})
     assert codec_agents._qwen_model() == "org/crew"
+
+
+def test_the_project_runner_and_planner_name_their_roles(config_file):
+    """E-14: the runner and planner held their own model literal; they now ask
+    codec_models per call (runner "agent", planner "plan"), so a switch is followed."""
+    import codec_agent_plan
+    import codec_agent_runner
+    config_file()
+    assert codec_agent_runner._qwen_model() == codec_models.default_for("agent")
+    assert codec_agent_plan._qwen_model() == codec_models.default_for("plan")
+    config_file(llm_model="org/switched")
+    assert codec_agent_runner._qwen_model() == "org/switched"
+    assert codec_agent_plan._qwen_model() == "org/switched"
 
 
 def _skill(name):

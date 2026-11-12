@@ -130,6 +130,15 @@ CUT_COMMAND = ("The run stopped before this command finished, so its result is n
 CUT_WRITE = "The run stopped during this step, so it is not known whether the file changed. Read it again before you change it."
 CUT_ASK = "The run stopped while this question waited, so it has no answer. Ask again if you still need to."
 CUT_STEP = "The run stopped during this step, so its result is not known."
+# The project's check before a finish (P-045 part 2, docs/VIBE-AGENT-EDIT-CHECKS-DESIGN.md)
+CHECK_RETRIES = 2           # failing finishes the agent gets back; the next one ends the run
+CHECK_REPORT_OUTPUT = 1200  # of the check's last output, what the report of a run it stopped keeps
+CHECK_REASONS = {"away": "this run was started away from this Mac",
+                 "no_sandbox": "the sandbox is not available on this Mac",
+                 "commands_off": "commands are off for this run",
+                 "refused": "its text no longer passes the command check",
+                 "not_run": "the sandbox did not start it",
+                 "vetoed": "a plugin vetoed it"}
 
 RUN_ID_RE = re.compile(r"^r[0-9a-f]{8}$")
 
@@ -1189,6 +1198,10 @@ class Run:
         self._no_fold_until = 0                 # after a summary call that gave nothing, no new one before this step
         self._sub_steps = 0                     # P-072: a delegate's helper steps, counted toward max_steps
         self._docs: dict = {}                   # P-072: notebooks, PDFs and images read this run, as text
+        self._check: dict | None = None         # P-045 part 2: the project's check at finish, for the end event
+        self._check_runs = 0                    # times it ran in this run
+        self._check_fails = 0                   # finishes it failed in this run
+        self._check_output = ""                 # its last output, for the report of a run it stopped
         self._init_playbooks(playbook, review)  # P-071: after the tools are known
 
     def _init_playbooks(self, playbook, review) -> None:
@@ -1353,10 +1366,14 @@ class Run:
             "prompt_tokens": self.tokens["prompt"], "completion_tokens": self.tokens["completion"], "model": self.llm.kind})
         if op:
             vhooks.end(self.id, (_mono() - self._t0) * 1000.0, status)
+        report, line = str(report), self._check_line()
+        if line and line not in report:              # the check's line always fits: the report is cut, not the line
+            report = (report[:max(0, self._report_cap - len(line) - 2)].rstrip() + "\n\n" + line).lstrip()
+        checked = {"check": dict(self._check)} if self._check else {}       # only when a check was marked (P-045)
         with self._cond:
-            self._emit("end", status=status, report=str(report)[:self._report_cap], steps=steps, seconds=seconds,
+            self._emit("end", status=status, report=report[:self._report_cap], steps=steps, seconds=seconds,
                        prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
-                       start_checkpoint=self.start_cp, model=self._model_info(), **self._usage_fields())
+                       start_checkpoint=self.start_cp, model=self._model_info(), **self._usage_fields(), **checked)
             self.finished = True
             self._cond.notify_all()
         if not self.stop_event.is_set():          # the owner's own Stop needs no push
@@ -1651,15 +1668,7 @@ class Run:
             return True
         t0 = _mono()
         if call.name == "finish":
-            report = call.args["report"]
-            if report == "Done." and call.note:             # the summary went into the sentence before the block
-                report = call.note
-            self._emit("result", step=n, ok=True, summary="Finished", output=report, tool="finish")
-            _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
-            if self._findings:                              # P-071: a review's findings, before the end
-                self._emit("findings", step=n, items=proto.parse_findings(report))
-            self._end("done", report)
-            return True
+            return self._finish(n, text, call)
         refused = self._refusal(call)                      # P-047: plan mode and the tools list, before anything runs
         if refused is not None:
             result = refused
@@ -1722,6 +1731,153 @@ class Run:
             return _fail(f"In plan mode the only file you may write is {proto.PLAN_FILE}, so nothing was written. Put the plan "
                          f"after @@ finish, or write it to {proto.PLAN_FILE}.", "mode")
         return None
+
+    # the finish, and the project's check before it (P-045 part 2, docs/VIBE-AGENT-EDIT-CHECKS-DESIGN.md) ----
+
+    def _finish(self, n: int, text: str, call: proto.Call) -> bool:
+        """@@ finish. True when the run is over: always, except when the project's check is marked, runs here and
+        fails (or is stopped) with tries left; that goes back to the agent as this step's failed result."""
+        report = call.args["report"]
+        if report == "Done." and call.note:             # the summary went into the sentence before the block
+            report = call.note
+        entry, reason = self._gate()
+        state = ""
+        if entry is not None and reason:
+            self._check = self._check_info(entry["cmd"], "skipped", reason=reason)
+        elif entry is not None:
+            state, said = self._run_gate(n, entry)
+            if state in ("failed", "stopped"):
+                return self._gate_failed(n, text, call, report, said, stopped=state == "stopped")
+        self._emit("result", step=n, ok=True, summary="Finished; the check passed" if state == "passed" else "Finished",
+                   output=report, tool="finish")
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
+        if self._findings:                              # P-071: a review's findings, before the end
+            self._emit("findings", step=n, items=proto.parse_findings(report))
+        self._end("done", report)
+        return True
+
+    def _gate(self) -> tuple:
+        """(the marked check, "" or why it cannot run in this run) for this finish; (None, "") when the finish is not
+        gated and says nothing about a check: none is marked, or this is a plan or a review run. The marker is read
+        now, so the owner's click during a run counts for its finish. Only codec_vibe_projects.mark_check sets it."""
+        if self.mode != "default" or self.review:
+            return None, ""
+        try:
+            entry = vp.check_entry(self.pid)
+        except VibeError:
+            return None, ""
+        if entry is None:
+            return None, ""
+        if "run_check" in self.allowed:                 # started at this Mac, sandbox here, commands on for this run
+            return entry, ""
+        if not self.can_run:
+            return entry, "away"
+        if not cmdmod.available():
+            return entry, "no_sandbox"
+        return entry, "commands_off"
+
+    def _check_info(self, command: str, state: str, exit_code=None, seconds=None, reason: str = "") -> dict:
+        return {"command": command, "state": state, "tries": self._check_runs, "exit_code": exit_code,
+                "seconds": seconds, "reason": reason}
+
+    def _run_gate(self, n: int, entry: dict) -> tuple:
+        """Run the marked check once, exactly as a stored run_check runs: _run_command (the sandbox of
+        codec_vibe_agent_cmd, never anything else), the stored network flag, run_check's time rule, the plugin hooks as
+        vibe:run_check. (state, text for the agent): passed, failed, stopped, or skipped when it could not start."""
+        command = entry["cmd"]
+        try:
+            command = cmdmod.check_command(command)
+        except cmdmod.Refused:
+            self._command_audit(n, "refused", command, False, None, 0)
+            self._check = self._check_info(entry["cmd"], "skipped", reason="refused")
+            return "skipped", ""
+        network = bool(entry["network"])
+        self._emit("note", step=n, text=("Running the project's check before the run can finish: " + command)[:600])
+        box: dict = {}
+
+        def invoke() -> Result:
+            try:
+                box["res"] = r = _run_command(vp.project_dir(self.pid), vp.vibe_root(), command, network=network,
+                                              timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())),
+                                              stop_event=self.stop_event)
+            except cmdmod.Refused as e:
+                box["refused"] = True
+                return Result(False, str(e), "The check did not run")
+            return Result(r.exit_code == 0, r.output, "The project's check")
+
+        t0 = _mono()
+        got = self._hooked(n, proto.Call("run_check", {"command": command}), invoke)
+        if got is not None and got.blocked:             # a plugin's pre_tool veto: nothing ran
+            _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n, "reason": got.blocked})
+        res = box.get("res")
+        if res is None:
+            self._check = self._check_info(command, "skipped", reason="not_run" if box.get("refused") else "vetoed")
+            return "skipped", ""
+        self._command_audit(n, "check", command, network, res.exit_code, int((_mono() - t0) * 1000))
+        self._check_runs += 1
+        self._check_output = res.output
+        self._checkpoint(n, "Agent: ran the check " + command[:50], ())     # what it changed, as after run_check
+        if res.stopped:
+            self._check = self._check_info(command, "stopped", None, res.seconds)
+            return "stopped", "Stopped before the check finished."
+        if res.exit_code == 0:
+            self._check = self._check_info(command, "passed", 0, res.seconds)
+            return "passed", ""
+        self._check_fails += 1
+        self._check = self._check_info(command, "failed", res.exit_code, res.seconds)
+        head = (f"Timed out after {int(res.seconds)} s and was stopped." if res.timed_out
+                else f"Exit code {res.exit_code} after {res.seconds} s.")
+        extra = ""
+        if res.timed_out:
+            extra += f"\nA command is stopped after {cmdmod.DEFAULT_TIMEOUT} seconds."
+        if res.denied:
+            extra += ("\nThe sandbox stopped something: the check can read this project and the usual toolchains, write only "
+                      f"inside the project, and has {'web access only' if network else 'no network'}.")
+        left = CHECK_RETRIES + 1 - self._check_fails
+        return "failed", ("Your finish was not accepted: the project's check failed, so the goal is not done yet. The owner "
+                          "chose this check; it runs in the sandbox each time you finish.\n"
+                          f"Check: {command}\n{head}\n{res.output.strip(chr(10)) or '(no output)'}{extra}\n\n"
+                          "Fix what the output shows, then use finish again. "
+                          f"The run stops if the check fails {left} more time{'s' if left != 1 else ''}.")
+
+    def _gate_failed(self, n: int, text: str, call: proto.Call, report: str, said: str, stopped: bool = False) -> bool:
+        """The check failed (or was stopped) at this finish: a failed result of the step, and the run goes on, or ends
+        `limit` at the third failing finish with the failure in its report. A stop is ended by the loop, as for run_check."""
+        c = self._check or {}
+        what = "timed out" if c.get("exit_code") is None else f"exit {c.get('exit_code')}"
+        last = not stopped and self._check_fails > CHECK_RETRIES
+        if stopped:
+            summary = "Stopped while the check ran"
+        elif last:
+            summary = f"The check failed ({what}), finish {self._check_fails} of {CHECK_RETRIES + 1}: the run stops"
+        else:
+            summary = f"The check failed ({what}), finish {self._check_fails} of {CHECK_RETRIES + 1}: the agent goes on"
+        self._emit("result", step=n, ok=False, summary=summary[:160], output=said[:DISPLAY_CHARS], tool="finish")
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": False, "ms": 0})
+        if last:
+            tail = self._check_output.strip("\n")[-CHECK_REPORT_OUTPUT:] or "(no output)"
+            self._end("limit", f"{self._check_line()}\nIts last output:\n{tail}\n\nThe agent's own report:\n{report}")
+            return True
+        said_text = proto.without_todo(text)            # the engine shows the todo list itself (P-046)
+        short = said_text if len(said_text) <= 600 else (call.note[:300] + "\n@@ finish\n(content left out)")
+        self.turns.append(_Turn(n, "finish", "", said_text[:8000], short,
+                                proto.wrap_result(n, "finish", "", _for_model(said), ok=False), summary[:160], False))
+        return False
+
+    def _check_line(self) -> str:
+        """The one line about the check at the end of the run's report, or "" (none marked, or it was stopped)."""
+        c = self._check
+        if not c or c["state"] == "stopped":
+            return ""
+        name = f'The check "{c["command"]}"'
+        if c["state"] == "passed":
+            return f"{name} passed (exit 0 after {c['seconds']} s)."
+        if c["state"] == "skipped":
+            return f"{name} did not run: {CHECK_REASONS.get(c['reason'], 'it could not run')}."
+        what = "it timed out" if c["exit_code"] is None else f"exit {c['exit_code']}"
+        if self._check_fails > CHECK_RETRIES:
+            return f"{name} failed {self._check_fails} times ({what} the last time), so the run stopped before it could finish."
+        return f"{name} failed at the agent's last finish ({what}), so the goal is not checked as done."
 
     # playbooks (P-071, docs/VIBE-PLAYBOOKS-DESIGN.md) --------------------
 
@@ -2907,6 +3063,14 @@ def forget_command_rule(pid: str, rule) -> list:
     if not isinstance(rule, str):
         raise VibeError(400, "Send the rule text")
     return vp.forget_rule(pid, rule)
+
+
+def mark_check(pid: str, command, on) -> list:
+    """The owner's "Use as check" click (P-045 part 2). Called only by the Mac-only route POST .../commands/check:
+    no run, skill, model reply or file marks a command."""
+    if not isinstance(command, str) or not isinstance(on, bool):
+        raise VibeError(400, "Send the command text and on: true or false")
+    return vp.mark_check(pid, command, on)
 
 
 def stop_run(pid: str, run_id: str) -> dict:

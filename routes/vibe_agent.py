@@ -165,6 +165,20 @@ async def forget(pid: str, request: Request):
     return await _call(va.forget, pid, body.get("command"))
 
 
+@router.post("/api/vibe/projects/{pid}/agent/commands/check")
+async def mark_check(pid: str, request: Request):
+    """The owner's "Use as check" click (P-045 part 2, docs/VIBE-AGENT-EDIT-CHECKS-DESIGN.md): mark one of the project's
+    always-allowed commands as the check that runs at the agent's finish (`on` true), or clear it (`on` false). This Mac
+    only, like approve and forget: the only way a command becomes the check."""
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.mark_check, pid, body.get("command"), body.get("on"))
+
+
 @router.post("/api/vibe/projects/{pid}/agent/{run_id}/answer")
 async def answer(pid: str, run_id: str, request: Request):
     body = await _json(request)

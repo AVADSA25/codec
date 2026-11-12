@@ -446,3 +446,27 @@ def test_route_refusals_are_409_and_a_switch_uses_set_active(client, mac):
     mac["local"] = {SEVEN_B: 4.3}
     r = client.post("/api/models/fit/use", json={"id": "qwen25-7b"})
     assert r.status_code == 200 and r.json()["active"] == SEVEN_B and mac["switched"] == [SEVEN_B]
+
+
+def test_route_model_switch_runs_off_the_event_loop(client, monkeypatch):
+    """POST /api/model waits for set_active in a worker thread (P-016), so a
+    model load of up to minutes never freezes the dashboard's event loop."""
+    import asyncio
+
+    import codec_models
+    seen = {}
+
+    def fake_set_active(model_id):
+        try:
+            asyncio.get_running_loop()
+            seen["on_loop"] = True
+        except RuntimeError:
+            seen["on_loop"] = False
+        seen["model"] = model_id
+        return {"ok": True, "active": model_id}
+
+    monkeypatch.setattr(codec_models, "set_active", fake_set_active)
+    assert client.post("/api/model", json={}).status_code == 400
+    r = client.post("/api/model", json={"model": "mlx-community/Other-4bit"})
+    assert r.status_code == 200 and r.json()["active"] == "mlx-community/Other-4bit"
+    assert seen == {"on_loop": False, "model": "mlx-community/Other-4bit"}

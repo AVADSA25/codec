@@ -41,6 +41,9 @@ _SPILL_ROOM = 256               # left free at the end of a full file for that e
 MAX_COMMAND_CHARS = 500
 STOP_GRACE_SECONDS = 2.0
 _EXTRA_PATH = ("/opt/homebrew/bin", "/usr/local/bin")
+# Variables that make a shell run extra code before the command (a startup file,
+# options, a trace prompt, exported functions). An agent command never inherits them.
+_SHELL_HOOK_VARS = ("BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4")
 # Toolchains that live in the home folder: readable, so node, python, ruby and the like start from there.
 # Of ~/.local only the parts interpreters need (owner decision D-23, docs/VIBE-SANDBOX-NARROW-DESIGN.md):
 # the bin folder, Python's user packages, pipx's venvs (old and new home) and uv's Pythons and tools.
@@ -172,6 +175,8 @@ def command_env(temp: str) -> dict:
     env = codec_envscrub.scrub(os.environ)       # the shared rule (P-084)
     env.setdefault("LC_ALL", "C.UTF-8")
     env.pop("SSH_AUTH_SOCK", None)
+    for name in [k for k in env if k in _SHELL_HOOK_VARS or k.startswith("BASH_FUNC_")]:
+        env.pop(name, None)
     path = [p for p in env.get("PATH", "").split(os.pathsep) if p]
     for extra in _EXTRA_PATH:
         if extra not in path:

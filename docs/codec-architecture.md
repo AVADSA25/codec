@@ -166,6 +166,13 @@ Emitted by `codec_cookbook.offer.start_download` (outcome `ok`, existing envelop
 |---|---|---|---|
 | `model_download_started` | `codec-cookbook` | info | `model` (catalog id), `repo` (hub id), `size_gb` |
 
+### Model server restart on launchd (2026-11, P-039 part 2)
+Emitted by `codec_models.restart_launchd` once per attempt to restart the model LaunchAgent during a model switch on a buyer Mac (existing envelope; outcome `ok`, `warning` for a refusal, `error` for a failure). Metadata only: no model id, path or command output. The switch keeps its `model_switched` line. Design: `docs/LAUNCHD-MODEL-RESTART-DESIGN.md`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `model_server_restarted` | `codec-models` | info (warning unless `ok`) | `supervisor` (`launchd`), `label` (empty when none was accepted), `result` (`ok`\|`refused`\|`failed`), `reason` (`not_model_label`\|`no_service_list`\|`not_loaded`\|`kickstart_failed`\|`no_new_process`\|`not_ready`\|empty), `seconds` |
+
 ### Create image events (2026-09)
 One event name, emitted by `codec_image` when an image job ends. Metadata only: the prompt text is never recorded. Design: `docs/CHAT-CREATE-IMAGE-DESIGN.md`.
 
@@ -200,8 +207,8 @@ Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, 
 | `vibe_agent_blocked` | `project`, `run`, `n`, `reason` (`path`\|`secret`: a safety rule refused the step; `plugin`: a plugin's `pre_tool` vetoed it, P-067; `mode`: the run's mode or tools list does not offer that tool, P-047, or a delegate helper wrote a tool outside its fixed read-only set, with `sub`, P-072) |
 | `vibe_agent_end` | `project`, `run`, `status` (`done`\|`stopped`\|`limit`\|`failed`), `steps` (a delegate helper's steps included, P-072), `seconds`, `prompt_tokens`, `completion_tokens`, `model` |
 | `vibe_agent_compact` | `project`, `run`, `n`, `turns` (steps folded), `chars` (the note's length, 0 when the call gave none), `ok`, and when `ok`: `before`, `after` (estimated prompt tokens; `after` null when it still did not fit). Only with `vibe_agent.compact` on (P-049) |
-| `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`rule`\|`declined`\|`refused`; `rule`: one of the owner's rules let it run, P-048), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
-| `vibe_agent_allow` | `project`, `action` (`allow`\|`forget`\|`allow_rule`\|`forget_rule`; never the command or rule text), `network` (always false for a rule) |
+| `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`rule`\|`declined`\|`refused`\|`check`; `rule`: one of the owner's rules let it run, P-048; `check`: the project's marked check ran at a finish, P-045 part 2), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
+| `vibe_agent_allow` | `project`, `action` (`allow`\|`forget`\|`allow_rule`\|`forget_rule`\|`check`\|`uncheck`: `check`/`uncheck` the owner marked or cleared the project's check, P-045 part 2; never the command or rule text), `network` (always false for a rule) |
 
 ### Vibe chat events (2026-10, P-042)
 

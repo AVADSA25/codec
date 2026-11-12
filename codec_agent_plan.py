@@ -28,7 +28,7 @@ import re
 import secrets
 from dataclasses import dataclass, field, asdict, fields as _dc_fields
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 log = logging.getLogger("codec_agent_plan")
 
@@ -364,11 +364,14 @@ def _qwen_url() -> str:
 
 
 def _qwen_model() -> str:
+    """The model id the planner sends: codec_models' "plan" role (config llm_model),
+    read per call so a model switch is followed without a restart (P-057, E-14;
+    docs/RUNNER-PLANNER-MODEL-ROLE-DESIGN.md). _local_llm still keeps it local."""
+    import codec_models
     try:
-        from codec_config import QWEN_MODEL as _m
-        return _m
+        return codec_models.resolve("plan")
     except Exception:
-        return "mlx-community/Qwen3.6-35B-A3B-4bit"
+        return codec_models.default_for("plan")
 
 
 def _qwen_base() -> str:
@@ -812,7 +815,8 @@ def _status_lock(manifest_path: Path):
 
 
 def set_status(agent_id: str, new_status: str, reason: Optional[str] = None,
-               extra: Optional[Dict[str, Any]] = None) -> None:
+               extra: Optional[Dict[str, Any]] = None,
+               refuse_from: Iterable[str] = ()) -> None:
     """Atomically + cross-process-safely transition manifest.json's status (B-7).
 
     The load → validate-transition → write CAS runs under a flock on the
@@ -826,7 +830,13 @@ def set_status(agent_id: str, new_status: str, reason: Optional[str] = None,
     is the atomicity guarantee that lets approve_plan stamp status=approved and
     its plan_hash/grants_hash in one write — there is no crash window where
     status=approved coexists with a missing hash (which would brick run-start
-    tamper detection)."""
+    tamper detection).
+
+    `refuse_from`: current statuses this caller may not move away from, even
+    where the state machine allows it, checked inside the same flock. The
+    runner's run-start passes ("paused",) so an owner's Pause that lands just
+    before a thread starts is kept (paused -> running stays the /resume
+    route's move; docs/AGENT-RUNNER-PAUSE-RACE-DESIGN.md)."""
     agent_dir = _agent_dir(agent_id)
     agent_dir.mkdir(parents=True, exist_ok=True)  # so the .lock sidecar can be created
     manifest_path = agent_dir / "manifest.json"
@@ -834,6 +844,11 @@ def set_status(agent_id: str, new_status: str, reason: Optional[str] = None,
         manifest = load_manifest(agent_id)
         current = manifest.get("status", "draft_pending")
         allowed = _VALID_TRANSITIONS.get(current, frozenset())
+        if current in refuse_from:
+            raise InvalidStatusTransition(
+                f"cannot transition {current!r} → {new_status!r} here "
+                f"(this caller never moves an agent out of {current!r})"
+            )
         if new_status not in allowed:
             raise InvalidStatusTransition(
                 f"cannot transition {current!r} → {new_status!r} "

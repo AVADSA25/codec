@@ -560,7 +560,7 @@ needs the owner's word on the default): run the skill on a trigger phrase or a
 model tag only when the toggle is on (or drop the question-phrase triggers),
 cap its query like `_derive_search_query`, and refuse it when `web` is false.
 
-## The runner daemon can start a paused Project agent again (2026-11-03)
+## FIXED (2026-11-11, docs/AGENT-RUNNER-PAUSE-RACE-DESIGN.md): The runner daemon can start a paused Project agent again (2026-11-03)
 
 In `codec_agent_runner._daemon_one_tick`, the crash-resume branch (status
 `running` with no live thread) and the `blocked_on_qwen` branch start
@@ -609,7 +609,9 @@ minutes in the dashboard) shows up as dozens of `google_gmail` runs a day
 under "Completed tasks". Fix (small, skill
 file + manifest): leave lines with `extra.feature` out of section 1.
 
-## Two skills are still imported by bare name (2026-11-03, P-098 review)
+## FIXED (2026-11-11): Two skills are still imported by bare name (2026-11-03, P-098 review)
+
+Both fixed 2026-11-11: `clipboard_url_fetch` (#574) and the iMessage notice in `codec_agent_messaging` use `codec_dispatch.feature_module`.
 
 `codec_agent_messaging._dispatch_to_channel` (the iMessage notice) puts the repo's
 `skills/` folder first on `sys.path` and imports `imessage_send` for its
