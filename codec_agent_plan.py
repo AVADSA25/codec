@@ -475,6 +475,7 @@ Rules:
   • For reading or writing files in a known directory: use `file_ops`, not `file_search`.
 - step_budget MUST be at least 60 per checkpoint. The runtime will floor to 60 anyway, so values below 60 are useless. Use 60 for simple single-skill work, 80 for multi-step, 100+ for complex tasks.
 - write_paths default to the project folder named in the request (folder/**). Never list a path under ~/.codec, ~/.ssh or another system folder: such a plan is refused.
+- network_domains MUST list every site the plan will open or fetch (bare host, e.g. example.com). The agent can reach only these; any other site stops the run until the user allows it.
 - destructive_ops list any irreversible operations (deletes, payments, sending emails on user's behalf). They will require additional consent at runtime.
 - estimated_duration_minutes is your best honest guess.
 """
@@ -1262,20 +1263,10 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
         "auto_approved": auto_approved,
         **asdict(plan.permission_manifest),
     }
-    # Single-approval web access: if the plan needs the open web (it declares any
-    # network domains, or uses a web/browse skill), grant "*" so the agent runs
-    # start-to-finish without blocking on every new domain it visits. One approval
-    # = full web for this run. Path grants stay scoped (least privilege) — only
-    # network breadth is widened, and only when the plan actually browses.
-    _pm = plan.permission_manifest
-    _WEB_SKILLS = {"web_search", "web_fetch", "chrome_search", "chrome_open",
-                   "chrome_read", "chrome_automate", "chrome_extract",
-                   "clipboard_url_fetch"}
-    _needs_web = bool(getattr(_pm, "network_domains", None)) or bool(
-        set(getattr(_pm, "skills", []) or []) & _WEB_SKILLS)
-    if _needs_web:
-        grants["network_domains"] = sorted(set(
-            (grants.get("network_domains") or []) + ["*"]))
+    # E-02 (owner, 12 Nov 2026): the plan gets only the network domains it lists.
+    # No "*" is added at approval any more (#227 granted it to every plan that
+    # browsed). A host the plan did not list blocks the run (blocked_on_permission)
+    # and the owner can grant it from the Inbox (POST /api/agents/{id}/grant).
     save_grants(agent_id, grants)
 
     # B-9: stamp the hashes AND flip status to approved in ONE atomic, flock-

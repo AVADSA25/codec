@@ -381,8 +381,8 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if wants_net and needed:
         domains = (set(agent_grants.get("network_domains", [])) |
                    set(global_grants.get("network_domains", [])))
-        # "*" is a broad-web grant (issued at approval for plans that browse), so
-        # the agent doesn't block on every new domain it visits. Explicit opt-in.
+        # "*" is a broad-web grant. Since E-02 approval never adds it; it comes
+        # only from the owner (a global grant or /grant). Explicit opt-in.
         if "*" not in domains:
             granted = {_norm_domain(d) for d in domains}
             for host in needed:

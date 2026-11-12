@@ -81,6 +81,8 @@ Not changed, owner decision: `approve_plan` grants `"*"` to every plan that brow
 (#227, "single approval grants full web access"). While it does, the URL check
 stops a fetch only for an agent without `"*"`, for example one that reaches
 `web_fetch` through a global skill grant or a later `/grant`.
+(Superseded by E-02, 12 Nov 2026: approval no longer adds `"*"`; see
+docs/PLAN-DOMAIN-GRANTS-DESIGN.md.)
 
 `codec_agent_plan.py`:
 
