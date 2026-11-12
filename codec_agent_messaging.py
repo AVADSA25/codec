@@ -377,12 +377,13 @@ def _dispatch_to_channel(channel: str, agent_id: str,
             log.debug("notifications.imessage_recipient not configured; skipping imessage")
             return
         try:
-            import sys as _sys
-            from pathlib import Path as _Path
-            skills_dir = str(_Path(__file__).resolve().parent / "skills")
-            if skills_dir not in _sys.path:
-                _sys.path.insert(0, skills_dir)
-            import imessage_send as _ims
+            # Through the registry (load gate + the owner's skill switch), never a
+            # bare import after a sys.path insert (AGENTS.md section 4, P-098).
+            import codec_dispatch
+            _ims = codec_dispatch.feature_module("imessage_send")
+            if _ims is None:
+                log.debug("imessage_send skill is off or not loadable; skipping imessage")
+                return
             _ims._send(recipient, f"[{short_title}]\n{short_body}")
         except Exception as e:
             log.debug("imessage send failed: %s", e)

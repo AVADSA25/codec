@@ -440,3 +440,38 @@ def test_telegram_channel_skipped_when_unconfigured(monkeypatch, temp_codec_dir)
     import codec_agent_messaging as cam
     cam._dispatch_to_channel("telegram", "agent_test", "T", "B", "agent_update")
     # Should not raise
+
+
+def _imessage_config(temp_codec_dir):
+    (temp_codec_dir / "config.json").write_text(json.dumps({"notifications": {"imessage_recipient": "+15550100"}}))
+
+
+def test_imessage_channel_gets_the_skill_through_the_registry(monkeypatch, temp_codec_dir):
+    """known-issues 2026-11-03: the notice imported imessage_send by bare name after a
+    sys.path insert; it now comes through codec_dispatch.feature_module."""
+    import codec_agent_messaging as cam
+    import codec_dispatch
+    _imessage_config(temp_codec_dir)
+    sent, asked = [], []
+
+    class FakeSkill:
+        @staticmethod
+        def _send(to, text):
+            sent.append((to, text))
+
+    def feature_module(name):
+        asked.append(name)
+        return FakeSkill
+    monkeypatch.setattr(codec_dispatch, "feature_module", feature_module)
+    monkeypatch.setitem(sys.modules, "imessage_send", None)     # a bare import would now fail
+    cam._dispatch_to_channel("imessage", "agent_test", "T", "B", "agent_update")
+    assert asked == ["imessage_send"] and len(sent) == 1
+    assert sent[0][0] == "+15550100" and sent[0][1].startswith("[CODEC agent agent_test]")
+
+
+def test_imessage_channel_skipped_when_the_skill_is_off(monkeypatch, temp_codec_dir):
+    import codec_agent_messaging as cam
+    import codec_dispatch
+    _imessage_config(temp_codec_dir)
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: None)
+    cam._dispatch_to_channel("imessage", "agent_test", "T", "B", "agent_update")   # no raise, no send
