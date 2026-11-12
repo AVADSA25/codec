@@ -1992,7 +1992,7 @@ async function sendCmd() {
   }
   text.innerHTML = '<span style="color:var(--accent)">Sending...</span> ' + escHtml(task);
   try {
-    var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task, session_id: window._flashSessionId}) });
+    var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task, source: 'flash', session_id: window._flashSessionId}) });
     var data = await r.json();
     // Server-authoritative correlation token (conversations.id of the user row).
     // /api/response matches the assistant reply by id > request_id (C-2/PR-4B).
