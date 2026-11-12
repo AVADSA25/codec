@@ -1,0 +1,589 @@
+{
+ "after_apply": {
+  ".vibe/checkpoints.jsonl": [
+   {
+    "changed": [
+     "index.html"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0001",
+    "kind": "start",
+    "label": "Start",
+    "parent": null,
+    "seq": 1,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "index.html",
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0002",
+    "kind": "ai",
+    "label": "Build it",
+    "parent": "c0001",
+    "seq": 2,
+    "stat": {
+     "added": 1,
+     "changed": 1,
+     "lines_added": 2,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   }
+  ],
+  ".vibe/objects/0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5": "blob",
+  ".vibe/objects/8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883": "blob",
+  ".vibe/objects/dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009": "blob",
+  ".vibe/project.json": {
+   "title": "Same as before"
+  },
+  "index.html": "<h1>two</h1>\n",
+  "src/app.js": "let a = 1;\n"
+ },
+ "after_apply2": {
+  ".vibe/checkpoints.jsonl": [
+   {
+    "changed": [
+     "index.html"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0001",
+    "kind": "start",
+    "label": "Start",
+    "parent": null,
+    "seq": 1,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "index.html",
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0002",
+    "kind": "ai",
+    "label": "Build it",
+    "parent": "c0001",
+    "seq": 2,
+    "stat": {
+     "added": 1,
+     "changed": 1,
+     "lines_added": 2,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "notes.txt"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0003",
+    "kind": "before",
+    "label": "Before: Change it",
+    "parent": "c0002",
+    "seq": 3,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440"
+    },
+    "id": "c0004",
+    "kind": "ai",
+    "label": "Change it",
+    "parent": "c0003",
+    "seq": 4,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   }
+  ],
+  ".vibe/objects/0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5": "blob",
+  ".vibe/objects/479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf": "blob",
+  ".vibe/objects/8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883": "blob",
+  ".vibe/objects/a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440": "blob",
+  ".vibe/objects/dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009": "blob",
+  ".vibe/project.json": {
+   "title": "Same as before"
+  },
+  "index.html": "<h1>two</h1>\n",
+  "notes.txt": "the owner's own\n",
+  "src/app.js": "let a = 2;\n"
+ },
+ "after_create": {
+  ".vibe/checkpoints.jsonl": [
+   {
+    "changed": [
+     "index.html"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0001",
+    "kind": "start",
+    "label": "Start",
+    "parent": null,
+    "seq": 1,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   }
+  ],
+  ".vibe/objects/0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5": "blob",
+  ".vibe/project.json": {
+   "title": "Same as before"
+  },
+  "index.html": "<h1>one</h1>\n"
+ },
+ "after_restore": {
+  ".vibe/checkpoints.jsonl": [
+   {
+    "changed": [
+     "index.html"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0001",
+    "kind": "start",
+    "label": "Start",
+    "parent": null,
+    "seq": 1,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "index.html",
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0002",
+    "kind": "ai",
+    "label": "Build it",
+    "parent": "c0001",
+    "seq": 2,
+    "stat": {
+     "added": 1,
+     "changed": 1,
+     "lines_added": 2,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "notes.txt"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0003",
+    "kind": "before",
+    "label": "Before: Change it",
+    "parent": "c0002",
+    "seq": 3,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440"
+    },
+    "id": "c0004",
+    "kind": "ai",
+    "label": "Change it",
+    "parent": "c0003",
+    "seq": 4,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0005",
+    "kind": "restore",
+    "label": "Undid: Change it",
+    "parent": "c0004",
+    "restored_to": "c0003",
+    "seq": 5,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 1,
+     "removed": 0
+    },
+    "undid": "c0004"
+   },
+   {
+    "changed": [
+     "index.html",
+     "notes.txt",
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0006",
+    "kind": "restore",
+    "label": "Restored: Start",
+    "parent": "c0005",
+    "restored_to": "c0001",
+    "seq": 6,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 3,
+     "removed": 2
+    }
+   }
+  ],
+  ".vibe/objects/0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5": "blob",
+  ".vibe/objects/479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf": "blob",
+  ".vibe/objects/8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883": "blob",
+  ".vibe/objects/a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440": "blob",
+  ".vibe/objects/dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009": "blob",
+  ".vibe/project.json": {
+   "title": "Same as before"
+  },
+  "index.html": "<h1>one</h1>\n"
+ },
+ "after_undo": {
+  ".vibe/checkpoints.jsonl": [
+   {
+    "changed": [
+     "index.html"
+    ],
+    "files": {
+     "index.html": "0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5"
+    },
+    "id": "c0001",
+    "kind": "start",
+    "label": "Start",
+    "parent": null,
+    "seq": 1,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "index.html",
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0002",
+    "kind": "ai",
+    "label": "Build it",
+    "parent": "c0001",
+    "seq": 2,
+    "stat": {
+     "added": 1,
+     "changed": 1,
+     "lines_added": 2,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "notes.txt"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0003",
+    "kind": "before",
+    "label": "Before: Change it",
+    "parent": "c0002",
+    "seq": 3,
+    "stat": {
+     "added": 1,
+     "changed": 0,
+     "lines_added": 1,
+     "lines_removed": 0,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440"
+    },
+    "id": "c0004",
+    "kind": "ai",
+    "label": "Change it",
+    "parent": "c0003",
+    "seq": 4,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 1,
+     "removed": 0
+    }
+   },
+   {
+    "changed": [
+     "src/app.js"
+    ],
+    "files": {
+     "index.html": "8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883",
+     "notes.txt": "479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf",
+     "src/app.js": "dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009"
+    },
+    "id": "c0005",
+    "kind": "restore",
+    "label": "Undid: Change it",
+    "parent": "c0004",
+    "restored_to": "c0003",
+    "seq": 5,
+    "stat": {
+     "added": 0,
+     "changed": 1,
+     "lines_added": 1,
+     "lines_removed": 1,
+     "removed": 0
+    },
+    "undid": "c0004"
+   }
+  ],
+  ".vibe/objects/0ca90a10a514b09ebeeceb99409ca20113e4e7f3db6f2b639a3c7fe0e7ec49b5": "blob",
+  ".vibe/objects/479d0cd4fc34edc11bd32017bc15b2e6cd84a3aaeeee9dceca643ee438bb20bf": "blob",
+  ".vibe/objects/8e626236d6e9de3683776357d75d752b8d0fa8d78647fda92ac3e437b1b48883": "blob",
+  ".vibe/objects/a27bffef80e1a594bb0f87406afe8d50357a7231881302b6c14e43c4cc35f440": "blob",
+  ".vibe/objects/dec9932ac327157f62d0e1829b89ffec6004cee770091de4881bde37c8d55009": "blob",
+  ".vibe/project.json": {
+   "title": "Same as before"
+  },
+  "index.html": "<h1>two</h1>\n",
+  "notes.txt": "the owner's own\n",
+  "src/app.js": "let a = 1;\n"
+ },
+ "checkpoints": [
+  {
+   "changed": [
+    "index.html",
+    "notes.txt",
+    "src/app.js"
+   ],
+   "files_count": 1,
+   "id": "c0006",
+   "kind": "restore",
+   "label": "Restored: Start",
+   "parent": "c0005",
+   "restored_to": "c0001",
+   "seq": 6,
+   "stat": {
+    "added": 0,
+    "changed": 1,
+    "lines_added": 1,
+    "lines_removed": 3,
+    "removed": 2
+   }
+  },
+  {
+   "changed": [
+    "src/app.js"
+   ],
+   "files_count": 3,
+   "id": "c0005",
+   "kind": "restore",
+   "label": "Undid: Change it",
+   "parent": "c0004",
+   "restored_to": "c0003",
+   "seq": 5,
+   "stat": {
+    "added": 0,
+    "changed": 1,
+    "lines_added": 1,
+    "lines_removed": 1,
+    "removed": 0
+   },
+   "undid": "c0004"
+  },
+  {
+   "changed": [
+    "src/app.js"
+   ],
+   "files_count": 3,
+   "id": "c0004",
+   "kind": "ai",
+   "label": "Change it",
+   "parent": "c0003",
+   "seq": 4,
+   "stat": {
+    "added": 0,
+    "changed": 1,
+    "lines_added": 1,
+    "lines_removed": 1,
+    "removed": 0
+   }
+  },
+  {
+   "changed": [
+    "notes.txt"
+   ],
+   "files_count": 3,
+   "id": "c0003",
+   "kind": "before",
+   "label": "Before: Change it",
+   "parent": "c0002",
+   "seq": 3,
+   "stat": {
+    "added": 1,
+    "changed": 0,
+    "lines_added": 1,
+    "lines_removed": 0,
+    "removed": 0
+   }
+  },
+  {
+   "changed": [
+    "index.html",
+    "src/app.js"
+   ],
+   "files_count": 2,
+   "id": "c0002",
+   "kind": "ai",
+   "label": "Build it",
+   "parent": "c0001",
+   "seq": 2,
+   "stat": {
+    "added": 1,
+    "changed": 1,
+    "lines_added": 2,
+    "lines_removed": 1,
+    "removed": 0
+   }
+  },
+  {
+   "changed": [
+    "index.html"
+   ],
+   "files_count": 1,
+   "id": "c0001",
+   "kind": "start",
+   "label": "Start",
+   "parent": null,
+   "seq": 1,
+   "stat": {
+    "added": 1,
+    "changed": 0,
+    "lines_added": 1,
+    "lines_removed": 0,
+    "removed": 0
+   }
+  }
+ ],
+ "info_keys": [
+  "can_undo",
+  "checkpoint_count",
+  "created_at",
+  "files",
+  "id",
+  "last_checkpoint",
+  "title",
+  "updated_at"
+ ],
+ "list_keys": [
+  "created_at",
+  "id",
+  "title",
+  "updated_at"
+ ]
+}
