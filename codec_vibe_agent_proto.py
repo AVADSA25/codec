@@ -125,6 +125,53 @@ def strip_think(text: str) -> str:
     return out[:i] if i != -1 else out
 
 
+# P-073 (docs/VIBE-AGENT-CLOUD-FORMAT-DESIGN.md): MiMo V2.6 writes each tool block inside its own tool-call tags,
+# several on one line: <tool_call><@@ read_file a.js</@@></tool_call><tool_call><@@ read_file b.js</@@></tool_call>
+_WRAP = "<tool_call>"
+_WRAP_OPEN_RE = re.compile(r"^[ \t]*<tool_call>[ \t]*<?(?=@@)")
+_WRAP_NEXT_RE = re.compile(r"[ \t]*(?:</@@>[ \t]*)?</tool_call>[ \t]*(?=<tool_call>[ \t]*<?@@)")
+_WRAP_TAIL_RE = re.compile(r"[ \t]*(?:</@@>[ \t]*</tool_call>|</@@>|</tool_call>)[ \t]*$")
+_FENCE_END_RE = re.compile(r"^\s*```\s*$")
+
+
+def unwrap_tool_calls(text: str) -> str:
+    """A reply whose tool blocks sit in tool-call tags, as plain tool blocks (P-073). Each `<tool_call><@@` (or
+    `<tool_call>@@`) at the start of a line, or right after the closing tags of the one before, starts a line with @@;
+    closing tags at the end of a line are dropped. The lines of a SEARCH/REPLACE, CONTENT/END or fenced write_file body
+    stay as written. A reply with no such opening tag comes back unchanged, the same object."""
+    if _WRAP not in text:
+        return text
+    out: list[str] = []
+    opened, body, write_next = False, None, False
+    for line in text.split("\n"):
+        if body is not None:                            # inside a body: exactly as the model wrote it
+            out.append(line)
+            if body.match(line):
+                body = None
+            continue
+        if write_next and line.strip():                 # a write_file body may be a plain fenced block
+            write_next = False
+            if _is_fence(line):
+                out.append(line)
+                body = _FENCE_END_RE
+                continue
+        if _RE_SEARCH.match(line) or _RE_CONTENT.match(line):
+            out.append(line)
+            body = _RE_REPLACE if _RE_SEARCH.match(line) else _RE_END
+            continue
+        parts = [line]
+        if _WRAP in line and (opened or _WRAP_OPEN_RE.match(line)):     # never in text before the first opener
+            parts = _WRAP_NEXT_RE.sub("\n", line).split("\n")
+        for part in parts:
+            if _WRAP_OPEN_RE.match(part):
+                opened, part = True, _WRAP_OPEN_RE.sub("", part, count=1)
+            part = _WRAP_TAIL_RE.sub("", part)
+            m = HEADER_RE.match(part)
+            write_next = write_next or bool(m and m.group(1).lower() == "write_file")
+            out.append(part)
+    return "\n".join(out) if opened else text
+
+
 def _is_fence(line: str) -> bool:
     return bool(_FENCE_RE.match(line))
 
@@ -133,9 +180,11 @@ def _blank_or_fence(line: str) -> bool:
     return not line.strip() or _is_fence(line)
 
 
-def _may_be_block(tail: str) -> bool:
-    """An unfinished last line that may still become a tool line, a fence or a blank line (P-072)."""
-    return "@@".startswith(tail[:2]) or "```".startswith(tail.lstrip(" \t")[:3])
+def _may_be_block(tail: str, wrapped: bool = False) -> bool:
+    """An unfinished last line that may still become a tool line, a fence or a blank line (P-072); in a reply whose
+    tool blocks sit in tool-call tags, also the next opening tag (P-073)."""
+    lead = tail.lstrip(" \t")
+    return "@@".startswith(tail[:2]) or "```".startswith(lead[:3]) or (wrapped and _WRAP.startswith(lead[:len(_WRAP)]))
 
 
 def _split_args(rest: str):
@@ -335,7 +384,10 @@ def clean_todo(items) -> list:
 
 
 def without_todo(text: str) -> str:
-    """The reply without a todo block that comes before its tool block: the engine shows the list itself (P-046)."""
+    """The reply as the run keeps it: without a todo block that comes before its tool block, since the engine shows the
+    list itself (P-046), and with tool-call tags around its tool blocks taken off (P-073), so the model's next steps
+    see the plain format."""
+    text = unwrap_tool_calls(text)
     lines = text.split("\n")
     hi = next((i for i, ln in enumerate(lines) if HEADER_RE.match(ln)), None)
     if hi is None or HEADER_RE.match(lines[hi]).group(1).lower() != TODO:
@@ -345,21 +397,22 @@ def without_todo(text: str) -> str:
 
 
 def _scan_after_todo(lines: list[str], hi: int, done: int, rest: str, note: str, allowed, final: bool, lenient: bool,
-                     report_chars: int = MAX_REPORT_CHARS) -> Scan:
+                     report_chars: int = MAX_REPORT_CHARS, wrapped: bool = False) -> Scan:
     """A reply that starts with a todo block: the block's lines are the list, the rest is read as the reply. Until the
     tool block is written the scan is partial, so the stream goes on (P-046)."""
     end = _todo_end(lines, hi + 1, done)
     items = parse_todo(([rest] if rest else []) + lines[hi + 1:end if end is not None else done])
     if end is None:
         return Scan("none" if final else "partial", note=note, todo=items if final else None)
-    sub = scan_reply("\n".join(lines[end:]), allowed, final, lenient, _todo_ok=False, report_chars=report_chars)
+    sub = scan_reply("\n".join(lines[end:]), allowed, final, lenient, _todo_ok=False, report_chars=report_chars,
+                     _wrapped=wrapped)
     if sub.call is not None:
         sub.call.note = note
     return Scan(sub.state, sub.call, sub.error, note, sub.cut, todo=items, calls=sub.calls, dropped=sub.dropped, extra=sub.extra)
 
 
 def _more_reads(lines: list[str], i: int, done: int, first: Scan, allowed, final: bool, lenient: bool,
-                report_chars: int) -> Scan:
+                report_chars: int, wrapped: bool = False) -> Scan:
     """The read blocks that follow a first read block (P-072): one after the other, with only blank or fence lines
     between them, at most MAX_READS. Any other line ends them; another kind of block runs alone instead of them."""
     calls = [first.call]
@@ -373,8 +426,8 @@ def _more_reads(lines: list[str], i: int, done: int, first: Scan, allowed, final
         while i < done and _blank_or_fence(lines[i]):
             i += 1
         if i >= done:                                   # another block may still come, until the stream ends,
-            if final or not _may_be_block(lines[done] if done < len(lines) else ""):   # unless the line being
-                return batch()                          # written can no longer become one
+            if final or not _may_be_block(lines[done] if done < len(lines) else "", wrapped):   # unless the line
+                return batch()                          # being written can no longer become one
             return Scan("partial", note=first.note)
         m = HEADER_RE.match(lines[i])
         name = m.group(1).lower() if m else ""
@@ -417,13 +470,16 @@ def _scan_playbook(rest: str, note: str) -> Scan:
 
 
 def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = False, _todo_ok: bool = True,
-               report_chars: int = MAX_REPORT_CHARS, _single: bool = False) -> Scan:
+               report_chars: int = MAX_REPORT_CHARS, _single: bool = False, _wrapped: bool = False) -> Scan:
     """Read the first tool block of a reply. `final` is true when the stream has ended;
     `lenient` that it ended by itself (not cut at the length limit), so a missing closing marker is forgiven.
 
     When `allowed` holds TODO, a todo block may come first (P-046): Scan.todo has its items and the tool block after it
-    is the one read. A read block may be followed by more read blocks (P-072): Scan.calls has them all."""
+    is the one read. A read block may be followed by more read blocks (P-072): Scan.calls has them all. Tool blocks
+    in tool-call tags are read as plain ones (P-073, unwrap_tool_calls)."""
     text = strip_think(text)
+    plain = unwrap_tool_calls(text)
+    wrapped, text = _wrapped or plain != text, plain
     lines = text.split("\n")
     done = len(lines) if final else len(lines) - 1      # lines that are finished
     hi = next((i for i in range(done) if HEADER_RE.match(lines[i])), None)
@@ -448,7 +504,7 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
     if name == TODO and TODO in allowed:
         if not _todo_ok:
             return err("Write at most one @@ todo block in a reply, before the tool block.")
-        return _scan_after_todo(lines, hi, done, rest, note, allowed, final, lenient, report_chars)
+        return _scan_after_todo(lines, hi, done, rest, note, allowed, final, lenient, report_chars, wrapped)
     if name == PLAYBOOK and PLAYBOOK in allowed:        # P-071: load an approved playbook by its name
         return _scan_playbook(rest, note)
     if name not in TOOLS or name not in allowed:
@@ -458,7 +514,7 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
         if first.state != "complete":
             return err(first.error)
         first.note = first.call.note = note
-        return _more_reads(lines, hi + 1, done, first, allowed, final, lenient, report_chars)
+        return _more_reads(lines, hi + 1, done, first, allowed, final, lenient, report_chars, wrapped)
 
     if name == "search":
         sargs, bad = _search_args(rest)
@@ -668,6 +724,9 @@ def numbered(lines: list[str], first: int, width_to: int | None = None) -> str:
 
 
 # ── what the model is told ──────────────────────────────────────────────────
+
+# P-073: the reply a cloud run's prompt starts with, before the engine's list of the files (codec_vibe_agent._seed)
+SEED_REPLY = "I will look at the project's files first.\n@@ list_files"
 
 _TOOL_LINES = {
     "list_files": ["@@ list_files [folder or glob]        (a glob such as src/**/*.js lists only the matching files)"],
