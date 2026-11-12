@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -41,7 +42,9 @@ from cryptography.exceptions import InvalidSignature
 
 # ─── Paths / constants ──────────────────────────────────────────────────────────
 
-CODEC_HOME       = Path.home() / ".codec"
+# CODEC_LICENSE_DIR is for the test suite only (tests/conftest.py, P-009): a reload of this
+# module keeps the temp folder. Nothing in CODEC sets it.
+CODEC_HOME       = Path(os.environ.get("CODEC_LICENSE_DIR") or (Path.home() / ".codec"))
 CONFIG_PATH      = CODEC_HOME / "config.json"
 PUBKEY_CACHE     = CODEC_HOME / "license_pubkey.pem"
 GRACE_STATE_PATH = CODEC_HOME / ".license_state.json"

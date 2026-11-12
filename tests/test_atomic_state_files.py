@@ -139,6 +139,8 @@ def _redirect_codec_home(monkeypatch, folder):
         return str(folder / p[len("~/.codec/"):]) if p.startswith("~/.codec/") else real(p)
 
     monkeypatch.setattr(os.path, "expanduser", expand)
+    # codec_core and codec_dispatch write through the overlay module's own path.
+    monkeypatch.setattr(codec_overlays, "_EVENTS", str(folder / "overlay_events.jsonl"))
 
 
 def _overlay_via_core(path, monkeypatch):

@@ -113,6 +113,8 @@ def feat(tmp_path, monkeypatch):
     real = os.path.expanduser
     monkeypatch.setattr(os.path, "expanduser",
                         lambda p: str(home / p[len("~/.codec/"):]) if str(p).startswith("~/.codec/") else real(p))
+    import codec_overlays  # run_skill's skill_fired line goes to the overlay module's path
+    monkeypatch.setattr(codec_overlays, "_EVENTS", str(home / "overlay_events.jsonl"))
 
     def records(event=None):
         recs = [json.loads(line) for line in audit_log.read_text().splitlines() if line.strip()]
