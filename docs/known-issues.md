@@ -400,7 +400,7 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
 - **FIXED 2026-11-11 (#571, `scope["path"]`). `codec_mcp_http.py` reads `request.url.path`.** Same pattern as the
   dashboard's Host-header bypass fixed in #397; there a crafted Host only
   skips the rate limit, not the login. Fix: read `request.scope["path"]`.
-- **Home Flash refuses any message with a backtick or `$(`.** `/api/command`
+- **FIXED 2026-11-12 (R-04, Flash sends source `flash` and skips the check; docs/FLASH-SHELL-CHECK-DESIGN.md). Home Flash refuses any message with a backtick or `$(`.** `/api/command`
   runs `codec_config.is_dangerous` on the chat text, and that check treats a
   backtick as shell command substitution. "Reply with one inline `code` word"
   gets "Command blocked: matches a dangerous pattern". Deep Chat does not run

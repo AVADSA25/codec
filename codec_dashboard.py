@@ -665,8 +665,12 @@ async def send_command(request: Request):
     source = body.get("source", "pwa")
 
     # ── Safety: reject dangerous commands before queueing ──
+    # Home's Flash box sends source "flash": its text goes to the model and the
+    # chat skill matcher, never to a shell, so it skips this check like Deep
+    # Chat; the skills that run a command (terminal) check their own input
+    # (R-04, docs/FLASH-SHELL-CHECK-DESIGN.md). Every other source keeps it.
     from codec_config import is_dangerous
-    if is_dangerous(task):
+    if source != "flash" and is_dangerous(task):
         log.warning(f"[Command] BLOCKED dangerous command from {source}: {task[:80]}")
         _audit_write(f"[{datetime.now().isoformat()}] BLOCKED[{source}]: {task[:200]}\n")
         return JSONResponse(

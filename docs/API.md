@@ -48,6 +48,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{"command": "open Chrome", "source": "api"}' \
   http://localhost:8090/api/command
 ```
+A text that `codec_config.is_dangerous` flags gets 403, except with `"source": "flash"` (Home's Flash box: the text goes to the model, not a shell; R-04).
 
 ---
 
