@@ -72,7 +72,7 @@ pyperclip>=1.11.0; sys_platform == "darwin"
 # first asked for a calendar or a doc.
 google-api-python-client>=2.200.0
 google-auth>=2.40.0
-google-auth-oauthlib>=1.2.2
+google-auth-oauthlib>=1.5.0
 
 # macOS-only helpers imported at runtime: request_mic.py (microphone permission),
 # codec_observer.py and codec_overlays.py (AppKit, Quartz), setup_hue.py (mDNS
