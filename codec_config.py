@@ -347,6 +347,16 @@ def get_serper_api_key() -> str:
     return v or os.environ.get("SERPER_API_KEY", "")
 
 
+def get_specstream_api_key() -> str:
+    """SpecStream API key. Keychain -> cfg (migrate) -> SPECSTREAM_API_KEY env."""
+    v = _cached_secret("specstream_api_key",
+                       lambda: _migrate_and_get("specstream_api_key", "specstream_api_key"))
+    return v or os.environ.get("SPECSTREAM_API_KEY", "")
+
+
+SPECSTREAM_BASE_URL = cfg.get("specstream_base_url", "https://api.specstream.ai")
+
+
 def get_telegram_bot_token() -> str:
     """Telegram bot token (nested cfg key telegram.bot_token).
     Keychain → cfg (migrate) → TELEGRAM_BOT_TOKEN env."""

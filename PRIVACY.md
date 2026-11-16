@@ -48,6 +48,7 @@ Each secret is a generic password whose service is `ai.avadigital.codec.<name>`:
 | `ai.avadigital.codec.gemini_api_key` | Your Google Gemini key, if you added one |
 | `ai.avadigital.codec.pexels_api_key` | Your Pexels key, if you added one |
 | `ai.avadigital.codec.serper_api_key` | Your Serper search key, if you added one |
+| `ai.avadigital.codec.specstream_api_key` | Your SpecStream API key, if you added one |
 | `ai.avadigital.codec.telegram_bot_token` | Your Telegram bot token, if you added one |
 | `ai.avadigital.codec.vapid_private_key` | The key that signs phone notifications |
 | `ai.avadigital.codec.mcp_tokens` | Sign-ins to the connectors CODEC uses (one item per connector) |
@@ -88,7 +89,7 @@ These two are the only requests that go out without you asking for something or 
 | **Alerts by e-mail or Slack** | The alert text (which CODEC service failed or recovered) | The mail server or Slack webhook you set under `alerts` in `config.json` | After you turn `alerts.email` or `alerts.slack` on |
 | **iMessage bridge** | The messages you send and receive | Apple, through the Messages app | After you set it up |
 | **Phone notifications** (Web Push) | An encrypted fixed line per kind ("CODEC needs your approval"), never the question, the agent or any chat text | Your browser's push service: Google (`fcm.googleapis.com`), Apple (`*.push.apple.com`), Mozilla (`*.push.services.mozilla.com`) or Microsoft (`*.notify.windows.com`) | When an approval, a question or an agent result waits, on the devices you turned it on for |
-| **Skills that look something up** | The place, coin, query or page | weather: `wttr.in`; bitcoin price: `api.coingecko.com`, then `api.coindesk.com` if that fails; network info: `api.ipify.org` (shows your public IP); Philips Hue: `discovery.meethue.com`; AI news digest: public news feeds; `web_fetch` and the `chrome_*` skills: the page you name | When you ask |
+| **Skills that look something up** | The place, coin, query or page | weather: `wttr.in`; bitcoin price: `api.coingecko.com`, then `api.coindesk.com` if that fails; network info: `api.ipify.org` (shows your public IP); Philips Hue: `discovery.meethue.com`; AI news digest: public news feeds; `web_fetch` and the `chrome_*` skills: the page you name; `specstream`: `api.specstream.ai` (or `specstream_base_url` in `config.json`) when a SpecStream API key is set | When you ask |
 | **Morning briefing** (off by default) | Calendar and mail requests, the weather place | Google, `wttr.in` | On its schedule, after you switch it on in Settings |
 | **Heartbeat alerts** (`heartbeat_alerts` in `config.json`) | A price alert: the coin name. A mail check: a Gmail request | `api.coingecko.com`; Google | On every heartbeat, after you add one |
 | **The dashboard from your phone** | The dashboard traffic | Your own Cloudflare tunnel (or Tailscale) to your Mac | While the tunnel runs |
@@ -162,7 +163,7 @@ update check then remains the only request CODEC makes on its own (plus the lice
   interest (Art. 6(1)(f)) for local operation; consent (Art. 6(1)(a)) for any optional cloud feature you enable.
 - **Recipients and processors**, only for the features you use (section 2): GitHub (update check), AVA Digital LLC
   (licence key, cloud proxy), Google (Gemini through the proxy or your own key, Workspace, push), Anthropic
-  (claude.ai connector), Cloudflare (tunnel), DuckDuckGo or Serper (search), Telegram, Apple (iMessage, push),
+  (claude.ai connector), Cloudflare (tunnel), DuckDuckGo, Serper or SpecStream (search/extract), Telegram, Apple (iMessage, push),
   Mozilla or Microsoft (push), Pexels, and any cloud model provider or connector you add yourself.
 - **International transfers:** the cloud proxy's model provider and other cloud services may process data outside
   the EU (mostly the US), under their own SCCs or DPA where applicable.

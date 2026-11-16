@@ -24,7 +24,7 @@ SKILL_GROUPS = (
                                           "observer_recall"}),
     ("Reports", lambda n: n in {"shift_report", "daily_kickoff", "AI News Digest", "scheduler", "delegate"}),
     ("Home and media", lambda n: n in {"philips_hue", "music"}),
-    ("Tools", lambda n: n in {"calculator", "weather", "web_search", "bitcoin_price", "time", "timer", "translate",
+    ("Tools", lambda n: n in {"calculator", "weather", "web_search", "specstream", "bitcoin_price", "time", "timer", "translate",
                                "password_generator", "qr_generator", "json_formatter", "pomodoro",
                                "clipboard_url_fetch"}),
 )

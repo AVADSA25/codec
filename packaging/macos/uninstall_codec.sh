@@ -48,7 +48,7 @@ PM2_LOG_NAMES="codec qwen3.6 whisper-stt kokoro-82m"
 # tests/test_uninstaller.py fails when this list and the code disagree. A real
 # run also finds any other $KC_PREFIX.* item (a key_slot you named for a cloud
 # model or the delegate webhook) with `security dump-keychain`.
-KC_SERVICES="audit_hmac_secret dashboard_token gemini_api_key internal_token license_key llm_api_key mcp_tokens oauth_state pexels_api_key serper_api_key telegram_bot_token vapid_private_key"
+KC_SERVICES="audit_hmac_secret dashboard_token gemini_api_key internal_token license_key llm_api_key mcp_tokens oauth_state pexels_api_key serper_api_key specstream_api_key telegram_bot_token vapid_private_key"
 
 # Guarded recursive remove: refuses empty / "/" / the home base itself.
 safe_rm() {

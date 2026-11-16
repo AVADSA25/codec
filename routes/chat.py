@@ -517,7 +517,7 @@ MAX_SKILL_HIJACK_CHARS = 2000
 
 CHAT_SKILL_ALLOWLIST = {
     # Core utilities
-    "calculator", "weather", "web_search", "bitcoin_price",
+    "calculator", "weather", "web_search", "specstream", "bitcoin_price",
     "system", "network_info", "memory_search", "time",
     "timer", "translate", "file_search", "notes",
     "reminders", "clipboard", "password_generator",
