@@ -1,7 +1,7 @@
-# Vibe checkpoints: keep each line small in big folders (design note, not built)
+# Vibe checkpoints: keep each line small in big folders (design note)
 
-Status: design only. The `.vibe/` record format is a don't-touch zone (AGENTS.md section 10), so
-building this waits for the owner's word.
+Status: built, points 1-6 (owner card S-06, 17 Nov 2026). The delta step is not built. Tests:
+`tests/test_vibe_checkpoint_size.py`.
 
 ## What is wrong
 
@@ -72,7 +72,14 @@ if that ever matters.
 - A test reads `codec_vibe_projects.py` and fails on any `rec["files"]` / `["files"]` read
   outside `_files()`.
 
-## Open question for the owner
+## Measured after the build
+
+A 2,000-file attached folder in a temp folder, 33 checkpoints (a start, a hand edit, a chat apply, 30 agent
+steps): before, every line was about 240 KB and the file 7.9 MB; after, a line is 336-365 bytes and the file
+14 KB. The first line is 2.4 KB: its `changed` list names the first 40 files, as it always did (that field is
+unchanged). Listing the history 20 times went from 417 ms to 6 ms.
+
+## Open question for the owner (answered 17 Nov 2026: yes, points 1-6, without the delta step)
 
 Build it? It changes how `.vibe/` history is stored for attached folders only. The recommendation
 is yes, with points 1-6 and without the delta step.

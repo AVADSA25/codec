@@ -7,6 +7,9 @@ sits a hidden .vibe/ folder that holds the project's settings and its checkpoint
     .vibe/checkpoints.jsonl   one line per checkpoint (id, kind, label, file -> hash)
     .vibe/objects/<sha256>    the content of every file version, stored once
 
+An attached folder's line holds files_ref (the file map, stored once as an object) instead of the map itself, so a
+line stays small in a 2,000-file folder; _files() reads either shape (docs/VIBE-CHECKPOINT-SIZE-DESIGN.md).
+
 A checkpoint is taken before and after every AI change. Restoring one writes its
 files back and takes a new checkpoint; nothing is rewritten or deleted, so a
 restore can itself be undone. No git is needed (customer Macs may not have it).
@@ -34,6 +37,7 @@ import shutil
 import stat
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -554,7 +558,14 @@ def _load_checkpoints(pdir: Path) -> list[dict]:
                     rec = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(rec, dict) and isinstance(rec.get("files"), dict) and _CID_RE.match(str(rec.get("id", ""))):
+                if not isinstance(rec, dict) or not _CID_RE.match(str(rec.get("id", ""))):
+                    continue
+                if isinstance(rec.get("files"), dict):          # the map itself: every created project's line
+                    out.append(rec)
+                    continue
+                ref, count = rec.get("files_ref"), rec.get("files_count")     # an attached folder's line
+                if (isinstance(ref, str) and _SHA_RE.match(ref) and isinstance(count, int)
+                        and not isinstance(count, bool) and count >= 0):
                     out.append(rec)
     except OSError:
         pass
@@ -562,10 +573,132 @@ def _load_checkpoints(pdir: Path) -> list[dict]:
 
 
 def _append_checkpoint(pdir: Path, rec: dict) -> None:
+    line = json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n"
     with open(_cp_path(pdir), "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
+        size = os.fstat(f.fileno()).st_size
+        f.write(line)
         f.flush()
         os.fsync(f.fileno())
+        st = os.fstat(f.fileno())
+    # The new line is the newest: keep it, unless something else wrote to the file in between.
+    _remember_last(_cp_path(pdir), st if st.st_size == size + len(line.encode("utf-8")) else None, rec)
+
+
+# ── a checkpoint's file map (docs/VIBE-CHECKPOINT-SIZE-DESIGN.md) ──
+# A created project's line holds the map itself ("files": path -> sha256), as it always has. An attached folder's
+# line holds "files_ref", the sha256 of the map stored once in objects/ as canonical JSON, and "files_count", so it
+# stays small in a 2,000-file folder. _files() is the one reader of either shape; a test fails on any other read.
+
+_MAP_CACHE_SIZE = 8                 # maps, so one request does not read the same object twice
+_LAST_CACHE_SIZE = 64               # projects whose newest line is kept
+# (objects folder, sha) -> (the object's size, mtime and inode when it was read and checked, its map)
+_MAP_CACHE: OrderedDict[tuple[str, str], tuple[tuple[int, int, int], dict[str, str]]] = OrderedDict()
+_LAST_CACHE: OrderedDict[str, tuple[tuple[int, int, int], dict | None]] = OrderedDict()
+_CACHE_GUARD = threading.Lock()
+
+
+def _stat_of(path: Path) -> tuple[int, int, int] | None:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns, st.st_ino)
+
+
+def _map_ref(pdir: Path, manifest: dict[str, str]) -> dict:
+    """Store an attached folder's file map once and return the keys its checkpoint line holds instead of it."""
+    data = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    sha = hashlib.sha256(data).hexdigest()
+    _store_blob(pdir, sha, data)
+    _remember_map(pdir, sha, _stat_of(_objects(pdir) / sha), dict(manifest))
+    return {"files_ref": sha, "files_count": len(manifest)}
+
+
+def _remember_map(pdir: Path, sha: str, st: tuple[int, int, int] | None, files: dict[str, str]) -> None:
+    if st is None:
+        return
+    key = (str(_objects(pdir)), sha)
+    with _CACHE_GUARD:
+        _MAP_CACHE[key] = (st, files)
+        _MAP_CACHE.move_to_end(key)
+        while len(_MAP_CACHE) > _MAP_CACHE_SIZE:
+            _MAP_CACHE.popitem(last=False)
+
+
+def _files(pdir: Path, rec: dict) -> dict[str, str]:
+    """A checkpoint's file map (path -> sha256), whichever shape its line has. Read it, never change it.
+    A missing or damaged map object is a 500, like a missing file version. A kept map is used only while its object
+    has the size, mtime and inode it had when it was read and checked."""
+    files = rec.get("files")
+    if isinstance(files, dict):
+        return files
+    sha = rec.get("files_ref")
+    if not isinstance(sha, str) or not _SHA_RE.match(sha):
+        raise VibeError(500, "A stored file version is missing")
+    key = (str(_objects(pdir)), sha)
+    st = _stat_of(_objects(pdir) / sha)         # before the read: a change after it makes the next look read again
+    with _CACHE_GUARD:
+        hit = _MAP_CACHE.get(key)
+        if hit is not None and st is not None and hit[0] == st:
+            _MAP_CACHE.move_to_end(key)
+            return dict(hit[1])
+    data = _blob(pdir, sha)
+    try:
+        if hashlib.sha256(data).hexdigest() != sha:
+            raise ValueError("damaged")
+        files = json.loads(data.decode("ascii"))
+        if not isinstance(files, dict) or not all(isinstance(p, str) and isinstance(h, str) and _SHA_RE.match(h)
+                                                  for p, h in files.items()):
+            raise ValueError("damaged")
+    except ValueError:              # UnicodeDecodeError and json errors are ValueErrors too
+        raise VibeError(500, "A stored file version is missing") from None
+    _remember_map(pdir, sha, st, files)
+    return dict(files)
+
+
+def _with_files(rec: dict, files: dict[str, str]) -> dict:
+    """The line as a created project writes it: the map itself in place of files_ref and files_count."""
+    if "files_ref" not in rec:
+        return rec
+    out = {}
+    for k, v in rec.items():
+        if k == "files_ref":
+            out["files"] = files
+        elif k != "files_count":
+            out[k] = v
+    return out
+
+
+def _remember_last(path: Path, st: os.stat_result | None, rec: dict | None) -> None:
+    name = str(path)
+    with _CACHE_GUARD:
+        if st is None:
+            _LAST_CACHE.pop(name, None)
+            return
+        _LAST_CACHE[name] = ((st.st_size, st.st_mtime_ns, st.st_ino), dict(rec) if rec else None)
+        _LAST_CACHE.move_to_end(name)
+        while len(_LAST_CACHE) > _LAST_CACHE_SIZE:
+            _LAST_CACHE.popitem(last=False)
+
+
+def _last_checkpoint(pdir: Path) -> dict | None:
+    """The newest checkpoint, or None. Kept in memory per project, keyed by the history file's size, mtime and
+    inode, so taking a checkpoint does not parse the whole history to find its parent."""
+    path = _cp_path(pdir)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (st.st_size, st.st_mtime_ns, st.st_ino)
+    with _CACHE_GUARD:
+        hit = _LAST_CACHE.get(str(path))
+        if hit is not None and hit[0] == key:
+            _LAST_CACHE.move_to_end(str(path))
+            return dict(hit[1]) if hit[1] else None
+    cps = _load_checkpoints(pdir)
+    last = cps[-1] if cps else None
+    _remember_last(path, st, last)
+    return dict(last) if last else None
 
 
 def _text(data: bytes) -> str:
@@ -630,11 +763,10 @@ def _snapshot_locked(pid: str, pdir: Path, label: str, kind: str, *, force: bool
         raise VibeError(400, "Bad checkpoint kind")
     scan = _scan(pdir) if fdir is None else _scan_attached(pdir, fdir)
     manifest = {p: h for p, (_s, h) in scan.items()}
-    cps = _load_checkpoints(pdir)
-    last = cps[-1] if cps else None
-    if last is not None and not force and last["files"] == manifest:
+    last = _last_checkpoint(pdir)
+    old = _files(pdir, last) if last else {}
+    if last is not None and not force and old == manifest:
         return None
-    old = last["files"] if last else {}
     for path, (_s, sha) in scan.items():
         if not (_objects(pdir) / sha).exists():
             try:
@@ -646,9 +778,11 @@ def _snapshot_locked(pid: str, pdir: Path, label: str, kind: str, *, force: bool
             _store_blob(pdir, sha, data)
     changes = _changes(pdir, old, manifest)
     seq = (last["seq"] + 1) if last else 1
+    # A created project's line holds the map itself, byte for byte as before; an attached folder's points at it.
+    files_keys = {"files": manifest} if fdir is None else _map_ref(pdir, manifest)
     rec = {
         "id": f"c{seq:04d}", "seq": seq, "ts": _now(), "kind": kind, "label": str(label or "")[:200],
-        "parent": last["id"] if last else None, "files": manifest, "stat": _stat(changes),
+        "parent": last["id"] if last else None, **files_keys, "stat": _stat(changes),
         "changed": [c["path"] for c in changes][:40],
     }
     if extra:
@@ -664,9 +798,10 @@ def _snapshot_locked(pid: str, pdir: Path, label: str, kind: str, *, force: bool
 
 
 def _public(rec: dict) -> dict:
-    """A checkpoint without its full file map."""
-    out = {k: v for k, v in rec.items() if k != "files"}
-    out["files_count"] = len(rec.get("files", {}))
+    """A checkpoint without its full file map (or the map's reference). Reads no map object."""
+    out = {k: v for k, v in rec.items() if k not in ("files", "files_ref", "files_count")}
+    files = rec.get("files")
+    out["files_count"] = len(files) if isinstance(files, dict) else rec.get("files_count", 0)
     return out
 
 
@@ -933,7 +1068,7 @@ def _write_file_locked(pdir: Path, rel: str, content: str, *, attached: bool = F
 
 def _ensure_start_locked(ctx: _Ctx) -> None:
     """An attached folder's first version is taken at its first change (R-12): the files as they are before it."""
-    if not _load_checkpoints(ctx.rdir):
+    if _last_checkpoint(ctx.rdir) is None:
         _snapshot_locked(ctx.pid, ctx.rdir, "Start", "start", force=True, fdir=ctx.fdir)
 
 
@@ -1031,7 +1166,7 @@ def checkpoint_now(pid: str, label: str = "Saved version") -> dict | None:
     if ctx.attached:
         with _lock(pid):
             _not_over(ctx)
-            if not _load_checkpoints(ctx.rdir):      # "Save version" before any change takes the first version
+            if _last_checkpoint(ctx.rdir) is None:   # "Save version" before any change takes the first version
                 rec = _snapshot_locked(pid, ctx.rdir, "Start", "start", force=True, fdir=ctx.fdir)
             else:
                 rec = _snapshot_locked(pid, ctx.rdir, label, "manual", fdir=ctx.fdir)
@@ -1055,7 +1190,7 @@ def apply_blocks(pid: str, blocks: list[dict], label: str = "AI change") -> dict
         if not prepared:
             raise VibeError(400, "No files to apply")
         before = _snapshot_locked(pid, pdir, "Before: " + str(label or "")[:180], "before")
-        parent_rec = before or (_load_checkpoints(pdir) or [None])[-1]
+        parent_rec = before or _last_checkpoint(pdir)
         old_state: dict[str, bytes | None] = {}
         written: list[str] = []
         try:
@@ -1078,7 +1213,7 @@ def apply_blocks(pid: str, blocks: list[dict], label: str = "AI change") -> dict
                     pass
             raise
         after = _snapshot_locked(pid, pdir, str(label or "AI change")[:200], "ai")
-        changes = _changes(pdir, parent_rec["files"] if parent_rec else {}, after["files"]) if after else []
+        changes = _changes(pdir, _files(pdir, parent_rec) if parent_rec else {}, _files(pdir, after)) if after else []
     _audit("vibe_apply", "Vibe applied AI files", {
         "project": pid, "checkpoint": after["id"] if after else None, "files_changed": len(changes),
         "lines_added": sum(c["added"] for c in changes), "lines_removed": sum(c["removed"] for c in changes)})
@@ -1105,7 +1240,7 @@ def _apply_attached(ctx: _Ctx, blocks: list[dict], label: str) -> dict:
             raise VibeError(413, f"The files of an attached folder can come to at most {va.MAX_BYTES // 1048576} MB")
         _ensure_start_locked(ctx)
         before = _snapshot_locked(pid, rdir, "Before: " + str(label or "")[:180], "before", fdir=fdir)
-        parent_rec = before or (_load_checkpoints(rdir) or [None])[-1]
+        parent_rec = before or _last_checkpoint(rdir)
         old_state: dict[str, bytes | None] = {}
         written: list[str] = []
         try:
@@ -1127,7 +1262,7 @@ def _apply_attached(ctx: _Ctx, blocks: list[dict], label: str) -> dict:
                     pass
             raise
         after = _snapshot_locked(pid, rdir, str(label or "AI change")[:200], "ai", fdir=fdir)
-        changes = _changes(rdir, parent_rec["files"] if parent_rec else {}, after["files"]) if after else []
+        changes = _changes(rdir, _files(rdir, parent_rec) if parent_rec else {}, _files(rdir, after)) if after else []
     _audit("vibe_apply", "Vibe applied AI files", {
         "project": pid, "checkpoint": after["id"] if after else None, "files_changed": len(changes),
         "lines_added": sum(c["added"] for c in changes), "lines_removed": sum(c["removed"] for c in changes)})
@@ -1172,7 +1307,7 @@ def _undo_target(cps: list[dict]) -> dict | None:
 
 
 def _restore_locked(pid: str, pdir: Path, target: dict, label: str, extra: dict, *, force: bool = False) -> dict:
-    files = target["files"]
+    files = _files(pdir, target)
     for rel in files:
         safe_rel(rel)       # a damaged history must not be able to write outside the project
     saved = _snapshot_locked(pid, pdir, "Before restore", "before_restore")
@@ -1190,7 +1325,7 @@ def _restore_locked(pid: str, pdir: Path, target: dict, label: str, extra: dict,
             _prune_empty_dirs(pdir, (pdir / rel).parent)
     rec = _snapshot_locked(pid, pdir, label, "restore", extra=extra, force=force)
     if rec is None:    # restored to the state we were already in
-        rec = (_load_checkpoints(pdir) or [None])[-1]
+        rec = _last_checkpoint(pdir)
     _audit("vibe_restore", "Vibe restored a checkpoint", {
         "project": pid, "restored_to": target["id"], "checkpoint": rec["id"] if rec else None,
         "saved_before": saved["id"] if saved else None})
@@ -1202,7 +1337,7 @@ def _differs(a: dict, b: dict) -> set[str]:
     return {k for k in set(a) | set(b) if a.get(k) != b.get(k)}
 
 
-def _ai_touched(cps: list[dict], after_seq: int) -> set[str]:
+def _ai_touched(pdir: Path, cps: list[dict], after_seq: int) -> set[str]:
     """Every file Vibe's own AI changes (chat applies, agent steps and their commands) changed after checkpoint
     after_seq: what each "ai" checkpoint changed against its parent (R-13)."""
     by_id = {c["id"]: c for c in cps}
@@ -1210,7 +1345,7 @@ def _ai_touched(cps: list[dict], after_seq: int) -> set[str]:
     for c in cps:
         if c["kind"] == "ai" and c["seq"] > after_seq:
             parent = by_id.get(c.get("parent"))
-            out |= _differs(parent["files"] if parent else {}, c["files"])
+            out |= _differs(_files(pdir, parent) if parent else {}, _files(pdir, c))
     return out
 
 
@@ -1219,7 +1354,7 @@ def _restore_attached_locked(ctx: _Ctx, target: dict, label: str, extra: dict, *
     """_restore_locked for an attached folder. scope None puts back the whole folder (the Versions drawer); a set
     puts back only those files (Undo, Rewind, Undo rewind: R-13). Empty folders a restore leaves are kept."""
     pid, rdir, fdir = ctx.pid, ctx.rdir, ctx.fdir
-    files = target["files"]
+    files = _files(rdir, target)
     for rel in set(files) | (scope or set()):
         _attached_rel(rel)  # a damaged history must not be able to write outside the folder
     tree = _not_over(ctx)
@@ -1258,7 +1393,7 @@ def _restore_attached_locked(ctx: _Ctx, target: dict, label: str, extra: dict, *
             _write_bytes_locked(fdir, rel, _blob(rdir, want), attached=True)
     rec = _snapshot_locked(pid, rdir, label, "restore", extra=extra, force=force, fdir=fdir)
     if rec is None:    # restored to the state we were already in
-        rec = (_load_checkpoints(rdir) or [None])[-1]
+        rec = _last_checkpoint(rdir)
     _audit("vibe_restore", "Vibe restored a checkpoint", {
         "project": pid, "restored_to": target["id"], "checkpoint": rec["id"] if rec else None,
         "saved_before": saved["id"] if saved else None})
@@ -1275,8 +1410,8 @@ def restore_preview(pid: str, cid: str) -> dict:
     if not ctx.attached:
         return {"checkpoint": cid, "files": None, "other": None, "attached": False}
     current = {p: h for p, (_s, h) in _scan_attached(ctx.rdir, ctx.fdir, _not_over(ctx)).items()}
-    changed = _differs(target["files"], current)
-    ai = _ai_touched(cps, target["seq"])
+    changed = _differs(_files(ctx.rdir, target), current)
+    ai = _ai_touched(ctx.rdir, cps, target["seq"])
     return {"checkpoint": cid, "files": len(changed), "other": len(changed - ai), "attached": True}
 
 
@@ -1300,7 +1435,7 @@ def restore(pid: str, cid: str, scope: str | None = None) -> dict:
             _refuse_during_agent_run(pid)
             cps = _load_checkpoints(ctx.rdir)
             target = _find(cps, cid)
-            only = _ai_touched(cps, target["seq"]) if scope == "ai" else None
+            only = _ai_touched(ctx.rdir, cps, target["seq"]) if scope == "ai" else None
             return _restore_attached_locked(ctx, target, "Restored: " + (target["label"] or target["id"])[:180],
                                             {"restored_to": target["id"]}, scope=only)
     pdir = project_dir(pid)
@@ -1324,7 +1459,7 @@ def undo_last_ai(pid: str) -> dict:
             parent = _find(cps, ai["parent"])
             out = _restore_attached_locked(ctx, parent, "Undid: " + (ai["label"] or ai["id"])[:180],
                                            {"restored_to": parent["id"], "undid": ai["id"]},
-                                           scope=_ai_touched(cps, parent["seq"]))
+                                           scope=_ai_touched(ctx.rdir, cps, parent["seq"]))
             out["undid"] = ai["id"]
             return out
     pdir = project_dir(pid)
@@ -1390,7 +1525,7 @@ def rewind(pid: str, cid: str, session: str, rows) -> dict:
             return _restore_attached_locked(
                 ctx, target, "Rewound: " + (target["label"] or target["id"])[:180],
                 {"restored_to": target["id"], "rewind": {"session": session[:80], "rows": _row_ids(rows)}},
-                scope=_ai_touched(cps, target["seq"]), force=True)
+                scope=_ai_touched(ctx.rdir, cps, target["seq"]), force=True)
     pdir = project_dir(pid)
     with _lock(pid):
         _refuse_during_agent_run(pid)
@@ -1420,7 +1555,7 @@ def undo_rewind(pid: str, rewind_id: str, session: str) -> dict:
         if ctx.attached:
             out = _restore_attached_locked(ctx, before, "Undid rewind",
                                            {"restored_to": before["id"], "unrewind": rewind_id},
-                                           scope=_differs(before["files"], rec["files"]), force=True)
+                                           scope=_differs(_files(pdir, before), _files(pdir, rec)), force=True)
         else:
             out = _restore_locked(pid, pdir, before, "Undid rewind",
                                   {"restored_to": before["id"], "unrewind": rewind_id}, force=True)
@@ -1455,7 +1590,7 @@ def checkpoint_changes(pid: str, cid: str) -> dict:
         base = None
         changes: list[dict] = []
     else:
-        changes = _changes(pdir, base["files"] if base else {}, rec["files"])
+        changes = _changes(pdir, _files(pdir, base) if base else {}, _files(pdir, rec))
     return {"checkpoint": _public(rec), "before": base["id"] if base else None, "changed": changes, "run": run}
 
 
@@ -1469,11 +1604,17 @@ def fork_project(pid: str, cid: str) -> dict:
         cps = _load_checkpoints(src)
         target = _find(cps, cid)
         history = cps[:cps.index(target) + 1]
+        maps: list[dict[str, str]] = []
         for c in history:
-            for rel in c["files"]:
-                safe_rel(rel)       # a damaged history must not be able to write outside the new project
-            if len(c["files"]) > MAX_FILES:     # only an attached folder's version can be this large
+            count = c.get("files_count")
+            if isinstance(count, int) and count > MAX_FILES:    # known from the line, before its map is read
                 raise VibeError(413, f"A copy is a normal Vibe project, which holds at most {MAX_FILES} files")
+            files = _files(src, c)
+            for rel in files:
+                safe_rel(rel)       # a damaged history must not be able to write outside the new project
+            if len(files) > MAX_FILES:     # only an attached folder's version can be this large
+                raise VibeError(413, f"A copy is a normal Vibe project, which holds at most {MAX_FILES} files")
+            maps.append(files)
         title = (str(_read_meta(src).get("title") or pid)[:72] + " (copy)")
         for _ in range(20):
             new = f"{_slug(title)}-{secrets.token_hex(3)}"
@@ -1485,16 +1626,16 @@ def fork_project(pid: str, cid: str) -> dict:
         dest.mkdir(mode=0o700)
         try:
             _objects(dest).mkdir(parents=True, mode=0o700)
-            for sha in sorted({h for c in history for h in c["files"].values()}):
+            for sha in sorted({h for files in maps for h in files.values()}):
                 data = _blob(src, sha)
                 if hashlib.sha256(data).hexdigest() != sha:
                     raise VibeError(500, "A stored file version is damaged")
                 _store_blob(dest, sha, data)
             with open(_cp_path(dest), "w", encoding="utf-8") as f:
-                for c in history:
-                    f.write(json.dumps(c, ensure_ascii=False, separators=(",", ":")) + "\n")
+                for c, files in zip(history, maps):     # the copy is a created project: the map in each line
+                    f.write(json.dumps(_with_files(c, files), ensure_ascii=False, separators=(",", ":")) + "\n")
             with _lock(new):
-                for rel, sha in target["files"].items():
+                for rel, sha in maps[-1].items():       # maps[-1] is the target's map
                     _write_bytes_locked(dest, rel, _blob(dest, sha))
             # Last: until project.json exists the folder is not a project, so a failed copy is never listed.
             _write_json_atomic(_meta_path(dest), {"id": new, "title": title, "created_at": _now(), "updated_at": _now(),
@@ -1503,7 +1644,7 @@ def fork_project(pid: str, cid: str) -> dict:
             shutil.rmtree(dest, ignore_errors=True)
             raise
     _audit("vibe_project_fork", "Vibe project copied from a checkpoint",
-           {"project": new, "from": pid, "checkpoint": cid, "files": len(target["files"])})
+           {"project": new, "from": pid, "checkpoint": cid, "files": len(maps[-1])})
     return project_info(new)
 
 
@@ -1868,7 +2009,7 @@ def diff(pid: str, a: str, b: str, path: str | None = None) -> dict:
     ctx = _ctx(pid)
     pdir = ctx.rdir
     cps = _load_checkpoints(pdir)
-    old = _find(cps, a)["files"] if a else {}
+    old = _files(pdir, _find(cps, a)) if a else {}
     working: dict[str, bytes] = {}
     if b == "working" and ctx.attached:
         new = {}
@@ -1882,7 +2023,7 @@ def diff(pid: str, a: str, b: str, path: str | None = None) -> dict:
             new[rel] = sha
             working[sha] = (pdir / rel).read_bytes()
     else:
-        new = _find(cps, b)["files"]
+        new = _files(pdir, _find(cps, b))
 
     def load(sha: str) -> str:
         return _text(working[sha]) if sha in working else _text(_blob(pdir, sha))
