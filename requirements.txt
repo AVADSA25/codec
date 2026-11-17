@@ -79,7 +79,7 @@ google-auth-oauthlib>=1.2.2
 # bridge discovery, falls back to a cloud lookup when absent), codec_webcam.py
 # (AVFoundation + CoreMedia + Quartz: the webcam, replacing OpenCV).
 pyobjc-framework-AVFoundation>=12.2.2; sys_platform == "darwin"
-pyobjc-framework-CoreMedia>=12.2; sys_platform == "darwin"
+pyobjc-framework-CoreMedia>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-Quartz>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=12.2.2; sys_platform == "darwin"
 zeroconf>=0.150.0
