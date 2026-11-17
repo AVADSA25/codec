@@ -67,6 +67,15 @@ def test_r17_an_attached_path_the_profile_cannot_hold_is_refused():
             cmd.profile(bad, "/w/vibe", "/Users/me", "/tmp/t", False, attached=True)
 
 
+def test_s05_the_attached_rules_refuse_env_writes_and_the_d23_names_at_any_depth():
+    p = cmd.profile("/Users/me/Projects/app", "/Users/me/w/vibe", "/Users/me", "/tmp/t", False, attached=True)
+    writes = p[p.index("an attached folder"):p.index("(deny file-read-data")]
+    at = r'^/Users/me/Projects/app/(.+/)?'
+    assert f'(regex #"{at}{cmd._ci(".env")}[^/]*$")' in writes
+    for name in vp._AGENT_BLOCKED_SEGMENTS:
+        assert f'(regex #"{at}{cmd._ci(name)}$")' in writes and f'(regex #"{at}{cmd._ci(name)}/")' in writes, name
+
+
 # ── the real sandbox (this Mac) ──
 
 @pytest.fixture
@@ -180,3 +189,24 @@ def test_r17_the_agent_runs_an_attached_folders_command_in_the_folder_with_the_a
     att, made = fake.calls
     assert att["project"] == tmp_path / "Projects" / "app" and att["attached"] is True
     assert made["project"] == vp.project_dir(created) and "attached" not in made
+
+
+@needs_sandbox
+def test_s05_a_command_cannot_write_env_files_or_the_d23_folders_but_can_write_a_normal_file(attached_box):
+    proj = attached_box[0]
+    for d in (".github", ".vscode", ".husky"):
+        (proj / d).mkdir(exist_ok=True)
+    go(attached_box, "echo x > .env; echo x > .env.local; echo x > sub/.env.production; echo x > .github/workflows.yml; "
+                     "mkdir .github/workflows; echo x > .vscode/settings.json; echo x > .husky/pre-commit; "
+                     "mkdir .devcontainer; echo x > .mcp.json; mkdir -p sub/.claude; echo fine > normal.txt; true")
+    assert (proj / ".env").read_text() == "SECRET-CANARY-ENV\n"
+    for refused in (".env.local", "sub/.env.production", ".github/workflows.yml", ".github/workflows", ".vscode/settings.json",
+                    ".husky/pre-commit", ".devcontainer", ".mcp.json", "sub/.claude"):
+        assert not os.path.lexists(proj / refused), refused
+    assert (proj / "normal.txt").read_text() == "fine\n"
+
+
+@needs_sandbox
+def test_s05_a_command_still_cannot_read_env(attached_box):
+    r = go(attached_box, "cat .env; true")
+    assert "SECRET-CANARY-ENV" not in (getattr(r, "output", None) or str(r))
