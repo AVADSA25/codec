@@ -11,7 +11,11 @@ try:
 except ImportError:
     keyboard = None
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+import codec_config_path  # stdlib only: where config.json is
+
+# ~/.codec/config.json; CODEC_CONFIG_PATH only in the test suite (docs/TEST-CONFIG-ISOLATION-DESIGN.md).
+# Every other module asks codec_config_path.config_path(), which answers this name.
+CONFIG_PATH = codec_config_path.from_env()
 DRY_RUN = False
 
 # ── Config schema versioning + migration (A-15, PR-3) ────────────────────────

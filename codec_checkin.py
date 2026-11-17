@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("codec_checkin")
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 STATE_PATH = os.path.expanduser("~/.codec/checkin_state.json")
 OBSERVER_PATH = os.path.expanduser("~/.codec/observer_buffer.json")
 AWAY_AFTER_S = 600
@@ -38,7 +38,7 @@ _EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍]")
 # ── settings ──────────────────────────────────────────────────────────────────
 def _read_config() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -92,10 +92,10 @@ def clean_settings(body: Dict[str, Any]) -> Dict[str, Any]:
 def save_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     import codec_jsonstore
     new = clean_settings(body)
-    with codec_jsonstore.file_lock(CONFIG_PATH):
+    with codec_jsonstore.file_lock(config_path()):
         config = _read_config()
         config["checkin"] = new
-        codec_jsonstore.atomic_write_json(CONFIG_PATH, config)
+        codec_jsonstore.atomic_write_json(config_path(), config)
     return new
 
 

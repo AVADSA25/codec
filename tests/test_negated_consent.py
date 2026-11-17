@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import codec_config
 import codec_ask_user
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -54,7 +55,7 @@ def askuser_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", tmp_path / "pending_questions.json")
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", tmp_path / "notifications.json")
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     codec_ask_user._WAITERS.clear()
     codec_ask_user._REJECTION_COUNT.clear()
     return tmp_path

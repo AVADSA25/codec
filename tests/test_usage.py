@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 HOME = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
@@ -107,8 +108,7 @@ def use(tmp_path, monkeypatch, log):
     import codec_cloud_models as ccm
     import routes.usage as ru
     cfg_path = tmp_path / "config.json"
-    monkeypatch.setattr(ru, "CONFIG_PATH", str(cfg_path))
-    monkeypatch.setattr(ccm, "CONFIG_PATH", str(cfg_path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     monkeypatch.setattr(ccm, "SPEND_PATH", str(tmp_path / "cloud_spend.json"))
     month = ccm._month()
     prev = (datetime.strptime(month + "-01", "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m")

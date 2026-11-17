@@ -37,7 +37,7 @@ def flash(monkeypatch, tmp_path):
                " session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
     prompts = []
     monkeypatch.setattr(codec_dashboard, "get_db", lambda: db)
-    monkeypatch.setattr(codec_dashboard, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(codec_dashboard, "_try_skill", lambda task: (None, None))
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")
     monkeypatch.setattr(codec_llm, "call", lambda messages, **kw: prompts.append(messages) or "ok")

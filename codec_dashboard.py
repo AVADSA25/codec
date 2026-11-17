@@ -22,13 +22,14 @@ import uvicorn
 
 # ── Shared state (canonical source: routes/_shared.py) ──
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE, _audit_write,
+    log, DASHBOARD_DIR, _NO_CACHE, _audit_write,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
     _auth_available, _verify_biometric_session, _is_remote_request,
     _save_sessions, _save_e2e_keys,
     get_db,
 )
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 # C1/C4/D3: AUDIT_LOG, approval state, notification helpers, and the
 # schedule-run log are imported by the extracted route modules — codec_
 # dashboard.py doesn't reference them at module level anymore.
@@ -251,7 +252,7 @@ app.add_middleware(CSPMiddleware)
 app.add_middleware(AuthMiddleware)
 
 
-# (Shared state: DB_PATH, AUDIT_LOG, CONFIG_PATH, etc. imported from routes._shared)
+# (Shared state: DB_PATH, AUDIT_LOG, etc. imported from routes._shared; config.json through config_path())
 
 
 # (Auth helpers, DB, notifications loaded from routes._shared)
@@ -682,7 +683,7 @@ async def send_command(request: Request):
     try:
         config = {}
         try:
-            with open(CONFIG_PATH) as f: config = json.load(f)
+            with open(config_path()) as f: config = json.load(f)
         except Exception:
             pass
         base_url = config.get("llm_base_url", "http://localhost:8083/v1")
@@ -1125,7 +1126,7 @@ async def _warmup_vision():
     try:
         config = {}
         try:
-            with open(CONFIG_PATH) as f: config = json.load(f)
+            with open(config_path()) as f: config = json.load(f)
         except Exception:
             pass
         vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
@@ -1161,7 +1162,7 @@ async def _vision_keepalive():
         try:
             config = {}
             try:
-                with open(CONFIG_PATH) as f: config = json.load(f)
+                with open(config_path()) as f: config = json.load(f)
             except Exception:
                 pass
             vision_url = config.get("vision_base_url", "http://localhost:8083/v1")

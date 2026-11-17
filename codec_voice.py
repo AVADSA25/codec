@@ -207,9 +207,9 @@ except ImportError:
     SKILLS_DIR = os.path.expanduser("~/.codec/skills")
     USER_SKILLS_DIR = None
 
-_CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 try:
-    with open(_CONFIG_PATH) as _f:
+    with open(config_path()) as _f:
         _cfg = json.load(_f)
     _llm_base     = _cfg.get("llm_base_url", "http://localhost:8083/v1").rstrip("/")
     QWEN_BASE_URL = _llm_base
@@ -241,7 +241,7 @@ def _resolve_voice_llm() -> tuple:
     import, lets a switch reach the next call without a restart.
     """
     try:
-        with open(_CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         import codec_cloud_models
         import codec_models

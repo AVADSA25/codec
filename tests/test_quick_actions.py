@@ -315,6 +315,8 @@ def _run_textassist(tmp_path: Path, mode: str) -> tuple[list, str]:
     work = tmp_path / "ta"
     work.mkdir()
     shutil.copy(REPO / "codec_textassist.py", work / "codec_textassist.py")
+    # The real path rule, as in the app; the child inherits CODEC_CONFIG_PATH (the suite's empty config).
+    shutil.copy(REPO / "codec_config_path.py", work / "codec_config_path.py")
     rec, clip = work / "calls.jsonl", work / "clipboard.txt"
     stubs = {
         "codec_overlays.py": "def show_overlay(*a, **k):\n    return None\ndef hide_overlay(*a, **k):\n    return None\n",

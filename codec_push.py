@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 import codec_jsonstore
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 log = logging.getLogger("codec_push")
 
@@ -186,7 +187,7 @@ def ensure_key() -> Optional[str]:
 
 def _subject() -> str:
     try:
-        cfg = json.loads(Path(os.path.expanduser("~/.codec/config.json")).read_text())
+        cfg = json.loads(Path(config_path()).read_text())
         sub = str(((cfg.get("push") or {}).get("subject")) or "").strip()
         if sub.startswith(("mailto:", "https://")):
             return sub

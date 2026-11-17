@@ -16,6 +16,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_models
 
 
@@ -35,7 +36,7 @@ def no_real_pm2(monkeypatch):
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"llm_model": "mlx-community/A", "llm_base_url": "http://x/v1"}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_models, "discover_local",
                         lambda: [{"id": "mlx-community/A", "label": "A", "size_gb": 1.0},
                                  {"id": "mlx-community/B", "label": "B", "size_gb": 2.0}])
@@ -147,7 +148,7 @@ def test_skill_resolves_aliases_and_prefers_active():
 def _cfg_with(tmp_path, monkeypatch, **extra):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"llm_model": "mlx-community/A", **extra}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_models, "discover_local",
                         lambda: [{"id": "mlx-community/A", "label": "A", "size_gb": 1.0},
                                  {"id": "mlx-community/B", "label": "B", "size_gb": 2.0},
@@ -333,7 +334,7 @@ def test_restart_targets_the_configured_process_and_port(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"model_pm2_process": "qwen-other",
                                 "llm_base_url": "http://127.0.0.1:9999/v1"}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     assert codec_models._pm2_process_name() == "qwen-other"
     assert codec_models._host_port(codec_models._load_config()) == ("127.0.0.1", 9999)
 
@@ -341,7 +342,7 @@ def test_restart_targets_the_configured_process_and_port(tmp_path, monkeypatch):
 def test_restart_process_name_defaults(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text("{}")
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     assert codec_models._pm2_process_name() == codec_models.DEFAULT_PM2_PROCESS
     assert codec_models._host_port({}) == ("localhost", 8083)
 

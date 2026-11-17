@@ -22,7 +22,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 import codec_models
-from routes._shared import CONFIG_PATH, _audit_event
+from routes._shared import _audit_event
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 
@@ -51,7 +52,7 @@ async def webcam_capture(request: Request):
                 import requests as rq
                 config = {}
                 try:
-                    with open(CONFIG_PATH) as f:
+                    with open(config_path()) as f:
                         config = json.load(f)
                 except Exception:
                     pass

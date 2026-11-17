@@ -143,7 +143,7 @@ def route(tmp_path, monkeypatch, dispatch):
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1", "llm_model": "test-model"}))
     st = SimpleNamespace(reply="", searched=[], d=dispatch)
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda *a, **k: None)
     monkeypatch.setattr(codec_models, "model_extras", lambda *a, **k: {})
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")

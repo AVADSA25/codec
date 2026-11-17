@@ -77,7 +77,7 @@ _NOTIFS_PATH = _CODEC_DIR / "notifications.json"
 _OBS_SUMMARIES_DIR = _CODEC_DIR / "observation_summaries"
 _PROPOSALS_DIR = _CODEC_DIR / "skill_proposals"
 _STATE_PATH = _CODEC_DIR / "shift_report_state.json"
-_CONFIG_PATH = _CODEC_DIR / "config.json"
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 # Audit events that count as "real work" for section 1.
 _COMPLETED_TASK_EVENTS = frozenset({
@@ -114,7 +114,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 def _load_config() -> Dict[str, Any]:
     cfg = dict(_DEFAULT_CONFIG)
     try:
-        with open(_CONFIG_PATH) as f:
+        with open(config_path()) as f:
             user = json.load(f).get("shift_report", {})
         if isinstance(user, dict):
             cfg.update(user)

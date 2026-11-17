@@ -21,6 +21,7 @@ import requests
 
 # At collection, like the other daemon tests: a skill can put ~/codec-repo first on sys.path when it
 # loads, and an import inside a test then got the main checkout's module instead of this worktree's.
+import codec_config
 import codec_alerts
 import codec_audit
 import codec_autopilot
@@ -44,7 +45,7 @@ def codec_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(codec_alerts, "ALERTS_SENT_PATH", str(d / "alerts_sent.json"))
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", d / "audit.log")
     monkeypatch.setattr(codec_observer, "_PAUSE_PATH", d / "observer_paused_until")
-    monkeypatch.setattr(codec_observer, "_CODEC_CONFIG_PATH", d / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(d / "config.json"))
     return d
 
 
@@ -412,10 +413,10 @@ def test_the_imessage_loop_beats_and_a_refused_database_counts_as_failing(codec_
     db = codec_dir / "chat.db"
     db.write_bytes(b"")
     (codec_dir / "config.json").write_text(json.dumps({"imessage": {"allowed_senders": ["+15550000001"]}}))
-    for name, path in (("MESSAGES_DB", db), ("CONFIG_PATH", codec_dir / "config.json"),
-                       ("STATE_FILE", codec_dir / "imessage_state.json"),
+    for name, path in (("MESSAGES_DB", db), ("STATE_FILE", codec_dir / "imessage_state.json"),
                        ("HEALTH_FILE", codec_dir / "imessage_health.json")):
         monkeypatch.setattr(im, name, str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(codec_dir / "config.json"))
     refused = _Refused()
     refused.DatabaseError = real_sqlite.DatabaseError
     monkeypatch.setattr(im, "sqlite3", refused)

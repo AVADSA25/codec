@@ -20,6 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_alerts  # noqa: E402
 import codec_cloud_models  # noqa: E402
 import codec_models  # noqa: E402
@@ -38,8 +39,7 @@ def env(tmp_path, monkeypatch):
     cfg_path.write_text(json.dumps({
         "llm_model": "mlx-community/A", "llm_base_url": LOCAL_URL,
         "extra_models": [dict(CLOUD)], "llm_auto_fallback": "cloud-pro"}))
-    for mod in (codec_models, codec_cloud_models):
-        monkeypatch.setattr(mod, "CONFIG_PATH", str(cfg_path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     monkeypatch.setattr(codec_cloud_models, "SPEND_PATH", str(tmp_path / "spend.json"))
     monkeypatch.setattr(codec_cloud_models, "get_key", lambda e: "sk-test")
     monkeypatch.setattr(codec_models, "_SWITCH_LOCK_PATH", str(tmp_path / "switch.lock"))

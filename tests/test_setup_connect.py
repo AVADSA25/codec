@@ -20,6 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_setup  # noqa: E402
 
 
@@ -37,7 +38,7 @@ def _no_real_side_effects(monkeypatch):
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text("{}")
-    monkeypatch.setattr(codec_setup, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_setup, "HF_CACHE", str(tmp_path / "hf"))
     monkeypatch.setattr(codec_setup, "MODELS_DIR", str(tmp_path / "models"))
     return path

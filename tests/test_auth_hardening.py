@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import codec_config
 import codec_dashboard
 import routes.auth as auth
 from codec_dashboard import AuthMiddleware, app
@@ -90,7 +91,7 @@ def test_correct_pin_upgrades_legacy_hash_to_argon2(monkeypatch, tmp_path, quiet
     cfg = tmp_path / "config.json"
     legacy = hashlib.sha256(b"4821").hexdigest()
     cfg.write_text(json.dumps({"auth_pin_hash": legacy, "keep": 1}))
-    monkeypatch.setattr(auth, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(auth, "AUTH_PIN_HASH", legacy)
     r = TestClient(app).post("/api/auth/pin", json={"pin": "4821"})
     assert r.json()["authenticated"] is True

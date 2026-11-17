@@ -53,7 +53,7 @@ from codec_jsonstore import atomic_write_json
 
 log = logging.getLogger("codec.cloud_models")
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 SPEND_PATH = os.path.expanduser("~/.codec/cloud_spend.json")
 
 DEFAULT_MONTHLY_CAP_USD = 10.0
@@ -79,7 +79,7 @@ _spend_lock = threading.Lock()
 
 def _load_config() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         return cfg if isinstance(cfg, dict) else {}
     except (OSError, ValueError):

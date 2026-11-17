@@ -21,8 +21,8 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_audit  # noqa: E402
-import codec_cloud_models  # noqa: E402
 import codec_models  # noqa: E402
 
 SEVEN_B = "mlx-community/Qwen2.5-7B-Instruct-4bit"
@@ -94,10 +94,7 @@ def cfg(tmp_path, monkeypatch, server):
         path.write_text(json.dumps({"llm_base_url": server.base, **values}))
         return json.loads(path.read_text())
 
-    for mod in (codec_models, codec_cloud_models):
-        monkeypatch.setattr(mod, "CONFIG_PATH", str(path))
-    import codec_voice
-    monkeypatch.setattr(codec_voice, "_CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     write.path = path
     return write
 
@@ -264,7 +261,7 @@ def _warm(monkeypatch, path):
     import codec_dashboard as dash
     sent = []
     monkeypatch.setattr(dash, "_WARMUP_DELAY_S", 0)
-    monkeypatch.setattr(dash, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(requests, "post", lambda url, json=None, **k: sent.append((url, json["model"]))
                         or type("R", (), {"status_code": 200})())
     asyncio.run(dash._warmup_vision())

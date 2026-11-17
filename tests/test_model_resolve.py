@@ -2,7 +2,7 @@
 
 docs/MODEL-RESOLVE-DESIGN.md. codec_models is the one place holding default
 model ids; every other Python file names a role. Config is read only from
-tmp_path (codec_models.CONFIG_PATH patched) or passed in, never the real
+tmp_path (codec_config.CONFIG_PATH patched) or passed in, never the real
 ~/.codec and never a fake HOME.
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_models  # noqa: E402
 
 KEYS = {"chat": "llm_model", "agent": "llm_model", "plan": "llm_model", "voice": "voice_model",
@@ -60,7 +61,7 @@ def _tracked_python():
 @pytest.fixture
 def config_file(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
 
     def write(**cfg):
         path.write_text(json.dumps(cfg))

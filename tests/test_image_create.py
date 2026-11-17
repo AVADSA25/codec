@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_image  # noqa: E402
 
 PNG = base64.b64decode(
@@ -69,7 +70,7 @@ def img(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"image": {"python": sys.executable, "model_path": str(model),
                                          "min_free_gb": 36, "steps": 3}}))
-    monkeypatch.setattr(codec_image, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_image, "IMAGES_DIR", str(tmp_path / "images"))
     monkeypatch.setattr(codec_image, "LOCK_PATH", str(tmp_path / "image_job.lock"))
     monkeypatch.setattr(codec_image, "RUNNER", str(runner))
@@ -215,15 +216,13 @@ def test_unfinished_job_from_before_a_restart_reads_as_failed(img):
 
 
 def test_no_local_model_loads_while_a_job_runs(img, tmp_path, monkeypatch):
-    import codec_cloud_models
     import codec_models
     cfg = tmp_path / "models.json"
     cfg.write_text(json.dumps({
         "llm_model": "mlx-community/A", "llm_base_url": "http://localhost:8083/v1",
         "extra_models": [{"id": "cloud-pro", "base_url": "https://cloud.example/v1",
                           "price_in_per_m": 0.1, "price_out_per_m": 0.1}]}))
-    for mod in (codec_models, codec_cloud_models):
-        monkeypatch.setattr(mod, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_models, "discover_local",
                         lambda: [{"id": "mlx-community/B", "label": "B", "size_gb": 2.0}])
     monkeypatch.setattr(codec_models, "restart_server", lambda *a, **k: (True, "ok"))

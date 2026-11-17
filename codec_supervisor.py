@@ -26,15 +26,12 @@ SUPERVISORS = ("pm2", "launchd")
 _TIMEOUT_S = 10
 _PRINT_WORKERS = 8
 
-try:
-    from codec_config import CONFIG_PATH
-except Exception:  # pragma: no cover - codec_config always imports in the repo and the .app
-    CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 
 def _config() -> dict:
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
+        with open(config_path(), encoding="utf-8") as f:
             cfg = json.load(f)
     except (OSError, ValueError):
         return {}

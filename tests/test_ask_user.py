@@ -26,6 +26,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+import codec_config
 import codec_audit
 import codec_ask_user
 
@@ -48,8 +49,7 @@ def temp_askuser_paths(tmp_path, monkeypatch):
     nf = tmp_path / "notifications.json"
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", pq)
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", nf)
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH",
-                        tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     # Reset module-level state.
     codec_ask_user._WAITERS.clear()
     codec_ask_user._REJECTION_COUNT.clear()

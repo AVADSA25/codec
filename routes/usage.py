@@ -9,7 +9,6 @@ over 14 days (codec_usage's per-reply log).
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 
 from fastapi import APIRouter, Request
@@ -17,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 FALLBACK_NOTE = ("When the local model server stops answering, CODEC moves to this cloud model before the next chat "
                  "or voice reply, and back to the local model once it answers twice in a row. Its replies count toward "
                  "that model's monthly cap; at the cap it stops answering.")
@@ -25,7 +24,7 @@ FALLBACK_NOTE = ("When the local model server stops answering, CODEC moves to th
 
 def _config() -> dict:
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
+        with open(config_path(), encoding="utf-8") as f:
             cfg = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -80,13 +79,13 @@ async def set_auto_fallback(request: Request):
     import codec_jsonstore
     if value is not None and (not isinstance(value, str) or ccm.entry_for_id(value, _config()) is None):
         return JSONResponse({"error": "Pick one of the registered cloud models, or off."}, status_code=400)
-    with codec_jsonstore.file_lock(CONFIG_PATH):
+    with codec_jsonstore.file_lock(config_path()):
         cfg = _config()
         if value is None:
             cfg.pop("llm_auto_fallback", None)
         else:
             cfg["llm_auto_fallback"] = value
-        codec_jsonstore.atomic_write_json(CONFIG_PATH, cfg)
+        codec_jsonstore.atomic_write_json(config_path(), cfg)
     try:
         from codec_audit import log_event
         log_event("auto_fallback_set", "codec-dashboard",

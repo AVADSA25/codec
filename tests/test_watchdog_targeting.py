@@ -25,6 +25,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_audit
 import codec_watchdog as wd
 
@@ -57,7 +58,7 @@ def harness(monkeypatch, tmp_path):
     monkeypatch.setattr(wd, "REPO_DIR", FAKE_REPO)
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text("{}")
-    monkeypatch.setattr(wd, "CONFIG_PATH", str(cfg_path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     notif_path = tmp_path / "notifications.json"
     monkeypatch.setattr(wd, "NOTIFICATIONS_PATH", str(notif_path))
     wd.idle_tracker.clear()

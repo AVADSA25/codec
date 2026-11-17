@@ -45,7 +45,7 @@ RSS_MIN_MB       = 500       # only care about processes using > 500 MB
 CMD_LOG_MAX      = 200       # chars of the command line kept in logs / audit
 
 REPO_DIR           = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH        = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 NOTIFICATIONS_PATH = os.path.expanduser("~/.codec/notifications.json")
 
 # Ports CODEC runs its MLX servers on: scripts/start_model_server.sh default
@@ -98,7 +98,7 @@ def _short(cmd):
 def load_config():
     """Read ~/.codec/config.json fresh (never cached). {} on any error."""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         return cfg if isinstance(cfg, dict) else {}
     except (OSError, ValueError):

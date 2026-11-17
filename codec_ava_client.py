@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +32,7 @@ import requests
 
 log = logging.getLogger("codec.ava")
 
-CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 
 # ── Config helpers ──
@@ -57,7 +56,8 @@ def load_config() -> AvaConfig | None:
     Returns None if the file is missing or `ava` block isn't present.
     """
     try:
-        data = json.loads(CONFIG_PATH.read_text())
+        path = Path(config_path())
+        data = json.loads(path.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return None
     ava = data.get("ava")
@@ -67,7 +67,7 @@ def load_config() -> AvaConfig | None:
     return AvaConfig(
         enabled=bool(ava.get("enabled", False)),
         proxy_url=(ava.get("proxy_url") or "").rstrip("/"),
-        license_key=codec_config.get_license_key(data, CONFIG_PATH),
+        license_key=codec_config.get_license_key(data, path),
         default_cloud_model=ava.get("default_cloud_model", "gemini-2.5-flash-lite"),
         available_cloud_models=list(ava.get("available_cloud_models", [])),
     )

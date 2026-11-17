@@ -8,12 +8,13 @@ import re
 import time
 
 import codec_models
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "proofread"
 
 def get_config():
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f: return json.load(f)
+        with open(config_path()) as f: return json.load(f)
     except Exception: return {}
 
 def call_qwen(text, mode):

@@ -51,7 +51,7 @@ from codec_chat_pipeline import (  # Step 10 Q11 wiring (2026-07)
     _should_escalate_to_project,
     silence_session_autoescalate,
 )
-from routes._shared import CONFIG_PATH
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -868,7 +868,7 @@ def _chat_vision_response(body: dict, messages: list):
     import requests as rq2
     config2 = {}
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             config2 = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         log.warning(f"Config read failed; proceeding without overrides: {e}")
@@ -1670,7 +1670,7 @@ async def chat_completion(request: Request):
     try:
         config = {}
         try:
-            with open(CONFIG_PATH) as f: config = json.load(f)
+            with open(config_path()) as f: config = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8083/v1")

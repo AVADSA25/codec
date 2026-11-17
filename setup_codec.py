@@ -20,7 +20,7 @@ B = "\033[1m"                 # Bold
 X = "\033[0m"                 # Reset
 
 CONFIG_DIR = os.path.expanduser("~/.codec")
-CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 # The dashboard runs code and reads mail, so a new install asks for a login by
 # default; "None" stays available when chosen on purpose (audit 2026-09-27).
@@ -28,10 +28,11 @@ AUTH_CHOICES = ["Touch ID only", "PIN code only", "Both Touch ID + PIN", "None"]
 DEFAULT_AUTH_CHOICE = "Both Touch ID + PIN"
 
 
-def save_config(config, path=CONFIG_PATH):
+def save_config(config, path=None):
     """Write config.json readable by this user only (0600): it holds the PIN
     hash and, until the first dashboard start moves them to the Keychain,
     any API keys."""
+    path = path or config_path()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(config, f, indent=2)
@@ -620,7 +621,7 @@ def main():
   {W}Wake word:{X}  {'ON' if config['wake_word_enabled'] else 'OFF'}
   {W}Streaming:{X}  {'ON' if config['streaming'] else 'OFF'}
   {W}Skills:{X}     {len(config['skills'])} enabled
-  {W}Config:{X}     {CONFIG_PATH}
+  {W}Config:{X}     {config_path()}
 """)
 
     if not ask_yn("Save this configuration?", True):
@@ -633,7 +634,7 @@ def main():
 
     # Save config
     save_config(config)
-    print(f"\n{G}  ✓ Config saved to {CONFIG_PATH}{X}")
+    print(f"\n{G}  ✓ Config saved to {config_path()}{X}")
 
     # Copy skills
     script_dir = os.path.dirname(os.path.abspath(__file__))

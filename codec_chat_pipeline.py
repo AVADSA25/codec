@@ -28,9 +28,8 @@ import codec_llm  # I1 / SR-60: auto-escalation classifier LLM call
 
 log = logging.getLogger("codec_chat_pipeline")
 
-# Match codec_dashboard's CONFIG_PATH resolution so reads land on the same file
-# (routes/_shared.CONFIG_PATH is the canonical home).
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+# The same config.json every module reads (codec_config.CONFIG_PATH).
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 
 # Longer than this many words, a message is almost always conversation, not a
@@ -91,7 +90,7 @@ def _step_budget_for_route(route: str) -> Optional[int]:
         mcp:   None  (no turn budget — each MCP call is its own turn)
     """
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f).get("step_budget", {})
     except (OSError, ValueError):
         cfg = {}

@@ -3,6 +3,7 @@ import sys
 import os
 import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 SKILL_NAME = "health_check"
 SKILL_DESCRIPTION = "Check health of all CODEC services: Qwen LLM, Vision, Whisper STT, Kokoro TTS, Dashboard, memory DB, heartbeat. Returns status summary."
@@ -63,7 +64,7 @@ def run(task: str = "", context: str = "") -> str:
         from urllib.parse import urlparse
         tts_base = "http://localhost:8085"
         try:
-            with open(os.path.expanduser("~/.codec/config.json")) as f:
+            with open(config_path()) as f:
                 # tts_url is the FULL speech endpoint
                 # (e.g. http://localhost:8085/v1/audio/speech) — keep only
                 # scheme://host:port for the models probe.

@@ -7,7 +7,8 @@ Used by tests/conftest.py; not a test module.
 - `Guard`: in this process, refuses writes to the owner's ~/.codec memory.db,
   notifications, pending questions, audit log, shift report state, qchat.db, vibe.db, the
   overlay events file, the licence key cache and grace state and config.json, any
-  sqlite3.connect to them, and any run of the real /usr/bin/security. Each
+  open of config.json (reads too), any sqlite3.connect to them, and any run of the
+  real /usr/bin/security. Each
   refusal is recorded, so the test that caused it fails even when the code
   under test swallows the error.
 - `watch_snapshot` / `watch_changes`: a read-only before/after look at a short,
@@ -46,6 +47,10 @@ REAL_SECURITY = "/usr/bin/security"
 PROTECTED_NAMES = ("memory.db", "notifications.", "pending_questions.", "audit.log",
                    "shift_report_state.", "qchat.db", "vibe.db", "overlay_events.",
                    "license_pubkey.", ".license_state.", "config.json")
+# Reads of these are refused too (docs/TEST-CONFIG-ISOLATION-DESIGN.md, 17 Nov 2026): every module
+# reads config.json through codec_config.CONFIG_PATH, which conftest points at a missing temp file
+# (CODEC_CONFIG_PATH), so a read of the owner's file means a module built its own path.
+READ_PROTECTED_NAMES = ("config.json",)
 
 _WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 
@@ -155,8 +160,8 @@ class Guard:
         self.hits: list = []  # (what, name) per refusal
         self._reported = 0    # hits[:_reported] were already handed out by unreported()
 
-    def protected(self, path):
-        """The protected name `path` falls under, or None."""
+    def protected(self, path, names=PROTECTED_NAMES):
+        """The protected name (of `names`) `path` falls under, or None."""
         if isinstance(path, int):
             return None
         try:
@@ -164,7 +169,7 @@ class Guard:
         except TypeError:
             return None
         base = os.path.basename(p)
-        name = next((n for n in PROTECTED_NAMES if base.startswith(n)), None)
+        name = next((n for n in names if base.startswith(n)), None)
         if name is None:
             return None
         if os.path.realpath(os.path.dirname(os.path.abspath(p))) != self.home:
@@ -178,6 +183,11 @@ class Guard:
 
     def check_path(self, what: str, path) -> None:
         name = self.protected(path)
+        if name:
+            self.refuse(what, name)
+
+    def check_read(self, what: str, path) -> None:
+        name = self.protected(path, READ_PROTECTED_NAMES)
         if name:
             self.refuse(what, name)
 
@@ -214,11 +224,16 @@ class Guard:
         def open_(file, mode="r", *args, **kwargs):
             if isinstance(mode, str) and any(c in mode for c in "wax+"):
                 guard.check_path("open for write", file)
+            else:
+                guard.check_read("open for read", file)
             return real_open(file, mode, *args, **kwargs)
 
         def os_open(path, flags, *args, **kwargs):
-            if flags & _WRITE_FLAGS and kwargs.get("dir_fd") is None:
-                guard.check_path("os.open for write", path)
+            if kwargs.get("dir_fd") is None:
+                if flags & _WRITE_FLAGS:
+                    guard.check_path("os.open for write", path)
+                else:
+                    guard.check_read("os.open for read", path)
             return real_os_open(path, flags, *args, **kwargs)
 
         def two_paths(real, what):

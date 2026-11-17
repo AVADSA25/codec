@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import html
 import json
-import os
 import re
 import threading
 import time
@@ -33,7 +32,7 @@ except ImportError:  # pragma: no cover
     def _log_event(*a, **kw):  # type: ignore[no-redef]
         pass
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 PER_REQUEST_MAX_FAILS = 5
 PER_IP_MAX_FAILS = 5
@@ -77,7 +76,7 @@ def _form_headers(redirect_uri: str) -> dict:
 def _read_pin_hash() -> str:
     """Read at request time so a PIN set after startup applies."""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return str(json.load(f).get("auth_pin_hash", "") or "")
     except Exception:
         return ""

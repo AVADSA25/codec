@@ -67,9 +67,9 @@ def run(task, app="", ctx=""):
             f'display notification "Timer: {display} is up!" with title "CODEC" sound name "Glass"'], timeout=5)
         try:
             import json
-            import os
             try:
-                _c = json.load(open(os.path.expanduser("~/.codec/config.json")))
+                from codec_config_path import config_path
+                _c = json.load(open(config_path()))
             except Exception:
                 _c = {}
             import codec_models

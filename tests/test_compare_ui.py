@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 CHAT = (REPO / "codec_chat.html").read_text(encoding="utf-8")
@@ -75,8 +76,7 @@ def cmp(tmp_path, monkeypatch):
     cfg = {"llm_base_url": CLOUD["base_url"], "llm_model": "mimo-test", "extra_models": [CLOUD],
            "llm_local_restore": {"llm_base_url": "http://localhost:8083/v1", "llm_model": "mlx-community/Qwen3.6-35B-A3B-4bit"}}
     (tmp_path / "config.json").write_text(json.dumps(cfg))
-    monkeypatch.setattr(rc, "CONFIG_PATH", str(tmp_path / "config.json"))
-    monkeypatch.setattr(ccm, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(ccm, "SPEND_PATH", str(tmp_path / "cloud_spend.json"))
     monkeypatch.setattr(ccm, "get_key", lambda entry: "test-key")
     monkeypatch.setattr(codec_compare, "_cookbook_endpoints", lambda: [

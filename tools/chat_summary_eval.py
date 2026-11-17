@@ -36,7 +36,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 FIXTURE = REPO / "tools" / "chat_summary_fixture.json"
-CONFIG = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 VOICE_MARKER = os.path.expanduser("~/.codec/voice_session.json")
 IMAGE_LOCK = os.path.expanduser("~/.codec/image_job.lock")
 SERVER_LOG = os.path.expanduser("~/.pm2/logs/qwen3.6-error.log")
@@ -315,7 +315,7 @@ def main(argv=None) -> int:
     if args.check:
         return report(json.loads(Path(args.check).read_text(encoding="utf-8")), args.bar)
     try:
-        cfg = json.loads(Path(CONFIG).read_text(encoding="utf-8"))
+        cfg = json.loads(Path(config_path()).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         cfg = {}
     base_url = cfg.get("llm_base_url") or "http://localhost:8083/v1"

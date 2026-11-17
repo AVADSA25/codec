@@ -21,6 +21,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import codec_config
 import codec_cloud_models  # noqa: E402
 import codec_llm  # noqa: E402
 import codec_models  # noqa: E402
@@ -41,8 +42,7 @@ def env(tmp_path, monkeypatch):
         "llm_kwargs": {"chat_template_kwargs": {"enable_thinking": False}},
         "extra_models": [dict(CLOUD)]}))
     spend = tmp_path / "cloud_spend.json"
-    for mod in (codec_models, codec_cloud_models):
-        monkeypatch.setattr(mod, "CONFIG_PATH", str(cfg_path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     monkeypatch.setattr(codec_cloud_models, "SPEND_PATH", str(spend))
     monkeypatch.setattr(codec_cloud_models, "get_key", lambda e: "sk-test")
     monkeypatch.setattr(codec_llm, "_cloud_blocked_msg", lambda url: None)
@@ -354,7 +354,7 @@ def test_blocked_call_never_leaves_the_mac(env, monkeypatch, problem, expect):
 
 def test_voice_follows_the_switch_only_to_a_cloud_model(env, monkeypatch):
     import codec_voice
-    monkeypatch.setattr(codec_voice, "_CONFIG_PATH", str(env[0]))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(env[0]))
     base, model, cloud = codec_voice._resolve_voice_llm()
     # P-013: voice names the model the local server holds (the env's llm_model).
     assert (base, model, cloud) == (LOCAL_URL, "mlx-community/A", False)

@@ -191,7 +191,7 @@ def test_preset_setup_codec_offers_the_shared_presets():
 def cfg_path(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"agent_name": "C", "telegram": {"chat_id": "42"}}))
-    monkeypatch.setattr(rc, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     return path
 
 

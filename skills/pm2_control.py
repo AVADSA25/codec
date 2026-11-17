@@ -8,11 +8,10 @@ SKILL_TRIGGERS = ["pm2 status", "pm2 restart", "pm2 list", "pm2 logs",
 SKILL_MCP_EXPOSE = False  # Local management only
 
 import json
-import os
 import subprocess
 import re
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 # Services a chat or voice sentence must never restart. The owner adds his own
 # in ~/.codec/config.json:pm2_protected_services; these defaults always apply.
@@ -24,7 +23,7 @@ _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*")
 def _protected_services():
     names = set(DEFAULT_PROTECTED)
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             extra = json.load(f).get("pm2_protected_services") or []
         names.update(str(n).lower() for n in extra if isinstance(n, str))
     except Exception:

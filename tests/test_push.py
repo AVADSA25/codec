@@ -26,6 +26,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 FCM = "https://fcm.googleapis.com/fcm/send/"
@@ -250,7 +251,7 @@ def test_ask_user_pushes_an_approval_or_a_question(push, tmp_path, monkeypatch):
     import codec_ask_user
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", tmp_path / "pending_questions.json")
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", tmp_path / "notifications.json")
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     kinds = []
     monkeypatch.setattr(push.mod, "notify", kinds.append)
     codec_ask_user.ask("Delete the draft folder?", destructive=True, timeout=1)

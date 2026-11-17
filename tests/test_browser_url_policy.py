@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import codec_config
 import codec_browser_policy
 import codec_ssrf
 
@@ -27,7 +28,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(codec_ssrf.socket, "getaddrinfo", gai)
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"browser_policy": {"deny": ["blocked.example"]}}))
-    monkeypatch.setattr(codec_browser_policy, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     events = []
     import codec_audit
     monkeypatch.setattr(codec_audit, "log_event", lambda ev, **kw: events.append((ev, kw)))

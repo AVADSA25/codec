@@ -32,7 +32,7 @@ COOKBOOK_PREFIX = "cookbook-"
 PROTECTED_PORTS = probe.PROTECTED_PORTS          # 8083/8090/8094/9223/5678
 SERVE_RANGE = probe.SERVE_RANGE                  # range(8110, 8120)
 SERVED_PATH = os.path.expanduser("~/.codec/cookbook/served.json")
-_CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _HEALTH_TIMEOUT_S = 90
 _PM2_TIMEOUT_S = 30
 
@@ -74,7 +74,7 @@ def resolve_mlx_python() -> str:
     sys.executable (the interpreter already running CODEC, which serves
     qwen3.6 and therefore has MLX)."""
     try:
-        with open(_CONFIG_PATH, encoding="utf-8") as f:
+        with open(config_path(), encoding="utf-8") as f:
             cfg = json.load(f)
         py = (cfg.get("cookbook") or {}).get("mlx_python")
         if py and os.path.exists(py):

@@ -27,6 +27,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+import codec_config
 import codec_audit
 
 
@@ -57,16 +58,11 @@ def temp_audit_log(tmp_path, monkeypatch):
 
 @pytest.fixture
 def temp_config(tmp_path, monkeypatch):
-    """Redirect CONFIG_PATH to a tmp file so we control what
-    _step_budget_for_route() reads on each call.
-
-    B6-P2: _step_budget_for_route moved to codec_chat_pipeline; patch
-    there. Also patch codec_dashboard for any test that checks via the
-    re-export."""
+    """Redirect codec_config.CONFIG_PATH to a tmp file so we control what
+    _step_budget_for_route() reads on each call (codec_chat_pipeline and
+    codec_dashboard both read that one name)."""
     cfg = tmp_path / "config.json"
-    monkeypatch.setattr(codec_dashboard, "CONFIG_PATH", str(cfg))
-    import codec_chat_pipeline
-    monkeypatch.setattr(codec_chat_pipeline, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     return cfg
 
 

@@ -44,7 +44,7 @@ _MAX_TOOL_INPUT_LEN = 50000
 _TOOL_CALL_TIMEOUT_SECONDS = 120
 
 # ── CONFIG ──
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 try:
     from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 except ImportError:
@@ -54,7 +54,7 @@ DB_PATH     = os.path.expanduser("~/.codec/memory.db")
 
 def _cfg():
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except Exception as e:
         log.warning("Config load failed: %s", e)
@@ -124,8 +124,7 @@ _sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEAD
 def _agent_llm_timeout():
     try:
         import json as _j
-        import os as _o
-        with open(_o.path.expanduser('~/.codec/config.json')) as _f:
+        with open(config_path()) as _f:
             _c = _j.load(_f).get('agents', {})
         return float(_c.get('llm_timeout_s', 900))
     except Exception:
@@ -1005,7 +1004,7 @@ def _load_stuck_config() -> tuple:
     Read each call so config edits take effect on PM2 restart."""
     try:
         import json as _json
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             cfg = _json.load(f).get("stuck", {})
     except Exception:
         cfg = {}

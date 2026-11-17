@@ -1,7 +1,6 @@
 """CODEC Search — DuckDuckGo (free, no API key) or Serper (better results, needs key)"""
 import httpx
 import logging
-import os
 import re
 import time
 import threading
@@ -10,7 +9,6 @@ log = logging.getLogger(__name__)
 
 # Kept for back-compat with any external importer; the serper key is now read
 # via codec_config.get_serper_api_key() (PR-2B-2, Keychain-aware).
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 # --- TTL cache for search results ---
 _cache: dict[str, tuple[float, list]] = {}  # key -> (timestamp, results)

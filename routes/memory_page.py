@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 FACT_VALUE_MAX = 1000
 ABOUT_MAX = 1500
 NIGHTLY_ID = "sched_auto_memorize"
@@ -196,7 +196,7 @@ async def save_about(request: Request):
 # ── The two switches ─────────────────────────────────────────────────────────
 def _read_config() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         return cfg if isinstance(cfg, dict) else {}
     except (OSError, ValueError):
@@ -273,23 +273,23 @@ async def save_memory_settings(request: Request):
             return _bad("Days: " + "; ".join(errors or ["give chats_days, clipboard_days or photos_days"]) + ".")
     if "fact_extract" in body:
         import codec_jsonstore
-        with codec_jsonstore.file_lock(CONFIG_PATH):
+        with codec_jsonstore.file_lock(config_path()):
             cfg = _read_config()
             mem = cfg.get("memory") if isinstance(cfg.get("memory"), dict) else {}
             mem["fact_extract"] = bool(body["fact_extract"])
             cfg["memory"] = mem
-            codec_jsonstore.atomic_write_json(CONFIG_PATH, cfg)
+            codec_jsonstore.atomic_write_json(config_path(), cfg)
         _audit("fact_extract_switched", on=bool(body["fact_extract"]))
     if "nightly" in body:
         _set_nightly(bool(body["nightly"]))
         _audit("nightly_switched", on=bool(body["nightly"]))
     if keep:
         import codec_jsonstore
-        with codec_jsonstore.file_lock(CONFIG_PATH):
+        with codec_jsonstore.file_lock(config_path()):
             cfg = _read_config()
             cur = cfg.get("retention") if isinstance(cfg.get("retention"), dict) else {}
             cur.update(keep)
             cfg["retention"] = cur
-            codec_jsonstore.atomic_write_json(CONFIG_PATH, cfg)
+            codec_jsonstore.atomic_write_json(config_path(), cfg)
         _audit("retention_set", **keep)
     return settings()

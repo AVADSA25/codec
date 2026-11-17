@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 TUE_10 = datetime(2026, 9, 29, 10, 0)
@@ -28,7 +29,7 @@ def ck(tmp_path, monkeypatch):
     import codec_checkin as c
     import codec_proactive
     import codec_today
-    monkeypatch.setattr(c, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(c, "STATE_PATH", str(tmp_path / "checkin_state.json"))
     monkeypatch.setattr(c, "OBSERVER_PATH", str(tmp_path / "observer_buffer.json"))
     monkeypatch.setattr(codec_today, "TODAY_PATH", tmp_path / "today.json")
@@ -57,9 +58,9 @@ def ck(tmp_path, monkeypatch):
 
 def test_off_by_default_and_the_kill_switches(ck, monkeypatch):
     c = ck.c
-    Path(c.CONFIG_PATH).write_text("{}")
+    Path(codec_config.CONFIG_PATH).write_text("{}")
     assert c.settings()["enabled"] is False and c.run_checkin(TUE_10) == "off" and ck.asked == []
-    Path(c.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True}}))
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True}}))
     monkeypatch.setenv("CHECKIN_ENABLED", "false")
     assert c.run_checkin(TUE_10) == "off"
 
@@ -75,7 +76,7 @@ def test_timing_hours_away_image_job_and_cap_gates(ck, monkeypatch):
     monkeypatch.setattr(c, "_image_busy", lambda: True)
     assert c.run_checkin(TUE_10 + timedelta(minutes=100)) == "skipped: image job"
     monkeypatch.setattr(c, "_image_busy", lambda: False)
-    Path(c.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "daily_cap": 1}}))
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "daily_cap": 1}}))
     ck.answers[:] = [HIT]
     assert c.run_checkin(TUE_10 + timedelta(minutes=150)) == "hit"
     assert c.run_checkin(TUE_10 + timedelta(minutes=200)) == "skipped: daily cap"
@@ -88,7 +89,7 @@ def test_the_snapshot_is_metadata_only_without_emoji(ck):
         {"active_window": {"app": "Mail", "title": "Re: salary review 💰"}, "screenshot_ocr": "secret screen text",
          "clipboard": {"content_type": "text", "length": 40}},
         {"active_window": {"app": "Safari", "title": "Bank statement"}, "screenshot_ocr": "account 1234"}]}))
-    Path(c.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "checklist": ["Send the invoice"]}}))
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "checklist": ["Send the invoice"]}}))
     c.run_checkin(TUE_10)
     snap = json.dumps(ck.asked[0], ensure_ascii=False)
     assert ck.asked[0]["observer"] == {"current_app": "Safari", "recent_apps": ["Mail", "Safari"]}
@@ -99,7 +100,7 @@ def test_the_snapshot_is_metadata_only_without_emoji(ck):
 
 def test_a_hit_posts_one_card_and_can_speak(ck):
     c = ck.c
-    Path(c.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "speak": True}}))
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps({"checkin": {"enabled": True, "speak": True}}))
     ck.answers[:] = ["NO_REPLY"]
     assert c.run_checkin(TUE_10) == "no_reply" and ck.today.list_cards() == [] and ck.spoken == []
     ck.answers[:] = [HIT]
@@ -167,7 +168,7 @@ def test_settings_route_validates(ck):
     for bad in ({"every_minutes": 5}, {"daily_cap": 50}, {"active_from": "25:00"}, {"active_from": "19:00", "active_until": "08:00"},
                 {"checklist": ["x"] * 21}):
         assert client.put("/api/checkin", json=bad).status_code == 400, bad
-    assert json.loads(Path(ck.c.CONFIG_PATH).read_text())["checkin"]["daily_cap"] == 3
+    assert json.loads(Path(codec_config.CONFIG_PATH).read_text())["checkin"]["daily_cap"] == 3
 
 
 def test_home_offers_settings_and_card_actions():

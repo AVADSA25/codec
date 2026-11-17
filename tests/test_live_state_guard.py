@@ -314,3 +314,37 @@ def test_watch_list_ignores_the_owner_reading_his_inbox(tmp_path):
     before = lsg.watch_snapshot(home)
     _write_notifs(home, [dict(manual, read=True), dict(banner, id="auto_1", read=True)])
     assert lsg.watch_changes(before, lsg.watch_snapshot(home)) == []
+
+
+# ── config.json reads (docs/TEST-CONFIG-ISOLATION-DESIGN.md) ─────────────────
+
+
+def test_the_suite_config_is_temp_and_missing():
+    import codec_config
+    assert not _under_live(os.environ["CODEC_CONFIG_PATH"])
+    assert not _under_live(codec_config.CONFIG_PATH)
+    assert not os.path.exists(codec_config.CONFIG_PATH)  # each test starts with none
+
+
+def test_guard_refuses_config_reads_and_only_those(tmp_path):
+    g = lsg.Guard(tmp_path)
+    for name in ("config.json", "config.json.bak"):
+        with pytest.raises(lsg.LiveStateRefused):
+            g.check_read("open for read", tmp_path / name)
+    assert g.hits == [("open for read", "config.json")] * 2
+    for name in ("notifications.json", "audit.log", "memory.db", "mcp_servers.json", "config.yaml"):
+        assert g.check_read("open for read", tmp_path / name) is None, name
+    assert g.check_read("open for read", tmp_path / "sub" / "config.json") is None  # other folder
+
+
+@needs_owner_home
+def test_installed_guard_refuses_reading_the_live_config():
+    guard = lsg.ACTIVE
+    assert guard is not None, "tests/conftest.py did not install the live-state guard"
+    live = os.path.join(LIVE, "config.json")
+    with guard.expected(), pytest.raises(lsg.LiveStateRefused):
+        os.close(os.open(live, os.O_RDONLY))
+    with guard.expected(), pytest.raises(lsg.LiveStateRefused):
+        open(live).close()
+    with guard.expected(), pytest.raises(lsg.LiveStateRefused):
+        Path(live).read_text()

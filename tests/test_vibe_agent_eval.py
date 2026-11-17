@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import codec_config
 import codec_vibe_agent as va
 import codec_vibe_projects as vp
 from vibe_agent_fakes import agent_env, cfg, scripted  # noqa: F401  (fixtures are used by name)
@@ -335,7 +336,7 @@ def cloud_cfg(agent_env, cfg, tmp_path, monkeypatch):  # noqa: F811
     cfg["extra_models"] = [dict(CLOUD)]
     path = tmp_path / "config.json"
     path.write_text(json.dumps(cfg))
-    monkeypatch.setattr(ccm, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     Path(ccm.SPEND_PATH).write_text(json.dumps({ccm._month(): {"fake-cloud": {"usd": 0.25, "calls": 3}}}))
     monkeypatch.setattr(ccm, "get_key", lambda entry: pytest.fail("a key was read"))
     return cfg
@@ -406,7 +407,7 @@ def baseline_doc():
 def test_the_estimate_makes_no_model_call_and_gives_low_high_and_headroom(cloud_cfg, scripted, tmp_path, monkeypatch, capsys):
     import codec_cloud_models as ccm
     cloud_cfg["vibe_agent"] = {"max_context_tokens": 4000, "max_reply_tokens": 1000}   # read from config: 6,000 + 1,000 a call
-    Path(ccm.CONFIG_PATH).write_text(json.dumps(cloud_cfg))
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps(cloud_cfg))
     model = scripted([])
     nothing_starts(monkeypatch)
     ledger = Path(ccm.SPEND_PATH).read_bytes()

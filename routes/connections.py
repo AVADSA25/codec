@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse, Response
 router = APIRouter()
 
 CODEC_DIR = os.path.expanduser("~/.codec")
-CONFIG_PATH = os.path.join(CODEC_DIR, "config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 GOOGLE_TOKEN = os.path.join(CODEC_DIR, "google_token.json")
 GOOGLE_CREDS = os.path.join(CODEC_DIR, "google_credentials.json")
 MCP_CLIENTS = os.path.join(CODEC_DIR, "mcp_clients.json")   # written by codec-mcp-http
@@ -59,7 +59,7 @@ def _read_json(path: str, default):
 
 
 def _config() -> dict:
-    return _read_json(CONFIG_PATH, {})
+    return _read_json(config_path(), {})
 
 
 def _audit(event: str, message: str, **kw) -> None:

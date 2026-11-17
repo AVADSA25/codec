@@ -332,7 +332,7 @@ def test_flash_chat_leaves_crew_and_untrusted_rows_out_of_its_earlier_conversati
     conn.row_factory = sqlite3.Row
     monkeypatch.setattr(codec_dashboard, "get_db", lambda: conn)
     monkeypatch.setattr(codec_dashboard, "_try_skill", lambda task: (None, None))
-    monkeypatch.setattr(codec_dashboard, "CONFIG_PATH", str(env.tmp / "no-config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(env.tmp / "no-config.json"))
     monkeypatch.setattr(codec_dashboard, "log_event", lambda *a, **k: None)
     monkeypatch.setattr(codec_dashboard, "_audit_write", lambda line: None)
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")

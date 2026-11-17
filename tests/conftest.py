@@ -68,6 +68,14 @@ os.environ.setdefault("CODEC_HEALTH_DIR", tempfile.mkdtemp(prefix="codec-test-he
 os.environ["LICENSE_KEY_MIGRATION_ENABLED"] = "false"
 # The licence check's folder (config.json it reads, key cache, grace state); see _isolate_licence.
 os.environ.setdefault("CODEC_LICENSE_DIR", tempfile.mkdtemp(prefix="codec-test-licence-"))
+# config.json (docs/TEST-CONFIG-ISOLATION-DESIGN.md): every module reads codec_config.CONFIG_PATH,
+# which honours this variable. A missing file in a fresh temp folder, set before anything imports a
+# CODEC module (child processes inherit it), so the suite reads {} as on CI and never the owner's
+# settings. Not setdefault: no outer value may point the suite at a real config. Tests that need
+# settings write their own file under tmp_path and patch codec_config.CONFIG_PATH;
+# `_suite_config_starts_empty` removes this file before each test.
+_SUITE_CONFIG_PATH = os.path.join(tempfile.mkdtemp(prefix="codec-test-config-"), "config.json")
+os.environ["CODEC_CONFIG_PATH"] = _SUITE_CONFIG_PATH
 
 
 def _isolate_audit_log() -> None:
@@ -162,6 +170,8 @@ def _guard_live_state() -> None:
     CI. Write opens, replace, rename and delete of ~/.codec memory.db*,
     notifications.*, pending_questions.*, audit.log*, shift_report_state.*, qchat.db*,
     vibe.db*, overlay_events.*, license_pubkey.*, .license_state.* and config.json*,
+    any open of config.json* (reads too: every module reads it through CODEC_CONFIG_PATH,
+    so a read of the owner's file means a module built its own path),
     any sqlite3.connect to them, and any run of the real /usr/bin/security raise
     LiveStateRefused; `_live_state_untouched` then fails the test even if the code
     swallowed the error. Installed early so a write made while the helpers below
@@ -453,6 +463,16 @@ def _heartbeat_runs_again():
             os.unlink(path)
         except OSError:
             pass
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _suite_config_starts_empty():
+    """Each test starts with no config.json at CODEC_CONFIG_PATH, so one test's write never reaches the next."""
+    try:
+        os.unlink(_SUITE_CONFIG_PATH)
+    except OSError:
+        pass
     yield
 
 

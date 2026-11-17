@@ -24,7 +24,7 @@ from typing import Optional
 
 log = logging.getLogger("codec_email_triage")
 
-_CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 CATEGORIES = ("lead", "support", "personal", "transactional", "noise")
 PRIORITIES = ("high", "medium", "low")
 _PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
@@ -49,7 +49,7 @@ _CLASSIFY_SYSTEM = (
 
 def _load_cfg() -> dict:
     try:
-        with open(_CONFIG_PATH, encoding="utf-8") as f:
+        with open(config_path(), encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}

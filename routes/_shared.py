@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 log = logging.getLogger("codec_dashboard")
 
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 try:
     from codec_config import DB_PATH as _db_path
@@ -153,7 +153,7 @@ def _save_notification(title, body, status="success", schedule_id=None):
 
 def _load_cfg():
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except Exception:
         return {}
@@ -264,7 +264,7 @@ def _auth_available():
 def _is_totp_enabled():
     """Check if TOTP 2FA is configured and not disabled."""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         return bool(cfg.get("totp_secret")) and not cfg.get("totp_disabled", False)
     except Exception:

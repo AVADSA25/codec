@@ -10,7 +10,6 @@ SKILL_TRIGGERS = [
 # use AI-generated audio (Kokoro). Still works from voice and chat.
 SKILL_MCP_EXPOSE = False
 
-import os
 import re
 import json
 import tempfile
@@ -20,9 +19,9 @@ import requests
 import codec_models
 import codec_tts
 
-_CFG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 try:
-    _cfg = json.load(open(_CFG_PATH))
+    _cfg = json.load(open(config_path()))
 except Exception:
     _cfg = {}
 

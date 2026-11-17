@@ -1,24 +1,17 @@
 """Test dashboard endpoints — requires codec_dashboard.py running on :8090"""
-import json
-import os
 import pytest
 import requests
 
 BASE = "http://localhost:8090"
 
-# Load dashboard token for auth
-_cfg_path = os.path.expanduser("~/.codec/config.json")
-try:
-    with open(_cfg_path) as _f:
-        _TOKEN = json.load(_f).get("dashboard_token", "")
-except Exception:
-    _TOKEN = ""
-
 
 def _skip_if_auth(r):
-    """Skip if biometric auth blocks the request and no token is configured."""
-    if r.status_code == 401 and not _TOKEN:
-        pytest.skip("Auth enabled without dashboard_token")
+    """Skip when the running dashboard asks for a login: these requests carry none.
+
+    The suite never reads the owner's config.json (docs/TEST-CONFIG-ISOLATION-DESIGN.md),
+    so there is no dashboard_token to send."""
+    if r.status_code == 401:
+        pytest.skip("The running dashboard asks for a login")
 
 
 def _dashboard_running():

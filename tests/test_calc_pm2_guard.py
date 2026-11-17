@@ -7,6 +7,7 @@ import sys
 import textwrap
 
 import pytest
+import codec_config
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -132,7 +133,7 @@ def pm2(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"pm2_protected_services": ["acme-booking"]}))
     mod = _load_skill("pm2_control")
-    monkeypatch.setattr(mod, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     calls = []
 
     def recorder(argv, **kw):

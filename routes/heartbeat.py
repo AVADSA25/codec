@@ -15,7 +15,7 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from routes._shared import CONFIG_PATH
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 
@@ -25,7 +25,7 @@ def _save(change):
     409 answer for a config.json that cannot be read (nothing written)."""
     import codec_config
     try:
-        codec_config.update_config(change, path=CONFIG_PATH)
+        codec_config.update_config(change, path=config_path())
     except codec_config.ConfigUnreadable as e:
         return JSONResponse({"error": str(e)}, status_code=409)
     return None
@@ -36,7 +36,7 @@ async def get_heartbeat_alerts():
     """Get heartbeat alerts configuration."""
     config = {}
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             config = json.load(f)
     except (OSError, ValueError):
         pass

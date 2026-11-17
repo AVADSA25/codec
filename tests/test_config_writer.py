@@ -3,8 +3,8 @@
 codec_config.update_config holds the config lock across the read, the change and
 the atomic write, and refuses (writing nothing) a config.json that exists but is
 unreadable, not a JSON object or empty. Settings, heartbeat and the TOTP routes
-use it. Every test points each module's CONFIG_PATH at a tmp_path file: never
-the real ~/.codec/config.json, never a fake HOME.
+use it. Every test points codec_config.CONFIG_PATH (the one name every module reads)
+at a tmp_path file: never the real ~/.codec/config.json, never a fake HOME.
 """
 from __future__ import annotations
 
@@ -41,8 +41,7 @@ BAD_FILES = {
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text(json.dumps(GOOD, indent=2))
-    for mod in (codec_config, rc, hb, auth_routes, shared):
-        monkeypatch.setattr(mod, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     return path
 
 
