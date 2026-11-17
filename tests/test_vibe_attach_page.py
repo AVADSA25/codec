@@ -333,6 +333,34 @@ setTimeout(function () { console.log(JSON.stringify({ u: asked, b: bs.map(functi
     assert "data-pid=\"' + esc(s.project_id || '') + '\"" in PAGE and "_labelAttached(el);" in page_fn("function loadSes() {")
 
 
+# ── the composer's @file list for an attached folder ──
+
+@node
+def test_the_at_list_of_an_attached_folder_adds_its_listed_text_files_and_a_created_project_keeps_the_open_ones():
+    got = pure(["mentionable"], """[mentionable(['b.js'], [{path: 'a.js'}, {path: 'b.js'}, {path: 'logo.PNG'}, {path: 'src/c.py'}, {path: 'x.pdf'}, {path: ''}], true),
+      mentionable(['logo.png', 'b.js'], [{path: 'logo.png'}], true),
+      mentionable(['b.js'], [{path: 'a.js'}], false), mentionable(['b.js'], null, true)]""")
+    assert got[0] == ["b.js", "a.js", "src/c.py"], "listed text files join the open ones; images, PDFs and empty names do not"
+    assert got[1] == ["logo.png", "b.js"], "a file the owner opened stays offered"
+    assert got[2] == ["b.js"], "a created project offers exactly the open files"
+    assert got[3] == ["b.js"]
+
+
+@node
+def test_listpaths_reads_the_listing_the_project_info_already_gave_and_asks_the_server_for_nothing_more():
+    out = dom("""
+VibeProj.open('app-abc123').then(function () { later(function () {
+  var before = calls.length;
+  var paths = VibeProj.listPaths(), open = VibeProj.paths();
+  VibeProj.detach();
+  console.log(JSON.stringify({ paths: paths, open: open, after: VibeProj.listPaths(), extra: calls.length - before }));
+}); });
+""", [["/api/vibe/projects/app-abc123/file?path=", {"content": "x\n"}], ["/api/vibe/projects/app-abc123/agent/left-off", {}],
+      ["/live?", {"state": "idle"}], ["/api/vibe/projects/app-abc123", INFO]])
+    assert out["paths"] == ["index.html", "README.md", "src/app.js"] and out["open"] == ["index.html"]
+    assert out["after"] == [] and out["extra"] == 0
+
+
 # ── which project a send goes to (the label above the composer) ──
 
 @node
