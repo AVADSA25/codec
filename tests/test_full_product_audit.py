@@ -933,10 +933,19 @@ class TestConfigAndSafety:
         assert not is_draft("what time is it")
 
     def test_key_resolution(self):
+        import types
+        import codec_config
         from codec_config import KEY_TOGGLE, KEY_VOICE, KEY_TEXT
-        assert KEY_TOGGLE is not None
-        assert KEY_VOICE is not None
-        assert KEY_TEXT is not None
+        # The defaults (F13, F18, F16) resolve on any machine, given a keyboard module.
+        fake = types.SimpleNamespace(Key=types.SimpleNamespace(f13="t", f18="v", f16="x"))
+        assert codec_config.resolve_hotkeys({}, kb=fake) == ("t", "v", "x")
+        if codec_config.keyboard is None:
+            # Headless (pynput cannot load, as on Linux CI): three Nones by design.
+            assert (KEY_TOGGLE, KEY_VOICE, KEY_TEXT) == (None, None, None)
+        else:
+            assert KEY_TOGGLE is not None
+            assert KEY_VOICE is not None
+            assert KEY_TEXT is not None
 
 
 # ============================================================================
