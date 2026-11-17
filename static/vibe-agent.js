@@ -1928,7 +1928,7 @@
   }
 
   // ── the composer: @file (P-069) ────────────────────────────────────────
-  function mentionPaths() { return VP && VP.on() ? VP.paths() : []; }
+  function mentionPaths() { return VP && VP.on() ? (VP.listPaths ? VP.listPaths() : VP.paths()) : []; }   // an attached folder: its listed files too
 
   function updateMention() {
     var vi = $('vi');

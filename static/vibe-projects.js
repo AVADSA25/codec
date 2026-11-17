@@ -63,6 +63,21 @@
     return { body: { path: p, folder_notes: notes === true } };
   }
 
+  // The files the composer's @ list offers (P-069). A created project: the files open in the editor, as always.
+  // An attached folder: those plus every listed file (the server's listing leaves out .git, .vibe and secret-looking
+  // names), without files that are plainly not text. Display only; picking still needs the path to be in this list.
+  function mentionable(open, listed, attached) {
+    var NOT_TEXT = /\.(png|jpe?g|gif|webp|bmp|ico|icns|pdf|zip|gz|tgz|tar|7z|rar|mp3|mp4|mov|m4a|wav|webm|woff2?|ttf|otf|eot|exe|dll|so|dylib|class|jar|wasm|psd|sqlite3?|db|bin|o|pyc)$/i;
+    var own = (open || []).slice();
+    if (!attached) return own;                      // created project: exactly what was offered before
+    var seen = {}, out = [];
+    own.concat((listed || []).map(function (f) { return f && f.path != null ? String(f.path) : String(f); })).forEach(function (p, i) {
+      if (!p || seen[p] || (i >= own.length && NOT_TEXT.test(p))) return;
+      seen[p] = 1; out.push(p);
+    });
+    return out;
+  }
+
   function attachedState(att) {
     if (!att) return null;
     var where = String(att.path || '');
@@ -1084,6 +1099,7 @@
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },
     on: function () { return !!P.id; }, flush: flush,
     paths: function () { return P.id ? order(Object.keys(P.files)) : []; },     // the open project's text files (P-069 @file)
+    listPaths: function () { return P.id ? order(mentionable(Object.keys(P.files), P.list, !!P.attached)) : []; },   // the @file list
     onMac: function () { return ON_MAC; }, available: function () { return !P.disabled && !!VF; },
     _state: P   // for tests and debugging
   };

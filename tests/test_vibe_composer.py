@@ -141,7 +141,7 @@ def test_at_finds_the_project_files_and_picking_inserts_only_their_paths():
     assert picked == [{"text": "see style.css now", "caret": 13}, {"text": "fix index.html ", "caret": 15}, None, None, None]
     # the page lists only the open project's files, and draws them as text
     paths = part(SRC, "function mentionPaths()", "function updateMention()")
-    assert "VP.on() ? VP.paths() : []" in paths
+    assert "VP.on() ? (VP.listPaths ? VP.listPaths() : VP.paths()) : []" in paths
     assert "paths: function () { return P.id ? order(Object.keys(P.files)) : []; }" in PROJ
     draw = part(SRC, "function renderMention() {", "function closeMention() {")
     assert "el('div', 'vm-opt' + (i === M.sel ? ' sel' : ''), p)" in draw and "innerHTML" not in draw
