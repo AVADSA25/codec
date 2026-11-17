@@ -331,3 +331,47 @@ setTimeout(function () { console.log(JSON.stringify({ u: asked, b: bs.map(functi
     assert out["u"] == "/api/vibe/projects"
     assert out["b"] == [["Detach folder", "Detach folder"], ["Delete project", "Delete project"], ["Delete project", "Delete project"]]
     assert "data-pid=\"' + esc(s.project_id || '') + '\"" in PAGE and "_labelAttached(el);" in page_fn("function loadSes() {")
+
+
+# ── which project a send goes to (the label above the composer) ──
+
+@node
+def test_the_send_label_names_the_project_marks_an_attached_folder_and_says_when_none_is_open():
+    got = pure(["sendTarget"], """[sendTarget(null, '', null), sendTarget('p1', 'my-app', null),
+      sendTarget('p2', 'app', { path: '/Users/me/Projects/app' }), sendTarget('p3', '', null)]""")
+    assert got[0] == {"none": True, "text": "No project is open. Sending makes a new project."}
+    assert got[1] == {"none": False, "text": "Sends to project: my-app"}
+    assert got[2] == {"none": False, "text": "Sends to attached folder: app (/Users/me/Projects/app)"}
+    assert got[3]["text"] == "Sends to project: p3"
+
+
+@node
+def test_the_send_label_follows_the_open_project_and_offers_the_projects_list_only_when_none_is_open():
+    out = dom("""
+var seen = [];
+function snap(tag) { seen.push([tag, $('sendTarget').hidden, $('sendTargetText').textContent, $('sendTargetOpen').hidden]); }
+VibeProj.showTarget();
+snap('start');
+VibeProj.open('app-abc123').then(function () { later(function () {
+  snap('attached');
+  VibeProj.detach();
+  snap('detached');
+  console.log(JSON.stringify({ seen: seen, html: !!globalThis.usedInnerHTML }));
+}); });
+""", [["/api/vibe/projects/app-abc123/file?path=", {"content": "x\n"}], ["/api/vibe/projects/app-abc123/agent/left-off", {}],
+      ["/live?", {"state": "idle"}], ["/api/vibe/projects/app-abc123", INFO]])
+    seen = {row[0]: row[1:] for row in out["seen"]}
+    none = "No project is open. Sending makes a new project."
+    assert seen["start"] == [False, none, False], "no project: the label is shown with the way to open one"
+    assert seen["attached"] == [False, "Sends to attached folder: app (/Users/me/Projects/app)", True]
+    assert seen["detached"] == [False, none, False]
+    assert out["html"] is False
+
+
+def test_the_send_label_is_on_the_page_above_the_composer_and_opens_the_projects_list():
+    assert 'id="sendTarget" role="status" hidden' in PAGE and 'id="sendTargetOpen" onclick="oS()"' in PAGE
+    assert PAGE.index('id="sendTarget"') < PAGE.index('id="vi"'), "it sits above the message box"
+    assert ".abn .undo-link[hidden]," in PAGE, "a class's display would otherwise beat the hidden attribute"
+    for name in ("showTarget", "sendTarget"):
+        assert "innerHTML" not in fn(name), name
+    assert "t.textContent = st.text;" in fn("showTarget")
