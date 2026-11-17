@@ -66,7 +66,9 @@ Checked 2026-11-11: every test listed below passes on main, on the Studio and on
 | **status** | deferred-not-fixed: the fix needs a test helper that reads FastAPI's route contexts (private API) and touches security-regression tests, so it gets its own PR. |
 | **revisit when** | Before merging the D-33 CI PR (the required `smoke` check stays red until then). |
 
-## Headless secret store: other keys are written without the lock (found 2026-11-03, P-081 review)
+## FIXED (2026-11-17, docs/HEADLESS-SECRET-LOCK-DESIGN.md): Headless secret store: other keys are written without the lock (found 2026-11-03, P-081 review)
+
+Fixed 2026-11-17: every fallback write and the key's first creation run under the store's file lock; the audit path calls the unlocked `_in_lock` writer (tests/test_headless_secret_lock.py).
 
 | field | value |
 |---|---|
