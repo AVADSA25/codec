@@ -78,6 +78,14 @@
     return out;
   }
 
+  // Which project the next message goes to (shown above the composer). Nothing open: sending makes a new one.
+  function sendTarget(id, title, att) {
+    if (!id) return { none: true, text: 'No project is open. Sending makes a new project.' };
+    var name = String(title || id);
+    if (!att) return { none: false, text: 'Sends to project: ' + name };
+    return { none: false, text: 'Sends to attached folder: ' + name + (att.path ? ' (' + String(att.path) + ')' : '') };
+  }
+
   function attachedState(att) {
     if (!att) return null;
     var where = String(att.path || '');
@@ -168,6 +176,7 @@
   }
 
   function renderTabs() {
+    showTarget();
     var bar = $('ftabs');
     if (!bar) return;
     var paths = order(Object.keys(P.files));
@@ -334,6 +343,16 @@
     var st = attachedState(P.id ? P.attached : null);
     if (b) { b.hidden = !st; b.className = 'abn' + (st && st.locked ? ' abn-warn' : ''); }
     if (t) t.textContent = st ? st.text : '';
+    showTarget();
+  }
+
+  function showTarget() {
+    var b = $('sendTarget'), t = $('sendTargetText'), o = $('sendTargetOpen');
+    var on = !P.disabled && !!VF;
+    var st = sendTarget(P.id, P.title, P.id ? P.attached : null);
+    if (b) b.hidden = !on;
+    if (t) t.textContent = st.text;
+    if (o) o.hidden = !st.none;
   }
 
   // After an undo or a restore: make the editor match the folder again.
@@ -396,7 +415,7 @@
     var go = P.id ? flush().catch(function (e) { toast('Could not save your edits: ' + e.message); })
                   : create(msg);
     return go.then(function () { return true; }, function (e) {
-      if (!P.id) { P.disabled = true; out('sy', 'Projects are not available here; using single-file Vibe'); return false; }
+      if (!P.id) { P.disabled = true; showTarget(); out('sy', 'Projects are not available here; using single-file Vibe'); return false; }
       throw e;
     });
   }
@@ -617,7 +636,7 @@
     }).catch(function () { return null; });
   }
 
-  function setTitle(t) { if (P.id && typeof t === 'string' && t.trim()) P.title = t.trim(); }
+  function setTitle(t) { if (P.id && typeof t === 'string' && t.trim()) { P.title = t.trim(); showTarget(); } }
 
   function revertTo(beforeId, cpId, btn) {
     var later = P.lastAi && P.lastAi !== cpId;
@@ -1101,6 +1120,8 @@
     paths: function () { return P.id ? order(Object.keys(P.files)) : []; },     // the open project's text files (P-069 @file)
     listPaths: function () { return P.id ? order(mentionable(Object.keys(P.files), P.list, !!P.attached)) : []; },   // the @file list
     onMac: function () { return ON_MAC; }, available: function () { return !P.disabled && !!VF; },
+    sendTarget: sendTarget, showTarget: showTarget,
     _state: P   // for tests and debugging
   };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showTarget); else showTarget();
 })();
