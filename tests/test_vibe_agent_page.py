@@ -365,6 +365,18 @@ def test_the_notes_a_run_read_are_listed_with_their_size():
 
 
 @node
+def test_the_live_line_reads_tool_blocks_in_tool_call_tags():
+    live = lambda raw: run("A.describeLive(RAW)", f"const RAW = {json.dumps(raw)};")  # noqa: E731
+    assert live("Look.\n<tool_call><@@ read_file a.js</@@></tool_call>") == "Look. Reading a.js..."
+    assert live("Look.\n<tool_call>@@ read_file a.js\n</tool_call>") == "Look. Reading a.js..."
+    assert live("Look.\n<tool_call><@@ todo\n- [ ] a</@@></tool_call><tool_call><@@ edit_file b.css") == "Look. Editing b.css..."
+    assert live("Look.\n<tool_call>") == "Look."                      # the tag streamed, the tool name has not
+    for raw in ("Look.\n<tool_call><@@ write_file a.js\n<<<<<<< CONTENT\nsecret code\n", "Look.\n<tool_call><@@ finish</@@></tool_call>"):
+        assert "<" not in live(raw) and "code" not in live(raw)
+    assert live("Use the <tool_call> tag in prose.") == "Use the <tool_call> tag in prose."
+
+
+@node
 def test_a_todo_event_becomes_a_checklist():
     items = [{"text": "read the page", "done": True}, {"text": "add the form", "done": False}, {"text": "", "done": True}, "x"]
     out = run("(function () { var r = A.newRun('p'); var eff = A.applyEvent(r, E); return [r.todo, eff]; })()",

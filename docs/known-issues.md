@@ -10,7 +10,7 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 |---|---|
 | **where** | `static/vibe-agent.js` `describeLive` (looks for `@@` at a line start) |
 | **what's wrong** | A cloud model that writes `<tool_call><@@ read_file a.js</@@></tool_call>` (MiMo V2.6 Pro) shows those tags on the run card's live line until the step ends. The engine reads the block as the plain one (`codec_vibe_agent_proto.unwrap_tool_calls`, docs/VIBE-AGENT-CLOUD-FORMAT-DESIGN.md) and the run keeps the plain form, so the step and its result events are right. |
-| **status** | deferred-not-fixed: display only, for a moment; P-073 starts cloud runs with one plain-format step, after which MiMo mostly writes the plain format. |
+| **status** | **FIXED** (2026-11-17): `describeLive` now reads the same tool-call-tag shapes as `unwrap_tool_calls` (display only). |
 | **revisit when** | The next change to `describeLive`, or if the owner reports raw tags on the run card. |
 
 ## Chat and wake word: a trigger phrase inside a long statement still fires a skill (found 2026-11-12, voice skill match fix)
