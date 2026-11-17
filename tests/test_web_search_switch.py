@@ -214,3 +214,107 @@ def test_route_an_at_pick_follows_the_switch(route, stream):
     assert route.post("mayor of Example town", stream, skill="web_search",
                       force_search=True) == "**web_search**: RESULT"
     assert _web_runs(route.d) == ["mayor of Example town"]
+
+
+# ── S-07: chrome_search follows the same switch (owner, 17 Nov 2026) ───────────
+# chrome_search opens a Google search in Chrome, so the query leaves the Mac like
+# web_search's. On the chat paths it is treated exactly like web_search.
+
+def _chrome_runs(st):
+    return [task for names, task in st.runs if "chrome_search" in names]
+
+
+@pytest.fixture
+def pick_chrome(monkeypatch):
+    import routes.palette as palette
+    monkeypatch.setattr(palette, "pickable_skills", lambda: {"web_search", "chrome_search", "time"})
+
+
+def test_s07_chrome_search_is_a_search_skill():
+    assert chat.SEARCH_SKILLS == {"web_search", "chrome_search"}
+    assert chat._without_web_search({"name": "chrome_search", "_all_matches": ["chrome_search"]}) is None
+
+
+def test_s07_the_real_google_triggers_are_left_out_with_the_switch_off(tmp_path, monkeypatch):
+    """On the real built-in triggers: phrases only chrome_search has, and "look up"
+    (both search skills), leave nothing to run with the switch off."""
+    from pathlib import Path
+
+    import codec_skill_registry
+    monkeypatch.setattr(codec_skill_registry, "CUSTOM_TRIGGERS_PATH", str(tmp_path / "custom_triggers.json"))
+    reg = codec_skill_registry.SkillRegistry(str(Path(chat.__file__).resolve().parents[1] / "skills"))
+    reg.scan()
+    for text in ("search google for flights to Lisbon", "google for the opening hours of the museum",
+                 "look up the mayor of Example town"):
+        names = [n for n in reg.match_all_triggers(text) if n in chat.CHAT_SKILL_ALLOWLIST]
+        assert "chrome_search" in names, (text, names)
+        assert chat._without_web_search({"name": names[0], "_all_matches": names}) is None, text
+
+
+def test_s07_a_trigger_phrase_does_not_open_a_google_search_with_the_switch_off(dispatch):
+    dispatch.matches, dispatch.results = ["chrome_search"], {"chrome_search": "Searching Google"}
+    assert chat._try_skill("search google for flights to Lisbon", search=False) == (None, None)
+    assert dispatch.runs == []
+    assert chat._try_skill("search google for flights to Lisbon", search=True) == (
+        "chrome_search", "Searching Google"), "control: on, it runs"
+    assert _chrome_runs(dispatch) == ["search google for flights to Lisbon"]
+
+
+def test_s07_switch_off_with_both_search_skills_the_next_match_runs(dispatch):
+    dispatch.matches = ["chrome_search", "web_search", "time"]
+    dispatch.results = {"chrome_search": "G", "web_search": "W", "time": "12:00"}
+    assert chat._try_skill("look up what time the market opens", search=False) == ("time", "12:00")
+    assert dispatch.runs == [(["time"], "look up what time the market opens")]
+
+
+def test_s07_switch_on_each_search_skill_gets_the_capped_query(dispatch):
+    dispatch.matches = ["time", "chrome_search", "web_search", "weather"]
+    dispatch.results = {"weather": "sunny"}
+    assert chat._try_skill(LONG, search=True) == ("time", "sunny")
+    capped = chat._web_search_task(LONG)
+    assert dispatch.runs == [(["time"], LONG), (["chrome_search"], capped), (["web_search"], capped),
+                             (["weather"], LONG)], "order kept; the others get the message"
+
+
+def test_s07_an_at_pick_and_a_tag_follow_the_switch(dispatch, pick_chrome):
+    dispatch.results = {"chrome_search": "Searching Google"}
+    assert chat._try_explicit_skill("chrome_search", "flights to Lisbon", search=False) == ("chrome_search", OFF)
+    assert chat._try_skill_by_name("chrome_search", "flights to Lisbon", search=False) == ("chrome_search", OFF)
+    assert dispatch.runs == []
+    assert chat._try_explicit_skill("chrome_search", LONG, search=True) == ("chrome_search", "Searching Google")
+    assert chat._try_skill_by_name("chrome_search", LONG, search=True) == ("chrome_search", "Searching Google")
+    assert _chrome_runs(dispatch) == [chat._web_search_task(LONG)] * 2
+
+
+def test_s07_a_caller_with_no_switch_still_opens_the_search_with_the_capped_query(dispatch):
+    # Home's Flash box (/api/command) calls _try_skill(task): no switch, default search=True.
+    dispatch.matches, dispatch.results = ["chrome_search"], {"chrome_search": "Searching Google"}
+    assert chat._try_skill(LONG) == ("chrome_search", "Searching Google")
+    assert _chrome_runs(dispatch) == [chat._web_search_task(LONG)]
+
+
+@pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize("body", [{}, {"force_search": False}, {"force_search": True, "web": False}])
+def test_s07_route_switch_off_no_path_opens_a_google_search(route, pick_chrome, stream, body):
+    route.d.results = {"chrome_search": "Searching Google"}
+    route.d.matches = ["chrome_search"]
+    route.reply = "One moment. [SKILL:chrome_search:flights to Lisbon] That is all."
+    text = route.post("search google for flights to Lisbon", stream, **body)
+    assert f"**{OFF}**" in text and "[SKILL:" not in text and "Searching Google" not in text
+    assert _chrome_runs(route.d) == []
+    assert route.post("flights to Lisbon", stream, skill="chrome_search", **body) == f"**chrome_search**: {OFF}"
+    assert _chrome_runs(route.d) == []
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_s07_route_switch_on_the_trigger_match_and_the_tag_run(route, stream):
+    route.d.results = {"chrome_search": "Searching Google"}
+    route.d.matches = ["chrome_search"]
+    text = route.post("search google for flights to Lisbon", stream, force_search=True)
+    assert text.startswith("**chrome_search**: Searching Google")
+    assert _chrome_runs(route.d) == ["search google for flights to Lisbon"]
+    route.d.matches = []
+    route.reply = "Here: [SKILL:chrome_search:flights to Lisbon] done."
+    text = route.post("tell me about flights", stream, force_search=True)
+    assert "**Searching Google**" in text and OFF not in text
+    assert _chrome_runs(route.d) == ["flights to Lisbon"]
