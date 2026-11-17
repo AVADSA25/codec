@@ -66,7 +66,7 @@ def test_short_command_still_reaches_dispatch(monkeypatch):
     """The cap must not disable the feature for normal-length messages."""
     seen = []
 
-    def fake_check(t):
+    def fake_check(t, **kw):
         seen.append(t)
         return {"name": "weather"}
 

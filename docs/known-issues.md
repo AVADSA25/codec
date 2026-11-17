@@ -13,14 +13,16 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | **FIXED** (2026-11-17): `describeLive` now reads the same tool-call-tag shapes as `unwrap_tool_calls` (display only). |
 | **revisit when** | The next change to `describeLive`, or if the owner reports raw tags on the run card. |
 
-## Chat and wake word: a trigger phrase inside a long statement still fires a skill (found 2026-11-12, voice skill match fix)
+## FIXED (2026-11-17): Chat and wake word: a trigger phrase inside a long statement still fires a skill (found 2026-11-12, voice skill match fix)
+
+Fixed (owner decision S-08, 17 Nov 2026): the chat's pre-LLM match (`_try_skill`, so also Home's Flash box) and the wake word call `codec_dispatch.check_skill(task, commands_only=True)`, which matches through the voice call's `codec_voice_filters.command_parts` with `LONG_MESSAGE_WORDS`: a trigger counts anywhere in a sentence of at most 15 words, or when it opens a longer one. Short questions such as "what was I doing?" still run observer_recall; the wake word's consent gate is unchanged (docs/CHAT-WAKE-SKILL-MATCH-DESIGN.md).
 
 | field | value |
 |---|---|
 | **where** | `routes/chat.py:_try_skill` (an allowlisted match is honoured even when `_is_conversational` says conversation) and `codec._dispatch_inner` -> `codec_dispatch.check_skill` (no statement check at all) |
-| **what's wrong** | A long chat message or wake-word sentence that only mentions a trigger phrase ("search for", "remind me to", "timer for") runs that skill. The voice call stopped doing this in docs/VOICE-SKILL-MATCH-DESIGN.md (a phrase counts only in a sentence of 15 words or fewer, or when it opens a longer one); the bare google_tasks "to do" / "todo" triggers that caused the 11 Nov call are gone on every path. |
-| **status** | deferred-not-fixed: the chat rule is deliberate for questions such as "what was I doing?" (observer_recall), and the wake word has its own consent gate; changing either is its own decision. |
-| **revisit when** | The next change to `_try_skill` or `check_skill`, or if a chat or wake-word false trigger is reported. |
+| **what was wrong** | A long chat message or wake-word sentence that only mentions a trigger phrase ("search for", "remind me to", "timer for") runs that skill. The voice call stopped doing this in docs/VOICE-SKILL-MATCH-DESIGN.md (a phrase counts only in a sentence of 15 words or fewer, or when it opens a longer one); the bare google_tasks "to do" / "todo" triggers that caused the 11 Nov call are gone on every path. |
+| **status** | **FIXED** (2026-11-17, S-08). Before: deferred, because the chat rule is deliberate for questions such as "what was I doing?" (observer_recall) and the wake word has its own consent gate; the owner decided both on card S-08. |
+| **revisit when** | A long question that ends with its trigger ("..., what was I doing?") now goes to the model; revisit if the owner reports one he wanted run. |
 
 ## Tests still read the owner's live config.json (found 2026-11-12, overlay and licence isolation)
 

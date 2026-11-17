@@ -34,7 +34,7 @@ def dispatch(monkeypatch):
     import routes.palette as palette
     st = SimpleNamespace(matches=[], results={}, runs=[])
 
-    def check_skill(text):
+    def check_skill(text, **kw):
         return {"name": st.matches[0], "_all_matches": list(st.matches)} if st.matches else None
 
     def run_skill(skill, task, app="", **kw):

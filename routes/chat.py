@@ -661,6 +661,11 @@ def _run_matched(skill, user_text: str):
 def _try_skill(user_text: str, temporary: bool = False, search: bool = True):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
 
+    A trigger counts only where it reads as a command (S-08, the voice call's rule;
+    docs/CHAT-WAKE-SKILL-MATCH-DESIGN.md): anywhere in a sentence of at most 15
+    words, or opening a longer one. A phrase in the middle of a long statement is
+    no match, so the message goes to the model.
+
     An explicit allowlisted-trigger match (e.g. "what was I doing 1h ago?" →
     observer_recall) is honored even for question-phrased ("conversational")
     messages: a word-boundary trigger match is a stronger intent signal than the
@@ -683,7 +688,7 @@ def _try_skill(user_text: str, temporary: bool = False, search: bool = True):
         # Real skill commands are short imperatives, well under this cap.
         if len(user_text) > MAX_SKILL_HIJACK_CHARS:
             return None, None
-        skill = check_skill(user_text)
+        skill = check_skill(user_text, commands_only=True)  # S-08: statements go to the model
         if skill and not search:  # R-01: switch off, web_search is not a match
             skill = _without_web_search(skill)
         matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)

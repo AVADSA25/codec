@@ -106,7 +106,7 @@ def test_chat_route_answers_a_hung_skill_then_weather(world, monkeypatch):
     import routes.chat as chat
     monkeypatch.setattr(codec_models, "model_extras", lambda *a, **k: {})
     monkeypatch.setattr(codec_dispatch, "check_skill",
-                        lambda text: {"name": SLOW if "scroll" in text else FAST,
+                        lambda text, **kw: {"name": SLOW if "scroll" in text else FAST,
                                       "_all_matches": [SLOW if "scroll" in text else FAST]})
     app = FastAPI()
     app.include_router(chat.router)
@@ -209,7 +209,7 @@ def test_wake_word_answers_a_hung_skill_aloud(world, monkeypatch, codec_mod):
     monkeypatch.setattr(codec, "threading", SimpleNamespace(Thread=lambda **k: SimpleNamespace(start=lambda: None)))
     monkeypatch.setattr(codec, "voice_session", {"messages": [], "turn_count": 0, "started": None})
     monkeypatch.setattr(codec, "check_skill",
-                        lambda task: {"name": SLOW if "scroll" in task else FAST,
+                        lambda task, **kw: {"name": SLOW if "scroll" in task else FAST,
                                       "_all_matches": [SLOW if "scroll" in task else FAST]})
     _, took = timed(codec._dispatch_inner, "scroll down")
     assert len(spoken) == 1 and TIMED_OUT in spoken[0] and took < 4
