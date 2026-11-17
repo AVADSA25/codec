@@ -41,7 +41,9 @@ Fixed: `codec_dispatch.run_skill` and `codec_core._swift_text_input` write throu
 | **where** | `codec_dispatch.run_skill` wrote `~/.codec/overlay_events.jsonl` through a hard-coded path that conftest's redirect of `codec_overlays._EVENTS` did not cover. Its licence gate, with the owner's paid config, fetched the public key and rewrote `~/.codec/license_pubkey.pem` and `.license_state.json`; `tests/test_top10_action_list.py` stored a placeholder key in that cache, and `tests/test_license.py`'s `importlib.reload` (which finds the file on `sys.path`, where skills put `~/codec-repo` first) loaded the main checkout's copy with the live paths in a worktree run. |
 | **what was wrong** | Suites that call the real `run_skill` (`tests/test_voice_wake_consent.py`, `test_skill_loader_unification.py`, chat skill tests) appended `skill_fired` lines (calculator, terminal) to the file the Swift overlay reads, and the licence files changed in the same second as a test run. After R-03 blanked the live `ava.license_key`, `tests/test_agent_plan.py`'s three API tests got 402 on the Studio from the same licence gate (pass on CI). |
 
-## Vibe agent commands inherit bash start-up variables (found 2026-11-11, P-048 build)
+## FIXED (2026-11-12, #590): Vibe agent commands inherit bash start-up variables (found 2026-11-11, P-048 build)
+
+Fixed: `codec_vibe_agent_cmd.command_env` drops `BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`, `PS4` and every `BASH_FUNC_*` before a command runs (C9, #590).
 
 | field | value |
 |---|---|
@@ -278,7 +280,7 @@ try/except AttributeError — but `CodecMemory` has no `store_fact` method (it l
 Found during the Daybreak audit (2026-06-09); out of Daybreak scope. Fix: route to
 `codec_memory_upgrade.store_fact` and add a round-trip test.
 
-## Pilot e2e skill files fail skill-contract tests (2026-07-02)
+## RESOLVED (2026-07-03): Pilot e2e skill files fail skill-contract tests (2026-07-02)
 
 `skills/pilot_full_test_e2e.py` and `skills/pilot_e2e_test_fetch_example_title.py`
 lack the required `SKILL_NAME` / `SKILL_TRIGGERS` module attrs, so 4
@@ -292,7 +294,7 @@ regenerate `skills/.manifest.json`, or delete both files.
 `~/.codec/pilot_archive/` — recordings preserved, skills dir clean,
 `tests/test_skills.py` fully green (160/160).
 
-## Auth routes write unsigned plaintext into the HMAC-signed audit log (2026-08-21)
+## RESOLVED (2026-09-05): Auth routes write unsigned plaintext into the HMAC-signed audit log (2026-08-21)
 
 **RESOLVED 2026-09-05:** `routes/_shared._audit_event` routes every route-level audit
 through `codec_audit.audit()` (HMAC, redaction, JSON). All 10 call sites (auth 8, media,
