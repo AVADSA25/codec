@@ -311,11 +311,11 @@ _RACER = textwrap.dedent('''
     kc.is_keychain_available = lambda: False
     kc._FALLBACK_KEY_PATH = tmp / "secret.key"
     kc._FALLBACK_STORE_PATH = tmp / "secrets.enc.json"
-    real_set = kc._fallback_set
+    real_set = kc._fallback_set_in_lock   # the writer the audit path calls
     def slow_set(key, value):
         time.sleep(0.4)   # widen the read-then-write window
         return real_set(key, value)
-    kc._fallback_set = slow_set
+    kc._fallback_set_in_lock = slow_set
     while not (tmp / "go").exists():
         time.sleep(0.005)
     s = kc.get_audit_hmac_secret()
