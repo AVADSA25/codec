@@ -109,7 +109,8 @@ def _ci(word: str) -> str:
 def _attached_rules(project: str) -> str:
     """The lines an attached folder adds (owner decision R-17, docs/VIBE-ATTACH-FOLDER-DESIGN.md). They only take
     rights away: no write to a .git entry at any depth, to a git config or hooks folder at any depth (nested repos,
-    submodules under .git/modules, worktrees), and no reading of a secret-looking file's content."""
+    submodules under .git/modules, worktrees), no reading of a secret-looking file's content, and (owner decision
+    S-05, 17 Nov 2026) no write to a .env* file or into the D-23 names (.vscode, .idea, ...) at any depth."""
     if any(c in project for c in '"\\\n\r') or not project.startswith("/"):
         raise Refused("The attached folder's path has characters the sandbox cannot use, so no command was run.")
     import codec_vibe_projects as vp
@@ -119,10 +120,13 @@ def _attached_rules(project: str) -> str:
               git + "/(.+/)?" + _ci("config") + "$",
               git + "/(.+/)?" + _ci("config.worktree") + "$",
               git + "/(.+/)?" + _ci("hooks") + "$",
-              git + "/(.+/)?" + _ci("hooks") + "/"]
+              git + "/(.+/)?" + _ci("hooks") + "/",
+              at + _ci(".env") + "[^/]*$"]                      # no write to a .env* file at any depth (S-05)
+    for name in sorted(vp._AGENT_BLOCKED_SEGMENTS):             # nor into the D-23 names at any depth (S-05)
+        writes += [at + _ci(name) + "$", at + _ci(name) + "/"]
     reads = ([at + _ci(pre) + "[^/]*$" for pre in vp._BLOCKED_NAME_PREFIXES]
              + [at + "[^/]*" + _ci(ext) + "$" for ext in vp._BLOCKED_EXTS])
-    return (";; an attached folder: no write to a .git entry, a git config or a hooks folder at any depth (R-17)\n"
+    return (";; an attached folder: no write to a .git entry, a git config or a hooks folder, a .env* file or a D-23 name at any depth (R-17, S-05)\n"
             "(deny file-write*\n" + "\n".join(f'    (regex #"{r}")' for r in writes) + ")\n"
             ";; nor reading what is in a secret-looking file of it (.env, keys, credentials; R-14)\n"
             "(deny file-read-data\n" + "\n".join(f'    (regex #"{r}")' for r in reads) + ")\n")
