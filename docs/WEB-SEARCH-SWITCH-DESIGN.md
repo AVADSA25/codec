@@ -56,14 +56,49 @@ under 100) and keeps a pasted paragraph from leaving the Mac whole.
   **agent runner** runs the skill only when the plan grants it. Unchanged.
 - `skills/web_search.py` itself is unchanged (no manifest change), so the cap applies
   to the chat only.
-- `chrome_search` (also triggered by "look up" and "google search") opens a Google
-  search in Chrome; it is not part of R-01 and is unchanged.
+- `chrome_search` was left out of R-01; S-07 (below) adds it.
+
+## S-07: chrome_search follows the same switch (2026-11-17)
+
+Owner approval, decision board card S-07 (confirmed 17 Nov 2026): chrome_search runs
+from the chat only with the "Search the web" switch on, as R-01 did for web_search;
+voice, wake word and MCP unchanged.
+
+Why: `chrome_search` opens a Google search in Chrome with the query in the address,
+so the text leaves the Mac like web_search's. Its triggers ("search google",
+"google search", "look up", "google for", "find online", "search online") fired it
+from the chat with the switch off, and "look up" matched both skills.
+
+Change (routes/chat.py only): `SEARCH_SKILLS = {web_search, chrome_search}`, and
+every place R-01 tested for `web_search` now tests for either name:
+
+| Path | Switch off (or `web: false`) | Switch on |
+|---|---|---|
+| Pre-LLM trigger match (`_try_skill`) | both are left out of the matches (`_without_web_search`); the next allowlisted match runs, or the model answers | each runs on its own `run_skill` call with the capped query, in match order; the skills before, between and after get the message as before (`_run_matched`) |
+| '@' pick (`_try_explicit_skill`) | answers `WEB_SEARCH_OFF`, nothing runs | runs with the capped query |
+| `[SKILL:chrome_search:...]` tag, stream and stream:false (`_try_skill_by_name`) | the tag becomes `WEB_SEARCH_OFF` in bold, nothing runs | runs with the capped query |
+
+The off line is the same `WEB_SEARCH_OFF` text (already in
+`codec_claim_check._NOT_RUN`). The query cap is the same `_web_search_task`
+(one line, at most 300 characters, cut at a whole word); the skill then strips its
+own lead-in words as before. `skills/chrome_search.py` is unchanged (no manifest
+change).
+
+Not changed: the voice call, the wake word, the bridges, MCP (`SKILL_MCP_EXPOSE = True`;
+over HTTP it still needs the owner's Allow, `_HTTP_CONSENT_REQUIRED`), crews and the
+agent runner. Home's Flash box (`/api/command`) and the Today tiles keep the default
+`search=True`: the Flash box still opens a Google search on a trigger phrase, now
+with the capped query; no Today tile uses chrome_search.
 
 ## Tests
 `tests/test_web_search_switch.py`: the cap; the pre-LLM match with the switch off
 and on (including fall-through order); the '@' pick; the tag helper; the route on
-stream and stream:false with the switch off, on, and on with `web: false`. The
-dispatcher and the search are fakes: no request leaves the test. Fakes of the three
+stream and stream:false with the switch off, on, and on with `web: false`. S-07
+adds the same cases for chrome_search (pre-LLM match, both search skills matched,
+'@' pick, tag, Flash default, the route on both paths) and checks on the real
+built-in triggers that "search google for ...", "google for ..." and "look up ..."
+leave nothing to run with the switch off. The dispatcher and the search are fakes:
+no request leaves the test and Chrome is never opened. Fakes of the three
 helpers in older tests take the new `search` argument.
 
 ## Rollback

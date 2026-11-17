@@ -229,14 +229,18 @@ def _temporary_blocks(name, temporary: bool) -> bool:
 # R-01 (docs/WEB-SEARCH-SWITCH-DESIGN.md): in the chat, the web_search skill runs
 # only with the "Search the web" switch on (force_search) and no web:false, on
 # every path (pre-LLM match, '@' pick, post-LLM tag), with a capped query.
+# S-07 (owner, 17 Nov 2026): chrome_search, which sends the query to Google, follows
+# the same switch and cap.
 WEB_SEARCH_SKILL = "web_search"
+CHROME_SEARCH_SKILL = "chrome_search"
+SEARCH_SKILLS = frozenset({WEB_SEARCH_SKILL, CHROME_SEARCH_SKILL})
 WEB_SEARCH_MAX_CHARS = 300
 WEB_SEARCH_OFF = "Not searched: web search is off. Turn on Search the web to search."
 
 
 def _web_search_task(text) -> str:
-    """What the chat hands the web_search skill: the text on one line, at most
-    WEB_SEARCH_MAX_CHARS characters, cut back to the last whole word."""
+    """What the chat hands a search skill (web_search, chrome_search): the text on
+    one line, at most WEB_SEARCH_MAX_CHARS characters, cut back to the last whole word."""
     one = " ".join(str(text or "").split())
     if len(one) <= WEB_SEARCH_MAX_CHARS:
         return one
@@ -631,27 +635,37 @@ def _skill_outcome_message(result: str) -> str:
 
 
 def _without_web_search(skill):
-    """The match with web_search left out (R-01, switch off): the next match leads,
-    as if web_search had not matched. None when nothing else matched."""
+    """The match with the search skills (web_search, chrome_search) left out (R-01,
+    S-07; switch off): the next match leads, as if they had not matched. None when
+    nothing else matched."""
     names = list(skill.get("_all_matches") or [skill["name"]])
-    if WEB_SEARCH_SKILL not in names:
+    if not SEARCH_SKILLS.intersection(names):
         return skill
-    names = [n for n in names if n != WEB_SEARCH_SKILL]
+    names = [n for n in names if n not in SEARCH_SKILLS]
     return {"name": names[0], "_all_matches": names} if names else None
 
 
 def _run_matched(skill, user_text: str):
-    """run_skill over the matched skills in order. With web_search among them
-    (switch on), it gets the capped query (R-01); the skills before and after it
-    get the message as before."""
+    """run_skill over the matched skills in order. A search skill among them
+    (web_search, chrome_search; switch on) runs on its own with the capped query
+    (R-01, S-07); the skills before, between and after get the message as before."""
     from codec_dispatch import run_skill
     names = list(skill.get("_all_matches") or [skill["name"]])
-    if WEB_SEARCH_SKILL not in names:
+    if not SEARCH_SKILLS.intersection(names):
         return run_skill(skill, user_text, app="CODEC Chat")
-    i = names.index(WEB_SEARCH_SKILL)
-    for group, task in ((names[:i], user_text), (names[i:i + 1], _web_search_task(user_text)),
-                        (names[i + 1:], user_text)):
-        if group and task:
+    groups, others = [], []
+    for name in names:
+        if name in SEARCH_SKILLS:
+            if others:
+                groups.append((others, user_text))
+                others = []
+            groups.append(([name], _web_search_task(user_text)))
+        else:
+            others.append(name)
+    if others:
+        groups.append((others, user_text))
+    for group, task in groups:
+        if task:
             result = run_skill({"name": group[0], "_all_matches": group}, task, app="CODEC Chat")
             if result is not None:
                 return result
@@ -669,9 +683,9 @@ def _try_skill(user_text: str, temporary: bool = False, search: bool = True):
     Before this, questions like "what was I doing?" were skipped entirely and the
     LLM answered from memory (and fabricated).
 
-    search=False (the chat's "Search the web" switch off, or web:false; R-01):
-    web_search never runs from a trigger phrase. The default True is for callers
-    with no switch (Home's Flash box, /api/command)."""
+    search=False (the chat's "Search the web" switch off, or web:false; R-01, S-07):
+    web_search and chrome_search never run from a trigger phrase. The default True
+    is for callers with no switch (Home's Flash box, /api/command)."""
     try:
         from codec_dispatch import check_skill, time_limited
         # A long paste is a document, not a command. Pasting a spec, an article,
@@ -684,7 +698,7 @@ def _try_skill(user_text: str, temporary: bool = False, search: bool = True):
         if len(user_text) > MAX_SKILL_HIJACK_CHARS:
             return None, None
         skill = check_skill(user_text)
-        if skill and not search:  # R-01: switch off, web_search is not a match
+        if skill and not search:  # R-01, S-07: switch off, no search skill is a match
             skill = _without_web_search(skill)
         matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)
         if not matched and _is_conversational(user_text):
@@ -723,8 +737,9 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False, se
     Only the skills the '@' picker lists (routes.palette.pickable_skills: the chat
     allowlist) run this way, and `mcp_connect` for an "mcp:<server>" target, through
     codec_dispatch.run_skill (hooks, audit, licence) after the same consent gate as
-    automatic routing. No trigger matching: the pick decides. A picked web_search
-    answers WEB_SEARCH_OFF with search=False and gets the capped query otherwise (R-01)."""
+    automatic routing. No trigger matching: the pick decides. A picked web_search or
+    chrome_search answers WEB_SEARCH_OFF with search=False and gets the capped query
+    otherwise (R-01, S-07)."""
     target = str(target or "").strip()
     text = str(user_text or "").strip()
     if target.startswith("mcp:"):
@@ -746,7 +761,7 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False, se
         return name, "That skill can't be run from chat."
     if _temporary_blocks(name, temporary):
         return name, TEMPORARY_REFUSAL
-    if name == WEB_SEARCH_SKILL:
+    if name in SEARCH_SKILLS:
         if not search:
             return name, WEB_SEARCH_OFF
         task = _web_search_task(task)
@@ -771,9 +786,9 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False, se
 def _try_skill_by_name(name: str, query: str, temporary: bool = False, search: bool = True):
     """Execute a specific skill by name (for LLM-routed skill calls).
 
-    A [SKILL:web_search:...] tag answers WEB_SEARCH_OFF with search=False (the
-    chat's "Search the web" switch off, or web:false) and runs with the capped
-    query otherwise (R-01).
+    A [SKILL:web_search:...] or [SKILL:chrome_search:...] tag answers WEB_SEARCH_OFF
+    with search=False (the chat's "Search the web" switch off, or web:false) and runs
+    with the capped query otherwise (R-01, S-07).
 
     For calculator specifically: LLMs often pass natural-language descriptions
     like "sum of Facebook (4900 + 6100), LinkedIn ...". The calculator skill
@@ -783,7 +798,7 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False, search: b
     """
     if _temporary_blocks(name, temporary):
         return name, TEMPORARY_REFUSAL
-    if name == WEB_SEARCH_SKILL:
+    if name in SEARCH_SKILLS:
         if not search:
             return name, WEB_SEARCH_OFF
         query = _web_search_task(query)
