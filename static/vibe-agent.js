@@ -149,8 +149,31 @@
   }
 
   // The model's words while it writes: its sentence, then which tool it is starting. Never its raw code.
+  // Display-only twin of codec_vibe_agent_proto.unwrap_tool_calls (P-073): a reply whose tool blocks sit in
+  // <tool_call> tags reads as plain @@ lines. An opening tag at the start of a line, or right after the closing tags
+  // of the one before, becomes a line starting with @@; closing tags at a line's end go. No opening tag, no change.
+  var WRAP_OPEN = /^[ \t]*<tool_call>[ \t]*<?(?=@@)/, WRAP_OPEN_PART = /^[ \t]*<tool_call>[ \t]*<?@?$/;
+  var WRAP_NEXT = /[ \t]*(?:<\/@@>[ \t]*)?<\/tool_call>[ \t]*(?=<tool_call>[ \t]*<?@@)/g;
+  var WRAP_TAIL = /[ \t]*(?:<\/@@>[ \t]*<\/tool_call>|<\/@@>|<\/tool_call>)[ \t]*$/;
+  function unwrapToolCalls(text) {
+    if (text.indexOf('<tool_call>') === -1) return text;
+    var out = [], opened = false;
+    text.split('\n').forEach(function (line) {
+      var parts = [line];
+      if (line.indexOf('<tool_call>') !== -1 && (opened || WRAP_OPEN.test(line) || WRAP_OPEN_PART.test(line))) {
+        parts = line.replace(WRAP_NEXT, '\n').split('\n');
+      }
+      parts.forEach(function (part) {
+        if (WRAP_OPEN.test(part)) { opened = true; part = part.replace(WRAP_OPEN, ''); }
+        else if (WRAP_OPEN_PART.test(part)) { opened = true; part = '@@'; }   // the tag has streamed, the tool name has not
+        out.push(part.replace(WRAP_TAIL, ''));
+      });
+    });
+    return opened ? out.join('\n') : text;
+  }
+
   function describeLive(raw) {
-    var text = String(raw || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, '');
+    var text = unwrapToolCalls(String(raw || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, ''));
     var at = text.search(/(^|\n)[ \t]*@@/);
     var sentence = (at === -1 ? text : text.slice(0, at)).replace(/\s+/g, ' ').trim();
     var tool = '';
