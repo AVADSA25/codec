@@ -16,13 +16,12 @@ without a live network.
 from __future__ import annotations
 
 import json
-import os
 import socket
 import subprocess
 
 import requests
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 HTTP_TIMEOUT = 3  # seconds for the per-candidate /api/config probe
 
 
@@ -166,7 +165,7 @@ def discover_bridge(expected_id=None, *, methods=None, _get=None):
 
 
 # ── self-heal: persist the recovered IP ─────────────────────────────────────
-def rediscover_and_update_config(path=CONFIG_PATH, *, _discover=None):
+def rediscover_and_update_config(path=None, *, _discover=None):
     """Re-find the bridge (matching the stored hue_bridge_id when present) and persist the
     new hue_bridge_ip. Backfills hue_bridge_id if it was missing. Returns the new IP, or
     None if no bridge was found (config left untouched).
@@ -175,6 +174,7 @@ def rediscover_and_update_config(path=CONFIG_PATH, *, _discover=None):
     under the config.json lock the file is read again and only the two Hue keys change, so
     a setting saved meanwhile survives. If the file cannot be read at that point, nothing
     is written and the found IP is still returned (the bridge answered; the skill can retry)."""
+    path = path or config_path()
     discover = _discover or discover_bridge
     try:
         with open(path) as f:

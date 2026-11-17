@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import session_tk_fake
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 TESTS = Path(__file__).resolve().parent
@@ -42,7 +43,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(sh, "NOTIFICATIONS_PATH", str(tmp_path / "dashboard_notifications.json"))
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", tmp_path / "pending_questions.json")
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", tmp_path / "notifications.json")
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(codec_ask_user, "_WAITERS", {})
     monkeypatch.setattr(codec_ask_user, "_REJECTION_COUNT", {})
     monkeypatch.setattr(codec_audit, "_AUDIT_DIR", tmp_path)
@@ -354,7 +355,6 @@ codec_keychain.get_audit_hmac_secret = lambda: cfg["secret"].encode()
 import codec_ask_user
 codec_ask_user.PENDING_QUESTIONS_PATH = tmp / "pending_questions.json"
 codec_ask_user.NOTIFICATIONS_PATH = tmp / "notifications.json"
-codec_ask_user.CONFIG_PATH = tmp / "config.json"
 
 import codec_push
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -434,7 +434,7 @@ def test_two_processes_the_dashboard_answers_the_session(tmp_path, monkeypatch, 
     _push_device(tmp_path)
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", tmp_path / "pending_questions.json")
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", tmp_path / "notifications.json")
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(sh, "NOTIFICATIONS_PATH", str(tmp_path / "notifications.json"))
     monkeypatch.setattr(codec_config, "get_dashboard_token", lambda: "")
     monkeypatch.setattr(codec_dashboard, "AUTH_ENABLED", False)
@@ -446,7 +446,8 @@ def test_two_processes_the_dashboard_answers_the_session(tmp_path, monkeypatch, 
     script.write_text(CHILD)
     cfg = {"repo": str(REPO), "tests": str(TESTS), "tmp": str(tmp_path), "secret": SECRET.decode(),
            "timeout": 3 if answer is None else 30, "command": command}
-    env = dict(os.environ, ASKUSER_ENABLED="true", PUSH_ENABLED="true", PYTHONDONTWRITEBYTECODE="1")
+    env = dict(os.environ, ASKUSER_ENABLED="true", PUSH_ENABLED="true", PYTHONDONTWRITEBYTECODE="1",
+               CODEC_CONFIG_PATH=str(tmp_path / "config.json"))
     child = subprocess.Popen([sys.executable, str(script), json.dumps(cfg)], cwd=str(tmp_path), env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:

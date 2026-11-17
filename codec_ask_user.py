@@ -59,7 +59,7 @@ _CODEC_DIR = Path(os.path.expanduser("~/.codec"))
 _CODEC_DIR.mkdir(parents=True, exist_ok=True)
 PENDING_QUESTIONS_PATH = _CODEC_DIR / "pending_questions.json"
 NOTIFICATIONS_PATH = _CODEC_DIR / "notifications.json"
-CONFIG_PATH = _CODEC_DIR / "config.json"
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 # ── Schema constants ───────────────────────────────────────────────────────────
 DEFAULT_TIMEOUT_SECONDS = 600           # §1.2 Q1 — 10 minutes
@@ -137,7 +137,7 @@ def _enabled() -> bool:
 # ── Config helpers ─────────────────────────────────────────────────────────────
 def _load_config() -> dict:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}

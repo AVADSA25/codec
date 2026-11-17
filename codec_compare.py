@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import string
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -32,7 +31,7 @@ from typing import Optional
 
 log = logging.getLogger("codec_compare")
 
-_CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _DEFAULT_CLOUD_TIERS = [
     {"label": "cloud-balanced", "model": "gemini-2.5-flash"},
     {"label": "cloud-pro", "model": "gemini-2.5-pro"},
@@ -44,7 +43,7 @@ _MAX_WORKERS = 6
 
 def _load_cfg() -> dict:
     try:
-        with open(_CONFIG_PATH, encoding="utf-8") as f:
+        with open(config_path(), encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}

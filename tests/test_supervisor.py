@@ -12,6 +12,7 @@ import logging
 
 import pytest
 
+import codec_config
 import codec_heartbeat
 import codec_supervisor as sv
 
@@ -100,7 +101,7 @@ def test_kind_is_pm2_in_a_checkout_and_launchd_inside_the_app(tmp_path):
 
 def test_kind_reads_config_json_and_survives_a_broken_one(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
-    monkeypatch.setattr(sv, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     assert sv.kind(repo=str(sv.REPO)) == "pm2", "no file"
     cfg.write_text(json.dumps({"supervisor": "launchd"}))
     assert sv.kind(repo=str(sv.REPO)) == "launchd"
@@ -207,7 +208,7 @@ def test_reader_connections_bridges_show_the_launchd_state(monkeypatch, launchd,
     monkeypatch.setattr(c.subprocess, "run", _no_pm2)
     assert c.pm2_status() == {"codec-dashboard": "errored", "codec-imessage": "waiting restart",
                               "codec-telegram": "online", "codec-watchdog": "stopped", "whisper-stt": "stopped"}
-    monkeypatch.setattr(c, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(c, "IMESSAGE_HEALTH", str(tmp_path / "imessage_health.json"))
     monkeypatch.setattr(c, "_telegram_token", lambda cfg: "")
     monkeypatch.setattr(c, "messages_db_readable", lambda: None)

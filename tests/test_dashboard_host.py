@@ -19,26 +19,28 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 
-def test_dashboard_host_defaults_to_loopback():
+def test_dashboard_host_defaults_to_loopback(monkeypatch):
     """The default value for DASHBOARD_HOST must be 127.0.0.1, not 0.0.0.0.
 
     Closes D-7 §1: out-of-box config must NOT bind on all interfaces.
+
+    The module's code runs again from this checkout's file under another name, with the
+    suite's empty config (CODEC_CONFIG_PATH), so the owner's own dashboard_host does not
+    count. Never importlib.reload(codec_config): a reload finds the file again on
+    sys.path, where skills put ~/codec-repo first, and puts DB_PATH and CONFIG_PATH back
+    on the owner's files for every later test.
     """
+    import importlib.util
     import codec_config
-    # If user already overrode in ~/.codec/config.json, skip
-    import importlib
-    importlib.reload(codec_config)
-    assert hasattr(codec_config, "DASHBOARD_HOST"), (
-        "codec_config must export DASHBOARD_HOST (default 127.0.0.1)"
+    spec = importlib.util.spec_from_file_location("_codec_config_fresh", codec_config.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, fresh)
+    spec.loader.exec_module(fresh)
+    assert sys.modules["codec_config"] is codec_config, "the suite's codec_config was replaced"
+    assert fresh.cfg.get("dashboard_host") is None, "the fresh copy read a config with dashboard_host"
+    assert fresh.DASHBOARD_HOST == "127.0.0.1", (
+        f"Default DASHBOARD_HOST must be 127.0.0.1, got: {fresh.DASHBOARD_HOST!r}"
     )
-    # If a user-supplied value is present in cfg, accept either default or
-    # the user's choice — both should NOT be 0.0.0.0 by default.
-    cfg_value = codec_config.cfg.get("dashboard_host")
-    if cfg_value is None:
-        assert codec_config.DASHBOARD_HOST == "127.0.0.1", (
-            f"Default DASHBOARD_HOST must be 127.0.0.1, got: "
-            f"{codec_config.DASHBOARD_HOST!r}"
-        )
 
 
 def test_check_dashboard_start_safety_refuses_unsafe():

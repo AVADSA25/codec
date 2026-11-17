@@ -121,6 +121,8 @@ def temp_codec_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    import codec_config
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     # Phase 3.5: redirect project root so create_project_folder doesn't
     # touch the real ~/codec-projects/ during tests.
     monkeypatch.setattr(cap, "_PROJECT_ROOT", tmp_path / "codec-projects")

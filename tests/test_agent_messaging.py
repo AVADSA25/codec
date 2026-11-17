@@ -64,6 +64,8 @@ def temp_codec_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(cam, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cam, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cam, "_NOTIFICATIONS_PATH", tmp_path / "notifications.json")
+    import codec_config
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     # Redirect codec_audit._AUDIT_LOG so post_message audit emits don't
     # leak into the production ~/.codec/audit.log (test pollution fix).
     try:

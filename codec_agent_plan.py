@@ -30,6 +30,8 @@ from dataclasses import dataclass, field, asdict, fields as _dc_fields
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
+
 log = logging.getLogger("codec_agent_plan")
 
 # Audit event names — mirror codec_audit constants (single source of truth).
@@ -898,7 +900,7 @@ def _project_root() -> Path:
     Resolved at call time so tests can monkeypatch _PROJECT_ROOT or set
     CODEC_PROJECT_ROOT_DIR via monkeypatch.setenv."""
     # config.json override (~/.codec/config.json:agents.project_root_dir)
-    cfg = _CODEC_DIR / "config.json"
+    cfg = Path(config_path())
     if cfg.exists():
         try:
             data = json.loads(cfg.read_text())

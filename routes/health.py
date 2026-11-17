@@ -26,7 +26,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from routes._shared import CONFIG_PATH
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -98,7 +98,7 @@ async def status():
     """Check if CODEC is running and return config."""
     config = {}
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             config = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         log.warning(f"Config read failed; returning partial status: {e}")

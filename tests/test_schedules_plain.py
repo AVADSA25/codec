@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 TUE_10 = datetime(2026, 9, 29, 10, 0)  # a Tuesday
@@ -38,7 +39,7 @@ def sch(tmp_path, monkeypatch):
     import codec_today
     monkeypatch.setattr(cs, "SCHEDULE_PATH", str(tmp_path / "schedules.json"))
     monkeypatch.setattr(cs, "RUNS_LOG", str(tmp_path / "schedule_runs.log"))
-    monkeypatch.setattr(cs, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(cs, "VOICE_SESSION_PATH", str(tmp_path / "voice_session.json"))
     monkeypatch.setattr(codec_today, "TODAY_PATH", tmp_path / "today.json")
     ns = SimpleNamespace(cs=cs, today=codec_today, notified=[], spoken=[], llm=[], answers=[])

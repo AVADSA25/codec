@@ -18,6 +18,7 @@ import types
 
 import pytest
 
+import codec_config
 import codec_alerts
 import codec_heartbeat
 import codec_jsonstore
@@ -168,7 +169,7 @@ def two_writers(monkeypatch, tmp_path):
     monkeypatch.setattr(codec_alerts, "_check_service", probe)
     cfg = home / "hb_config.json"
     cfg.write_text(json.dumps({"heartbeat_alerts": [{"type": "email_check", "name": "Mail"}]}))
-    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
 
     def mail(name, task, feature):
         w.in_mail.set()
@@ -223,7 +224,7 @@ def test_check_alerts_saves_to_the_same_file_as_codec_alerts(monkeypatch, tmp_pa
     cfg = tmp_path / "hb_config.json"
     cfg.write_text(json.dumps({"heartbeat_alerts": [{"type": "disk_usage", "name": "Disk",
                                                      "threshold_pct": 101}]}))
-    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     state_path.write_text(json.dumps({"email_unread": 2}))
     assert codec_heartbeat.check_alerts() == []
     assert json.loads(state_path.read_text()) == {"email_unread": 2}
@@ -329,7 +330,7 @@ def mem(monkeypatch, tmp_path):
                               state=tmp_path / "memory_check.json", cfg=tmp_path / "config.json")
     m.cfg.write_text(json.dumps({"llm_model": MODEL,
                                  "extra_models": [{"id": MODEL, "size_gb": 20}]}))
-    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(m.cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(m.cfg))
     monkeypatch.setattr(codec_heartbeat, "MEMORY_STATE_PATH", str(m.state))
     monkeypatch.setattr(codec_alerts, "ALERTS_SENT_PATH", str(tmp_path / "alerts_sent.json"))
     monkeypatch.setattr(codec_alerts, "send_alert",
@@ -455,7 +456,7 @@ def test_api_status_shows_the_memory_figure(mem, monkeypatch, tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     import routes.health as health
-    monkeypatch.setattr(health, "CONFIG_PATH", str(tmp_path / "no-config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "no-config.json"))
     app = FastAPI()
     app.include_router(health.router)
     client = TestClient(app)

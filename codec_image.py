@@ -39,7 +39,7 @@ from codec_jsonstore import atomic_write_json
 
 log = logging.getLogger("codec.image")
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 IMAGES_DIR = os.path.expanduser("~/.codec/images")
 LOCK_PATH = os.path.expanduser("~/.codec/image_job.lock")
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "qwen_image_run.py")
@@ -71,7 +71,7 @@ class ImageError(ValueError):
 
 def settings() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
     except (OSError, ValueError):
         cfg = {}

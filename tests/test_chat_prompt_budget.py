@@ -86,7 +86,7 @@ def api(tmp_path, monkeypatch):
     import routes.prompts as prompts
 
     cfg = tmp_path / "config.json"
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda: None)
     monkeypatch.setattr(codec_models, "model_extras", lambda *a, **k: {})
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")

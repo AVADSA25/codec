@@ -10,6 +10,7 @@ import signal
 import re
 import base64
 import codec_paste
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *a: None)
     signal.signal(signal.SIGTERM, lambda *a: None)
@@ -77,7 +78,7 @@ def claim_draft():
 def _load_watcher_config():
     """Load user_name and assistant_name from config."""
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as _f:
+        with open(config_path()) as _f:
             _c = json.load(_f)
         return _c.get("user_name", ""), _c.get("assistant_name", "CODEC")
     except Exception:

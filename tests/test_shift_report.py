@@ -29,6 +29,7 @@ _SKILLS = _REPO / "skills"
 if str(_SKILLS) not in sys.path:
     sys.path.insert(0, str(_SKILLS))
 
+import codec_config
 import codec_audit
 import shift_report   # the skill module
 
@@ -50,7 +51,7 @@ def temp_state(tmp_path, monkeypatch):
     monkeypatch.setattr(shift_report, "_OBS_SUMMARIES_DIR", tmp_path / "observation_summaries")
     monkeypatch.setattr(shift_report, "_PROPOSALS_DIR", tmp_path / "skill_proposals")
     monkeypatch.setattr(shift_report, "_STATE_PATH", tmp_path / "shift_report_state.json")
-    monkeypatch.setattr(shift_report, "_CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(shift_report, "_CODEC_DIR", tmp_path)
     return tmp_path
 
@@ -397,7 +398,7 @@ def test_observer_idle_path_fires_shift_report(temp_state, monkeypatch, dispatch
     monkeypatch.setattr(shift_report, "_OBS_SUMMARIES_DIR", temp_state / "observation_summaries")
     monkeypatch.setattr(shift_report, "_PROPOSALS_DIR", temp_state / "skill_proposals")
     monkeypatch.setattr(shift_report, "_STATE_PATH", temp_state / "shift_report_state.json")
-    monkeypatch.setattr(shift_report, "_CONFIG_PATH", temp_state / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(temp_state / "config.json"))
     monkeypatch.setattr(shift_report, "_CODEC_DIR", temp_state)
     # idle_seconds = 120 (2 min) > 60s threshold
     codec_observer._maybe_fire_shift_report(idle_seconds=120.0)
@@ -429,7 +430,7 @@ def test_observer_already_fired_today_suppresses(temp_state, monkeypatch, dispat
     monkeypatch.setattr(shift_report, "_OBS_SUMMARIES_DIR", temp_state / "observation_summaries")
     monkeypatch.setattr(shift_report, "_PROPOSALS_DIR", temp_state / "skill_proposals")
     monkeypatch.setattr(shift_report, "_STATE_PATH", temp_state / "shift_report_state.json")
-    monkeypatch.setattr(shift_report, "_CONFIG_PATH", temp_state / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(temp_state / "config.json"))
     monkeypatch.setattr(shift_report, "_CODEC_DIR", temp_state)
     shift_report.mark_fired_today("time")
     (temp_state / "config.json").write_text(json.dumps({

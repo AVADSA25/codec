@@ -61,7 +61,7 @@ from typing import Any, Dict, List, Optional
 import codec_cloud_models
 from codec_jsonstore import atomic_write_json
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 
 # The model a FRESH install actually has. packaging/macos/models.json fetches
@@ -130,7 +130,7 @@ _MIN_WEIGHT_BYTES = 500 * 1024 * 1024
 
 def _load_config() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}
@@ -433,7 +433,7 @@ def resolve(role: str, cfg: Optional[Dict[str, Any]] = None) -> str:
 
     The role's config key when it holds a non-empty string, byte for byte; else
     for "voice" the model the local server holds (P-013); else default_for(role).
-    `cfg` is the config the caller already read; None reads CONFIG_PATH.
+    `cfg` is the config the caller already read; None reads config.json.
     """
     default = default_for(role)
     key = _ROLES[role][0]
@@ -761,7 +761,7 @@ def restart_launchd(ready_timeout: float = _RESTART_READY_TIMEOUT, *, run=None,
 def _write_active(model_id: str) -> None:
     cfg = _load_config()
     cfg["llm_model"] = model_id
-    atomic_write_json(CONFIG_PATH, cfg)  # helper already writes 0600
+    atomic_write_json(config_path(), cfg)  # helper already writes 0600
 
 
 def _enter_cloud(entry: Dict[str, Any], restore: Dict[str, Any]) -> None:
@@ -772,7 +772,7 @@ def _enter_cloud(entry: Dict[str, Any], restore: Dict[str, Any]) -> None:
     cfg["llm_local_restore"] = restore
     cfg["llm_base_url"] = entry["base_url"].strip().rstrip("/")
     cfg["llm_model"] = entry["id"]
-    atomic_write_json(CONFIG_PATH, cfg)
+    atomic_write_json(config_path(), cfg)
 
 
 def _leave_cloud(model_id: str) -> Dict[str, Any]:
@@ -783,7 +783,7 @@ def _leave_cloud(model_id: str) -> Dict[str, Any]:
     restore = restore if isinstance(restore, dict) else {}
     cfg["llm_base_url"] = restore.get("llm_base_url") or DEFAULT_BASE_URL
     cfg["llm_model"] = model_id
-    atomic_write_json(CONFIG_PATH, cfg)
+    atomic_write_json(config_path(), cfg)
     return restore
 
 
@@ -1016,7 +1016,7 @@ def _set_auto_flag(value: Optional[Dict[str, Any]]) -> None:
         cfg.pop("llm_auto_fallback_active", None)
     else:
         cfg["llm_auto_fallback_active"] = value
-    atomic_write_json(CONFIG_PATH, cfg)
+    atomic_write_json(config_path(), cfg)
 
 
 def _fallback_entry(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:

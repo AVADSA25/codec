@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -35,8 +36,7 @@ def auth_app(monkeypatch, tmp_path):
 
     cfg = str(tmp_path / "config.json")
     # Isolation: never write the real config.
-    monkeypatch.setattr(shared, "CONFIG_PATH", cfg)
-    monkeypatch.setattr(auth_routes, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     # Force auth ON so the session gate is live.
     monkeypatch.setattr(shared, "AUTH_ENABLED", True)
     monkeypatch.setattr(auth_routes, "AUTH_ENABLED", True)
@@ -110,7 +110,6 @@ def test_totp_confirm_uses_server_secret_not_body(authed):
     body `secret`. Even an authenticated user (or a CSRF'd browser) must not
     be able to enroll a secret of their own choosing."""
     import pyotp
-    import routes._shared as shared
 
     client = authed
     # 1. Begin enrollment — server generates + must stash its own secret.
@@ -132,8 +131,8 @@ def test_totp_confirm_uses_server_secret_not_body(authed):
     )
     # 3. The attacker secret must NEVER reach config.json.
     cfg = {}
-    if os.path.exists(shared.CONFIG_PATH):
-        with open(shared.CONFIG_PATH) as f:
+    if os.path.exists(codec_config.CONFIG_PATH):
+        with open(codec_config.CONFIG_PATH) as f:
             cfg = json.load(f)
     assert cfg.get("totp_secret") != attacker_secret, (
         "Attacker-chosen secret must never be persisted to config (C1 layer 2)"
@@ -144,7 +143,6 @@ def test_totp_confirm_accepts_server_secret_code(authed):
     """C1 layer 2 happy path: a code computed from the SERVER secret (with NO
     body secret at all) confirms and enrolls exactly that server secret."""
     import pyotp
-    import routes._shared as shared
 
     client = authed
     r_setup = client.post("/api/auth/totp/setup", json={})
@@ -156,7 +154,7 @@ def test_totp_confirm_accepts_server_secret_code(authed):
     r = client.post("/api/auth/totp/confirm", json={"code": code})
     assert r.status_code == 200, r.text
     assert r.json().get("verified") is True, r.text
-    with open(shared.CONFIG_PATH) as f:
+    with open(codec_config.CONFIG_PATH) as f:
         cfg = json.load(f)
     assert cfg.get("totp_secret") == server_secret, (
         "Confirmed enrollment must persist the SERVER secret (C1 layer 2)"

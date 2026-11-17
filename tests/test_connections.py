@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 HOME = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
@@ -36,9 +37,10 @@ def cn(tmp_path, monkeypatch):
     import routes.connections as c
     for name, file in (("GOOGLE_TOKEN", "google_token.json"), ("GOOGLE_CREDS", "google_credentials.json"),
                        ("MCP_CLIENTS", "mcp_clients.json"), ("MCP_REVOKE", "mcp_revoke.json"),
-                       ("CONFIG_PATH", "config.json"), ("MESSAGES_DB", "chat.db"),
+                       ("MESSAGES_DB", "chat.db"),
                        ("IMESSAGE_HEALTH", "imessage_health.json")):
         monkeypatch.setattr(c, name, str(tmp_path / file))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(c, "_ACCOUNT", {"key": None, "value": None, "at": 0.0})
     monkeypatch.setattr(c, "_REAUTH", {"proc": None, "started": 0.0})
     audits = []
@@ -275,7 +277,7 @@ def test_the_tools_summary_follows_the_security_lists(cn):
 # ── Bridges ───────────────────────────────────────────────────────────────────
 
 def _bridge_config(cn):
-    Path(cn.c.CONFIG_PATH).write_text(json.dumps({
+    Path(codec_config.CONFIG_PATH).write_text(json.dumps({
         "telegram": {"allowed_chat_ids": [111]}, "alerts": {"telegram": {"chat_id": "999"}},
         "imessage": {"enabled": True, "allowed_senders": ["+34600111222", "not a handle!"]}}))
 

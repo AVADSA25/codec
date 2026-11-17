@@ -20,6 +20,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import codec_config
 import codec_cloud_models as ccm
 import codec_usage
 import codec_vibe_agent as va
@@ -194,7 +195,7 @@ def test_each_reply_leaves_one_usage_line_with_source_vibe(scripted, local, tmp_
 def test_settings_vibe_saves_inside_bounds_and_refuses_the_rest(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"vibe_agent": {"notes": False}}))
-    monkeypatch.setattr(rc, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     app = FastAPI()
     app.include_router(rc.router)
     c = TestClient(app)

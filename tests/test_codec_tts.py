@@ -18,6 +18,7 @@ import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import codec_config
 import codec_tts
 
 REPO = Path(__file__).resolve().parent.parent
@@ -90,15 +91,17 @@ def audits(monkeypatch):
 
 
 @pytest.fixture
-def config_file(monkeypatch):
-    """Whatever reads ~/.codec/config.json gets this dict instead (the owner's real file is never read)."""
+def config_file(monkeypatch, tmp_path):
+    """Whatever reads config.json (codec_config.CONFIG_PATH) gets this dict, as it is at the open."""
     real_open = builtins.open
     box = {"cfg": {}}
+    path = str(tmp_path / "config.json")
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", path)
 
-    def fake_open(path, *a, **k):
-        if str(path).endswith(".codec/config.json"):
+    def fake_open(file, *a, **k):
+        if str(file) == path:
             return io.StringIO(json.dumps(box["cfg"]))
-        return real_open(path, *a, **k)
+        return real_open(file, *a, **k)
 
     monkeypatch.setattr(builtins, "open", fake_open)
     return box
@@ -269,7 +272,7 @@ def test_pwa_read_aloud_uses_the_clone_for_the_owners_voice_but_not_for_a_voice_
     import routes.tts as rt
     path = tmp_path / "config.json"
     path.write_text(json.dumps({**cfg, "tts_voice": "am_adam", "tts_speed": 0.9, "tts_url": "http://tts/x"}))
-    monkeypatch.setattr(rt, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(rt, "voice_catalog", lambda config=None: [{"id": "am_adam"}, {"id": "bf_emma"}])
     app = FastAPI()
     app.include_router(rt.router)
@@ -293,7 +296,7 @@ def test_pwa_read_aloud_keeps_its_two_error_answers(cfg, server, tmp_path, monke
     import routes.tts as rt
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"tts_url": "http://tts/x"}))
-    monkeypatch.setattr(rt, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     app = FastAPI()
     app.include_router(rt.router)
     client = TestClient(app)

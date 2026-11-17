@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -203,7 +204,7 @@ def test_ava_client_reads_through_the_getter(lk, tmp_path, monkeypatch):
     cc, kc, _ = lk
     import codec_ava_client
     path = tmp_path / "config.json"
-    monkeypatch.setattr(codec_ava_client, "CONFIG_PATH", path)
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     _write(path, TOK)
     assert codec_ava_client.load_config().license_key == TOK
     assert _disk(path)["ava"]["license_key"] == ""
@@ -214,7 +215,7 @@ def test_setup_ava_mode_moves_key_and_does_not_write_it_back(lk, tmp_path, monke
     cc, kc, _ = lk
     import codec_setup
     path = tmp_path / "config.json"
-    monkeypatch.setattr(codec_setup, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     _write(path, TOK)
     assert codec_setup.set_provider("ava")["ok"]
     after = _disk(path)
@@ -229,7 +230,7 @@ def test_version_reads_through_the_getter_and_who_prints_no_key(lk, tmp_path, mo
     cc, kc, _ = lk
     import codec_slash_commands as scm
     path = tmp_path / "config.json"
-    monkeypatch.setattr(scm, "CONFIG_PATH", path)
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     _write(path, TOK)
     assert scm._ava_license_status(_disk(path)).startswith("pro"), "tier not read from the key"
     assert _disk(path)["ava"]["license_key"] == ""

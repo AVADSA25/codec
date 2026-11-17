@@ -228,7 +228,7 @@ def test_a_settings_prompt_with_braces_gives_a_normal_reply(quiet, monkeypatch):
     cfg = quiet / "config.json"
     cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1"}))
     sent = []
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False, search=True: (None, None))
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda *a, **k: None)

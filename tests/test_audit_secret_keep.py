@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -423,7 +424,7 @@ def test_api_status_shows_audit_write_failures(fake_kc, monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import codec_audit
     import routes.health as health
-    monkeypatch.setattr(health, "CONFIG_PATH", str(tmp_path / "no-config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "no-config.json"))
     monkeypatch.setattr(codec_audit, "_write_failures", 7)
 
     app = FastAPI()

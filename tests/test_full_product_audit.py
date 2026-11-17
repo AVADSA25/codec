@@ -33,7 +33,6 @@ import pytest
 _REPO_FROM_TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = _REPO_FROM_TESTS
 SKILLS_DIR = os.path.join(REPO, "skills")  # Single source of truth — repo is runtime
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 
 sys.path.insert(0, REPO)

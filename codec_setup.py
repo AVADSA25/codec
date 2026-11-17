@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional
 import codec_models
 from codec_jsonstore import atomic_write_json
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 MODELS_DIR = os.path.expanduser("~/.codec/models")
 HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 
@@ -89,14 +89,14 @@ KEY_SLOT = "llm_api_key"
 
 def _load_config() -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}
 
 
 def _save_config(cfg: Dict[str, Any]) -> None:
-    atomic_write_json(CONFIG_PATH, cfg)
+    atomic_write_json(config_path(), cfg)
 
 
 # ── What is on this machine ──────────────────────────────────────────────────
@@ -212,7 +212,7 @@ def _license_key(cfg: Dict[str, Any]) -> str:
     """The licence key: Keychain, or ava.license_key in this file, moved to the
     Keychain on first read (codec_config.get_license_key, R-03)."""
     import codec_config
-    return codec_config.get_license_key(cfg, CONFIG_PATH)
+    return codec_config.get_license_key(cfg, config_path())
 
 
 def _store_key(key: str) -> None:

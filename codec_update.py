@@ -44,7 +44,7 @@ DEFAULT_FEED_URL   = "https://github.com/AVADSA25/codec-updates/releases/latest/
 DEFAULT_PUBLIC_KEY = "Az+iqcmusmWvyLEB7lW4j2J2kxGy6uLobNaH7ZIahys="
 
 _SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
-_CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _CHUNK = 1 << 20                 # download piece size (P-027: the DMG is never held in memory)
 _MAX_UNSIZED_BYTES = 4 << 30     # cap for an appcast item that gives no length
 
@@ -99,7 +99,7 @@ def is_newer(candidate: str, current: str) -> bool:
 
 def _config() -> dict:
     try:
-        return json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+        return json.loads(Path(config_path()).read_text(encoding="utf-8"))
     except Exception:
         return {}
 

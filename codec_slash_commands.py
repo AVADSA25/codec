@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 # ── Paths ──
-CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 LICENSE_DB = Path(os.path.expanduser("~/ava-stack/license-server/licenses.db"))
 
 
@@ -126,16 +126,17 @@ def _unknown_command(name: str) -> str:
 
 def _load_config() -> dict:
     try:
-        return json.loads(CONFIG_PATH.read_text())
+        return json.loads(Path(config_path()).read_text())
     except Exception:
         return {}
 
 
 def _save_config(cfg: dict) -> None:
     """Atomic write to avoid half-written JSON."""
-    tmp = CONFIG_PATH.with_suffix(".json.tmp")
+    path = Path(config_path())
+    tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cfg, indent=2))
-    tmp.replace(CONFIG_PATH)
+    tmp.replace(path)
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:
@@ -254,7 +255,7 @@ def _ava_license_status(cfg: dict) -> str:
     if not ava.get("enabled"):
         return "(disabled)"
     import codec_config  # R-03: the key is in the Keychain; one left in the file moves there
-    key = codec_config.get_license_key(cfg, CONFIG_PATH)
+    key = codec_config.get_license_key(cfg, config_path())
     if not key:
         return "(no key)"
     # Decode JWT payload to show tier+expiry without verification

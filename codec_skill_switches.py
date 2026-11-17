@@ -19,14 +19,14 @@ import threading
 
 import codec_jsonstore
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _LOCK = threading.Lock()
 _CACHE = {"stamp": None, "off": frozenset()}
 
 
 def off_set() -> frozenset:
     """The names switched off, read again when config.json changes."""
-    path = CONFIG_PATH
+    path = config_path()
     try:
         st = os.stat(path)
         stamp = (path, st.st_mtime_ns, st.st_size)
@@ -55,7 +55,7 @@ def off_message(name: str) -> str:
 
 def set_on(name: str, on: bool) -> bool:
     """Switch a skill on or off in config.json (atomic, under the config lock). Returns whether it is on."""
-    path = CONFIG_PATH
+    path = config_path()
     with codec_jsonstore.file_lock(path):
         try:
             with open(path, encoding="utf-8") as f:

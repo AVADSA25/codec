@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -60,7 +61,6 @@ def feat(tmp_path, monkeypatch):
     import codec_dispatch
     import codec_hooks
     import codec_license
-    import codec_skill_switches
     from codec_skill_registry import SkillRegistry
 
     skills = tmp_path / "skills"
@@ -105,7 +105,7 @@ def feat(tmp_path, monkeypatch):
     monkeypatch.setattr(codec_hooks, "_log_event", codec_audit.log_event)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"skills_off": ["google_gmail"]}))
-    monkeypatch.setattr(codec_skill_switches, "CONFIG_PATH", str(config))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(config))
     monkeypatch.setattr(codec_license, "feature_allowed", lambda *_a: True)
 
     home = tmp_path / "codec"
@@ -190,16 +190,15 @@ def test_imessage_briefing_runs_through_dispatch(feat, monkeypatch):
 def test_heartbeat_mail_alert_runs_through_dispatch_and_skips_when_off(feat, monkeypatch):
     import codec_alerts
     import codec_heartbeat
-    hb_config = feat.config.parent / "heartbeat_config.json"
-    hb_config.write_text(json.dumps({"heartbeat_alerts": [{"type": "email_check", "name": "Mail"}]}))
-    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(hb_config))
+    alerts = [{"type": "email_check", "name": "Mail"}]  # one config.json for the switches and the heartbeat
+    feat.config.write_text(json.dumps({"skills_off": ["google_gmail"], "heartbeat_alerts": alerts}))
     # P-083: check_alerts saves to codec_alerts' own alert_state.json path
     monkeypatch.setattr(codec_alerts, "ALERT_STATE_PATH", str(feat.home / "alert_state.json"))
 
     assert codec_heartbeat.check_alerts() == []          # switched off: skipped
     assert feat.calls("google_gmail") == [] and _tool_results(feat, "heartbeat") == {}
 
-    feat.config.write_text(json.dumps({"skills_off": []}))
+    feat.config.write_text(json.dumps({"skills_off": [], "heartbeat_alerts": alerts}))
     assert codec_heartbeat.check_alerts() == []          # on: "Found 0 emails:" = inbox clear
     assert feat.calls("google_gmail") == ["check unread emails"]
     assert set(_tool_results(feat, "heartbeat")) == {"google_gmail"}

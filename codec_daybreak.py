@@ -24,6 +24,7 @@ import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def _enabled() -> bool:
 
 def _cfg() -> dict:
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             return json.load(f).get("daybreak", {}) or {}
     except Exception:
         return {}

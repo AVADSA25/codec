@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+import codec_config
 import routes.config as config_routes
 import routes.websocket as ws
 
@@ -65,7 +66,7 @@ def cfg_client(tmp_path, monkeypatch):
     path.write_text(json.dumps({"auth_enabled": True, "auth_session_hours": 24,
                                 "dashboard_token": "tok_original_1234",
                                 "auth_pin_hash": "argon2-original"}, indent=2))
-    monkeypatch.setattr(config_routes, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     app = FastAPI()
     app.include_router(config_routes.router)
     return TestClient(app), path

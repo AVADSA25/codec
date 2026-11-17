@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 HOME = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
@@ -24,7 +25,7 @@ def sk(tmp_path, monkeypatch):
     import routes.skills_page as sp
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"skills": ["calculator"], "llm_model": "x"}))  # an old allow list: ignored
-    monkeypatch.setattr(sw, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setitem(sw._CACHE, "stamp", None)
     monkeypatch.setattr(sp, "GOOGLE_TOKEN", str(tmp_path / "google_token.json"))
     monkeypatch.setattr(sp, "_keys", lambda: {"serper": False, "pexels": False})

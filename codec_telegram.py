@@ -58,16 +58,16 @@ def _sanitize_log(s):
 VERSION = "2.1.0"
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 MEMORY_DB   = os.path.expanduser("~/.codec/memory.db")
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
 def load_config():
     cfg = {}
-    if os.path.exists(CONFIG_PATH):
+    if os.path.exists(config_path()):
         try:
-            with open(CONFIG_PATH) as f:
+            with open(config_path()) as f:
                 cfg = json.load(f)
         except Exception as e:
             log.warning(f"Config parse error: {e}")

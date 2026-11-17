@@ -77,8 +77,7 @@ def env(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1", "llm_model": "test-model",
                                "llm_provider": "test", "chat": {"llm_timeout_s": 5}}))
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
-    monkeypatch.setattr(health, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda: None)
     monkeypatch.setattr(codec_models, "model_extras", lambda *a, **k: {})
     monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")

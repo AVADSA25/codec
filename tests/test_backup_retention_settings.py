@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import codec_config
 import codec_backup
 
 REPO = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ def page(tmp_path, monkeypatch):
     cfg = home / "config.json"
     cfg.write_text(json.dumps({"llm_model": "m", "memory": {"fact_extract": True}}))
     monkeypatch.setattr(codec_backup, "CODEC_HOME", str(home))
-    monkeypatch.setattr(mp, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_scheduler, "SCHEDULE_PATH", str(tmp_path / "schedules.json"))
     audits = []
     monkeypatch.setattr(mp, "_audit", lambda action, **extra: audits.append((action, extra)))

@@ -40,8 +40,8 @@ def run(task, app="", ctx=""):
     def _home_city() -> str:
         try:
             import json
-            import os
-            with open(os.path.expanduser("~/.codec/config.json")) as f:
+            from codec_config_path import config_path
+            with open(config_path()) as f:
                 return (json.load(f).get("weather_default_city") or "").strip() or "London"
         except Exception:
             return "London"

@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import codec_config
 import codec_models
 
 REPO = Path(__file__).resolve().parents[1]
@@ -72,7 +73,7 @@ def cfg(tmp_path, monkeypatch):
     path.write_text(json.dumps({"llm_model": "mlx-community/A", "supervisor": "launchd",
                                 "llm_base_url": "http://127.0.0.1:8083/v1",
                                 "model_pm2_process": "codec-dashboard"}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_models, "SERVICES_JSON", _services(tmp_path))
     monkeypatch.setattr(codec_models, "discover_local",
                         lambda: [{"id": "mlx-community/A", "label": "A", "size_gb": 1.0},
@@ -360,7 +361,7 @@ def test_switch_on_pm2_calls_restart_server_as_before(tmp_path, monkeypatch, aud
     """The Studio: no `supervisor` in config, a checkout, so PM2; launchd is never touched."""
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"llm_model": "mlx-community/A", "llm_base_url": "http://x/v1"}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_models, "discover_local",
                         lambda: [{"id": "mlx-community/A"}, {"id": "mlx-community/B"}])
     assert codec_models._supervisor_kind() == "pm2"
@@ -380,7 +381,7 @@ def test_pm2_restart_commands_are_pinned(tmp_path, monkeypatch):
     """The Studio's stop-then-start: pm2 stop qwen3.6, wait, pm2 restart qwen3.6 --update-env."""
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"llm_model": "mlx-community/A"}))
-    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.setattr(codec_models.shutil, "which", lambda _n: "/usr/bin/pm2")
     state, calls = {"up": False}, []
 

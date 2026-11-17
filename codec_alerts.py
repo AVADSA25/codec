@@ -45,7 +45,7 @@ from typing import Optional
 
 log = logging.getLogger("codec_alerts")
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 ALERT_STATE_PATH = os.path.expanduser("~/.codec/alert_state.json")
 # Which problems have alerted and when; shared by every process that runs the
 # heartbeat (codec-heartbeat and the dashboard), so writes go through a lock.
@@ -55,7 +55,7 @@ REPEAT_EVERY_S = 6 * 3600
 
 def _load_config() -> dict:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except Exception:
         return {}
