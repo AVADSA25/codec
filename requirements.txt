@@ -70,7 +70,7 @@ pyperclip>=1.11.0; sys_platform == "darwin"
 # Google Workspace skills (codec_google_auth.py, codec_gdocs.py, skills/google_*.py,
 # reauth_google.py). Imported lazily, so a missing package showed only when a buyer
 # first asked for a calendar or a doc.
-google-api-python-client>=2.200.0
+google-api-python-client>=2.202.0
 google-auth>=2.40.0
 google-auth-oauthlib>=1.5.0
 
