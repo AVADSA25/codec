@@ -1,12 +1,16 @@
 # CODEC buyer lock: the exact package set for the macOS app's bundled Python
 # (macOS 14+ on Apple silicon, CPython 3.12), 150 packages, every file hash-pinned.
 #
-# Made from requirements.txt (origin/main, 2026-10-30) with:
+# Made from requirements.txt (origin/main, 2026-11-18) with:
 #   uv pip compile requirements.txt --python-version 3.12 --generate-hashes \
 #     -c packaging/macos/requirements-lock.txt \
 #     --no-emit-package torch --no-emit-package sympy --no-emit-package mpmath \
 #     --no-emit-package networkx --no-emit-package setuptools --no-emit-package opencv-python
-# (-c keeps every package already pinned here at its version; only new packages enter.)
+# (-c keeps every package already pinned here at its version; only new packages enter.
+# To move a pin, change or remove its entry in this file first, then run the command:
+# 2026-11-18 set fastmcp and fastmcp-slim to 4.1.8 and google-api-python-client to 2.202.0
+# and removed authlib, which fastmcp-slim 4.1.8 needs at >=1.9.5. keyring and its three
+# jaraco helpers stay at their pins through requirements.txt's py-key-value-aio[keyring].)
 # Install:
 #   python -m pip install --require-hashes --only-binary=:all: --no-deps -r packaging/macos/requirements-lock.txt
 # --no-deps is needed because the lock leaves out six packages on purpose. Five belong to
@@ -16,7 +20,7 @@
 # lock lists every other package the app imports, so a plain install would find nothing
 # missing. `pip check` therefore reports two lines, "mlx-whisper requires torch" and
 # "mlx-vlm requires opencv-python"; CI accepts those two and no other.
-# Checked 2026-10-30: installs into a clean Python 3.12 venv; all hashes pass for
+# Checked 2026-11-18: installs into a clean Python 3.12 venv; all hashes pass for
 # macosx_14_0_arm64; every runtime import in tests/test_buyer_lock.py works. Not
 # installable on macOS 13 (mlx 0.32.4 and numpy 2.5.4 publish no macosx_13 wheel). Hashes
 # cover every wheel and sdist of each pinned version.
@@ -310,9 +314,9 @@ attrs==26.1.0 \
     #   jsonschema
     #   jsonschema-path
     #   referencing
-authlib==1.9.1 \
-    --hash=sha256:5c7d9848f47cac340f060f76ae0bc09b59f5c8e89cc1bb032d4370a0c55b5974 \
-    --hash=sha256:8b9be8b1e5174dcbf5520e984f1a22dc2edae5b6e40a61d4cedbf86b97e9e69b
+authlib==1.9.9 \
+    --hash=sha256:0199649865fefb4304fc57683eaebb15614523073e41e09d98c72f3268ce5cbc \
+    --hash=sha256:cca3dffa51c8d80d6df19aee2279e47219dc996f5a527c06ac2e39d0757c99ef
     # via
     #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
@@ -793,15 +797,15 @@ fastapi==0.162.0 \
     #   -c packaging/macos/requirements-lock.txt
     #   -r requirements.txt
     #   mlx-vlm
-fastmcp==4.1.3 \
-    --hash=sha256:a1f79e9db929a1603c75331df603f74530fc236aa711e0ee2e185821c6d9888d \
-    --hash=sha256:b983d8acc44ab1143e0c86fd6da843f25043ee0aeb64ab983b36c527bd1d33e9
+fastmcp==4.1.8 \
+    --hash=sha256:1c2b4877472f3d3ad38ffe7f835d3316f9ac6eada801dcfa8db70b15da6054fd \
+    --hash=sha256:7b5e7f3aa1b7c372d7f7284c7ea686f5a6d3d1db96d4c609029b67848c083ba1
     # via
     #   -c packaging/macos/requirements-lock.txt
     #   -r requirements.txt
-fastmcp-slim==4.1.3 \
-    --hash=sha256:81af8699331c33d438caf85b6947f36df6e2f04118e6f318ca00374fd9afea9a \
-    --hash=sha256:d95277db0979e4cbfa84528cf9016ae079494b41ed8e88cc909fee8233db6035
+fastmcp-slim==4.1.8 \
+    --hash=sha256:2686ea58fe1112816101be10892ed2028aaf774c6205546c259be6e5f0c83530 \
+    --hash=sha256:e0f194baca7f5781a554d07879cb709beed1a2d0796949e3693e0a96e291506a
     # via
     #   -c packaging/macos/requirements-lock.txt
     #   fastmcp
@@ -959,15 +963,20 @@ fsspec==2026.7.0 \
 google-api-core==2.43.2 \
     --hash=sha256:5a9d21baab97fd3c0547ccfc186a9e64f4227d8d7026f393835316400b29a6d4 \
     --hash=sha256:5dfc5e9d52982bcc03bd6af380a893365b5fdf907dc527f63d3a372833c33329
-    # via google-api-python-client
-google-api-python-client==2.201.0 \
-    --hash=sha256:2d9bf1ba3f12eee8ed3d0f1791ce0605d163432f496baa72d3677faa2cf097d6 \
-    --hash=sha256:d5691982abd7287f53cb0b0e0c6a9984d4103cf864ea0a88cb6e4347bbaf70de
-    # via -r requirements.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-api-python-client
+google-api-python-client==2.202.0 \
+    --hash=sha256:aaa90064c9bb642ff1d065b22ca8958a2cb6e345909cefe70d0e5452fc50e08b \
+    --hash=sha256:ae126c8e91f43c331e23dbd83bc4a8075699dd48089cebc7295f6ab2f5850fc5
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 google-auth==2.62.0 \
     --hash=sha256:0bef0ce54bdf9ce226c5d66e4264413bd918141c31bbe49fb52eac882f513d69 \
     --hash=sha256:4ff4319aeb4ad128409759d397a9fcafad126d0031d241cc0dd6b9a00b43e3f3
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   -r requirements.txt
     #   google-api-core
     #   google-api-python-client
@@ -976,15 +985,21 @@ google-auth==2.62.0 \
 google-auth-httplib2==0.4.4 \
     --hash=sha256:b931de392c20cfaa351cd789274922bd8cdc001e0e9e96de31b39d71347f8e16 \
     --hash=sha256:bbe5d7b2401bb3a4017f4720e1e91bd273ab9a2bb60b84e65edbc0de127852da
-    # via google-api-python-client
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-api-python-client
 google-auth-oauthlib==1.5.0 \
     --hash=sha256:71625fdea21c6c03217eb9ff13741c3096e6d257ebca0ad084dbd6e9f4aa4ef4 \
     --hash=sha256:b351107c7dd9017f426cbb0272ea1bc04f469020fd18f4443c7d40362e0b1510
-    # via -r requirements.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 googleapis-common-protos==1.76.0 \
     --hash=sha256:59e13344a9f3651aa201a03e2bee815a3bf43a4baf1f9ff8a9b62a840ce25fac \
     --hash=sha256:71db0e44a1d4c2dd024ebad44ca67129cc1e2892e4861df466764749d5ef8642
-    # via google-api-core
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-api-core
 griffelib==2.4.1 \
     --hash=sha256:40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff \
     --hash=sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce
@@ -1036,6 +1051,7 @@ httplib2==0.32.1 \
     --hash=sha256:37900eb8a74576bd99fc39ae1dc8409f95f965d45b56cbcb2194bb55f58a90e1 \
     --hash=sha256:82e7a6ab08fcb27879864ddf63dbb529fb032ca336c331cb1597d6dd8b47c92e
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   google-api-python-client
     #   google-auth-httplib2
 httpx==0.28.1 \
@@ -1076,7 +1092,9 @@ idna==3.20 \
 ifaddr==0.2.0 \
     --hash=sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748 \
     --hash=sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4
-    # via zeroconf
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   zeroconf
 jaraco-classes==3.4.0 \
     --hash=sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd \
     --hash=sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790
@@ -1121,6 +1139,7 @@ jsonschema==4.26.0 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
     # via
     #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
     #   mcp
 jsonschema-path==0.5.0 \
     --hash=sha256:2790a070bc7abb08ea3dbe4d340ece4efadf639223001f020c7503229ba068e2 \
@@ -1199,7 +1218,9 @@ llvmlite==0.50.0 \
     --hash=sha256:f1ac2b9f699c46219fbbd66b304105f5e1b218f05ffac6fe03cd851f93718e58 \
     --hash=sha256:f2a2cd6ec9ffcc1b7147dea0d7a49efebf17a2b434e0c2844fe175999d571eb4 \
     --hash=sha256:ffe46ef508df226e54b5fe1f7bf11122e5297bcdbb3902cc5b670a429d56ff47
-    # via numba
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   numba
 markdown-it-py==4.2.0 \
     --hash=sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49 \
     --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
@@ -1505,7 +1526,9 @@ mlx-vlm==0.7.10 \
     #   -r requirements.txt
 mlx-whisper==0.4.3 \
     --hash=sha256:6b82b6597a994643a3e5496c7bc229a672e5ca308458455bfe276e76ae024489
-    # via -r requirements.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 more-itertools==11.2.1 \
     --hash=sha256:35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0 \
     --hash=sha256:cbf08fd0af284dc69718b9b76a8e6203df624d70209ea511e4219d350c856f63
@@ -1723,7 +1746,9 @@ numba==0.68.1 \
     --hash=sha256:f2170303a731542b5c16501a08b2b1cbb4596e5bb9ba6a661b65ed953e59b8a6 \
     --hash=sha256:fb83f1043e53753503d303036065990ff48fe0ef901e897153f57b2aec12c38d \
     --hash=sha256:fc764aa37deab88718de20151af0f53aa72d1c5cb3b54c6eb648473323f80a5c
-    # via mlx-whisper
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-whisper
 numpy==2.5.4 \
     --hash=sha256:067374eb538c34c745436365cf7b0112595c1d326f21ce4ff340f61230239fbb \
     --hash=sha256:0b4724a19de67bea8cfc4970798efa78bcbbe2ac2613cfac16721a42d44de2a5 \
@@ -1799,6 +1824,7 @@ numpy==2.5.4 \
     #   mlx-vlm
     #   mlx-whisper
     #   numba
+    #   opencv-python
     #   pandas
     #   scipy
     #   soundfile
@@ -1806,7 +1832,9 @@ numpy==2.5.4 \
 oauthlib==4.0.0 \
     --hash=sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd \
     --hash=sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86
-    # via requests-oauthlib
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   requests-oauthlib
 openapi-pydantic==0.6.0 \
     --hash=sha256:11f3ac6ad41521fc156381ec587246b0c0ecea523bd9565ed74d3e7fac9d91cd \
     --hash=sha256:8bd6d548a250da37db96f461bcd52b3468e8834ad7d6db14b00a6b2ebbd163a3
@@ -2140,7 +2168,9 @@ propcache==0.5.4 \
 proto-plus==1.29.0 \
     --hash=sha256:8acd070469a7aaf43f440b022ef9757c8cac1a9f866e933f59ae98669ddc6c8b \
     --hash=sha256:cfb4e62ad7e13dd18f346cabbda00cab39930d36a05791fd81ddb074d6ee884f
-    # via google-api-core
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-api-core
 protobuf==7.36.2 \
     --hash=sha256:497d0463ff3316681da6c0b9e8d06cb465d61abce00b613ab42226175644d1bb \
     --hash=sha256:89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2 \
@@ -2151,6 +2181,7 @@ protobuf==7.36.2 \
     --hash=sha256:e11e1f0180583a2af89db6a2ecd9e8dc40aa6d2988ca175bfd0e6d12ea72d74e \
     --hash=sha256:f4fee11ec330d238b34a05c9b675f693c20415d1c5bd7d5320cc2f8a798eb9cf
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   google-api-core
     #   googleapis-common-protos
     #   proto-plus
@@ -2159,6 +2190,7 @@ py-key-value-aio==0.4.6 \
     --hash=sha256:820b30c7959fc738ea3d00160cdb10cd258f51e38737b2add530defeea1ded77
     # via
     #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   fastmcp-slim
 pyarrow==26.0.0 \
     --hash=sha256:01c863a18bd9c8412453dd0d92de6d0ee7b2b3d6fb079d9734a4b2a3c8bd4453 \
@@ -2217,11 +2249,15 @@ pyarrow==26.0.0 \
 pyasn1==0.6.5 \
     --hash=sha256:4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587 \
     --hash=sha256:6b11616a6bcf3a40e635f082bb232fa57b5e0dd7f517bd7ddd69ec3794508a47
-    # via pyasn1-modules
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pyasn1-modules
 pyasn1-modules==0.4.2 \
     --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
     --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
-    # via google-auth
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-auth
 pycparser==3.12 \
     --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e \
     --hash=sha256:f03387877eab82ce01bbdfd0ba7252ee55a90b1c708d5129e2ce915475cf1db6
@@ -2450,7 +2486,9 @@ pyobjc-framework-avfoundation==12.2.2 \
     --hash=sha256:9f9394180a7891085f8981ba2fcb2da292ee0608b46fa53d231d8a646a6a6bb8 \
     --hash=sha256:b5feb1265d7a259f92e75c4bef791e047f2d4aa6b7faa3fd46077f135947adaf \
     --hash=sha256:ca4976b18bee82142655b9dc1d6c0cd665627d9ef413694434e2ba5a187443f4
-    # via -r requirements.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 pyobjc-framework-cocoa==12.2.2 \
     --hash=sha256:0e8ace0d44a00d281281a723d17fcd05eea7544a38a6a512e1fd018ddb7aece2 \
     --hash=sha256:5a751c8033a3b51f7996f0327e0675eb44dcfdfe7920fae01e3d78b662723fff \
@@ -2482,7 +2520,9 @@ pyobjc-framework-coreaudio==12.2.2 \
     --hash=sha256:950e16f8c1cc21a76ca879d820b49795959fc6099eb8a41ccd1376951f42941e \
     --hash=sha256:97ef7efc7f5c5d66ecb114050f76f029803a203b953103859bdfe1d4756de50d \
     --hash=sha256:a19cc902a1eadb1b30d191d008e960768aaeeb7c027001820ef0cc01a4791422
-    # via pyobjc-framework-avfoundation
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pyobjc-framework-avfoundation
 pyobjc-framework-coremedia==12.2.2 \
     --hash=sha256:0bf4cd65f87bd073e74b3ede2381dc9355529e6f1b12184da22090f016e68bf7 \
     --hash=sha256:41142c919c557165df4a53ffe218e600ad0ccb7691bc9aed58a7839a88ba7c8b \
@@ -2494,7 +2534,10 @@ pyobjc-framework-coremedia==12.2.2 \
     --hash=sha256:edc9d03e5230123c92d4f0413c48449a7f08fa747b9f304b2cc396239acfefe3 \
     --hash=sha256:f6f8150428e6ae40d6b97714f6933b8c4322f3fb94de9bfcb206d00cb021f464 \
     --hash=sha256:fe9f972438674893e941e9db5b62f8ba99a33f94a7f1c2ce49b14416f154cd10
-    # via pyobjc-framework-avfoundation
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
+    #   pyobjc-framework-avfoundation
 pyobjc-framework-coretext==12.2.2 \
     --hash=sha256:1324d91305022b1de03a12cf82de2b42c87dafe9b12cde6237253658a8637139 \
     --hash=sha256:1dc50de18346c4d6c89a51df066f03beea81e3557e3090ddc2a7a59395332fd8 \
@@ -2536,7 +2579,9 @@ pyotp==2.10.0 \
 pyparsing==3.3.3 \
     --hash=sha256:928ae7e20211f3b6f3915a72f06a0cfd29ab9d24279dd6346b6b1a7146397d36 \
     --hash=sha256:ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4
-    # via httplib2
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   httplib2
 pyperclip==1.11.0 \
     --hash=sha256:244035963e4428530d9e3a6101a1ef97209c6825edab1567beac148ccc1db1b6 \
     --hash=sha256:299403e9ff44581cb9ba2ffeed69c7aa96a008622ad0c46cb575ca75b5b84273
@@ -2808,7 +2853,9 @@ requests==2.34.2 \
 requests-oauthlib==2.0.0 \
     --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
     --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
-    # via google-auth-oauthlib
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-auth-oauthlib
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
@@ -3230,7 +3277,9 @@ tiktoken==0.14.0 \
     --hash=sha256:f3d6cf93fbe2e7117eb7bedca684216fbe328a41f0843ce34245451d8eb2df1c \
     --hash=sha256:f5e7665f6624e052e5e7f6a36919ab69279decdc976d7b16b4fa15e1897d0513 \
     --hash=sha256:f702e0aeeb6506e57687e881c59e844ebe8f0a6a097ddafe20e3ab25f387be4e
-    # via mlx-whisper
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-whisper
 tokenizers==0.23.3 \
     --hash=sha256:114e2b55ed177179d59f4ab98200a4471e11e78f9e4b5a922d146740f96fcf52 \
     --hash=sha256:1554a6eed34d9d6a78d23360f4e06df8dffab1ae08c7e8488e0b3e3b36cc266f \
@@ -3339,7 +3388,9 @@ uncalled-for==0.4.1 \
 uritemplate==4.2.0 \
     --hash=sha256:480c2ed180878955863323eea31b0ede668795de182617fef9c6ca09e6ec9d0e \
     --hash=sha256:962201ba1c4edcab02e60f9a0d3821e82dfc5d2d6662a21abd533879bdb8a686
-    # via google-api-python-client
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   google-api-python-client
 urllib3==2.8.0 \
     --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3 \
     --hash=sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63
@@ -3992,7 +4043,9 @@ zeroconf==0.151.5 \
     --hash=sha256:f5e17c8b93fa9da4e6b125e2dd844cec3c5fe60af223ab6e179ad8ef0674fdbd \
     --hash=sha256:f8f7ec289a07acb9e272d0f2998759b76ec81dd23b15a7506e05689f630fafd1 \
     --hash=sha256:faecc5a1f318a920a4f7052a14391ae6def8fd6035313886e88f53705ad9dc8e
-    # via -r requirements.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 
 # The following packages were excluded from the output:
 # torch
@@ -4000,3 +4053,4 @@ zeroconf==0.151.5 \
 # mpmath
 # networkx
 # setuptools
+# opencv-python
