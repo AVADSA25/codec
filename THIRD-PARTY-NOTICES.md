@@ -1,6 +1,6 @@
 # Third-party notices
 
-Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `14fcfe8c789c54e8`), so it lists exactly those and no others.
+Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `987d0ac3277f549a`), so it lists exactly those and no others.
 
 ## Libraries under the LGPL
 
@@ -36,7 +36,7 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | argon2-cffi | 25.1.0 | MIT | T009 | https://argon2-cffi.readthedocs.io/ |
 | argon2-cffi-bindings | 26.1.0 | MIT | T010 | https://tidelift.com/?utm_source=lifter&utm_medium=referral&utm_campaign=hynek |
 | attrs | 26.1.0 | MIT | T011 | https://www.attrs.org/ |
-| Authlib | 1.9.1 | BSD-3-Clause | T012 | https://github.com/authlib/authlib |
+| Authlib | 1.9.9 | BSD-3-Clause | T012 | https://github.com/authlib/authlib |
 | beartype | 0.23.1 | MIT | T013 | https://beartype.readthedocs.io |
 | cachetools | 7.2.5 | MIT | T014 | https://github.com/tkem/cachetools/ |
 | caio | 0.12.10 | Apache-2.0 | T015 | https://github.com/mosquito/caio/ |
@@ -53,13 +53,13 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | email-validator | 2.3.0 | Unlicense | T027 | https://github.com/JoshData/python-email-validator |
 | exceptiongroup | 1.3.1 | MIT | T028 | https://github.com/agronholm/exceptiongroup |
 | fastapi | 0.162.0 | MIT | T029 | https://github.com/fastapi/fastapi |
-| fastmcp | 4.1.3 | Apache-2.0 | T024 | https://github.com/PrefectHQ/fastmcp |
-| fastmcp-slim | 4.1.3 | Apache-2.0 | T024* | https://github.com/PrefectHQ/fastmcp |
+| fastmcp | 4.1.8 | Apache-2.0 | T024 | https://github.com/PrefectHQ/fastmcp |
+| fastmcp-slim | 4.1.8 | Apache-2.0 | T024* | https://github.com/PrefectHQ/fastmcp |
 | filelock | 4.2.4 | MIT | T030 | https://github.com/tox-dev/py-filelock |
 | frozenlist | 1.8.0 | Apache-2.0 | T005 | https://github.com/aio-libs/frozenlist |
 | fsspec | 2026.7.0 | BSD-3-Clause | T031 | https://github.com/fsspec/filesystem_spec |
 | google-api-core | 2.43.2 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python |
-| google-api-python-client | 2.201.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-api-python-client/ |
+| google-api-python-client | 2.202.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-api-python-client/ |
 | google-auth | 2.62.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth |
 | google-auth-httplib2 | 0.4.4 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth-httplib2 |
 | google-auth-oauthlib | 1.5.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth-oauthlib |
