@@ -67,6 +67,7 @@ _bg_status: dict = {
     "scheduler": {"running": False, "last_tick": None, "errors": 0},
     "heartbeat": {"running": False, "last_tick": None, "errors": 0},
     "watcher":   {"running": False, "last_tick": None, "errors": 0},
+    "model_guard": {"running": False, "last_tick": None, "errors": 0},
 }
 
 
@@ -1215,6 +1216,8 @@ async def _start_background_services():
     """Launch scheduler, heartbeat, watcher, and vision warmup as background async tasks."""
     _bg_tasks["scheduler"] = asyncio.create_task(_bg_scheduler())
     _bg_tasks["heartbeat"] = asyncio.create_task(_bg_heartbeat())
+    import codec_model_guard  # docs/MODEL-MEMORY-GUARD-DESIGN.md
+    _bg_tasks["model_guard"] = asyncio.create_task(codec_model_guard.run_loop(_bg_status["model_guard"]))
     _bg_tasks["watcher"]   = asyncio.create_task(_bg_watcher())
     _bg_tasks["vision_warmup"] = asyncio.create_task(_warmup_vision())
     _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())

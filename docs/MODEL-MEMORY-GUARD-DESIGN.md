@@ -1,7 +1,12 @@
 # Model server memory guard (17 Nov 2026 incident)
 
-Design note only. The owner approved a memory guard for the local model server on
-18 Nov 2026; the build waits for his word on the decisions at the end.
+The owner approved a memory guard for the local model server on 18 Nov 2026, and the
+four decisions at the end on the same day ("yes 1 2 3" for decisions 2-4). Built: the
+test-suite port block (decision 1, #624), the model pin (decision 2, option B) and the
+guard (decisions 3 and 4, `codec_model_guard.py`). Built beyond this note: the guard
+also only alerts while chat runs on a cloud model (`cloud_active`: a restart would
+wait on the cloud host's port) and after a failed restart (`restart_failed`), and
+`config.json:model_pin` false starts the server unpinned.
 
 ## What happened
 
