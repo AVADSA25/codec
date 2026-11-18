@@ -50,6 +50,10 @@ class Rig:
         monkeypatch.setattr(guard, "_audit", lambda ev, lv, msg, extra: self.audits.append((ev, extra)))
         monkeypatch.setattr(guard, "_supervisor", lambda: "pm2")
         monkeypatch.delitem(sys.modules, "codec_vibe_agent", raising=False)
+        # Every figure comes from _read: never the Mac's own pm2 or model server.
+        import codec_heartbeat as hb
+        monkeypatch.setattr(hb, "_pm2_jlist", lambda *a, **k: pytest.fail("real pm2 jlist"))
+        monkeypatch.setattr(hb, "_mem_cmd", lambda *a, **k: pytest.fail("real footprint"))
 
     def _read(self, cfg):
         if self.footprint is None:

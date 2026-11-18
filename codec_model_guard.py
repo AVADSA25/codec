@@ -434,8 +434,8 @@ def _tick(now: float) -> dict:
     after = None
     if ok:
         try:
-            import codec_heartbeat as hb
-            after = _footprint(hb, hb._pm2_jlist(), cfg)
+            again = read(cfg)   # restart_for_switch returned once the port answered
+            after = again["footprint"] if again else None
         except Exception:
             after = None
     restarts.append(now)
