@@ -16,6 +16,12 @@
 # uvicorn binds the port only after FastAPI's lifespan finishes, and the preload
 # happens in lifespan. So "the port accepts a connection" already means "the
 # model is loaded" — that is the readiness signal restart_server() waits on.
+#
+# The model is pinned (docs/MODEL-MEMORY-GUARD-DESIGN.md, option B): the server
+# starts through scripts/mlx_pinned_server.py, which answers 409 to a request
+# naming any other model instead of unloading this one and loading (or
+# downloading) the other in place. On 17 Nov 2026 eight such swaps took the
+# server to 88 GB. config.json "model_pin": false starts mlx_vlm unpinned.
 set -euo pipefail
 
 CONFIG="${CODEC_CONFIG:-$HOME/.codec/config.json}"
@@ -59,9 +65,9 @@ fi
 # a buyer's Mac does not have.
 # Any failure here (missing file, bad JSON, no key) falls through to the
 # defaults rather than refusing to start — a mute CODEC is the worse outcome.
-read -r MODEL PORT <<<"$(
+read -r MODEL PORT PIN <<<"$(
   CONFIG="$CONFIG" DEFAULT_MODEL="$DEFAULT_MODEL" DEFAULT_PORT="$DEFAULT_PORT" \
-  "$PY" - <<'PY' 2>/dev/null || echo "$DEFAULT_MODEL $DEFAULT_PORT"
+  "$PY" - <<'PY' 2>/dev/null || echo "$DEFAULT_MODEL $DEFAULT_PORT on"
 import json, os
 from urllib.parse import urlparse
 cfg = {}
@@ -85,13 +91,26 @@ try:
     port = urlparse(base).port or int(os.environ["DEFAULT_PORT"])
 except Exception:
     port = int(os.environ["DEFAULT_PORT"])
-print(model, port)
+pin = "off" if cfg.get("model_pin") is False else "on"
+print(model, port, pin)
 PY
 )"
 
 [ -n "${MODEL:-}" ] || MODEL="$DEFAULT_MODEL"
 [ -n "${PORT:-}" ] || PORT="$DEFAULT_PORT"
+# The pin wrapper ships next to this script; an app built before it has none.
+PIN_SCRIPT="$HERE/mlx_pinned_server.py"
+if [ "${PIN:-on}" = "off" ]; then
+  PIN="off"
+elif [ -f "$PIN_SCRIPT" ]; then
+  PIN="on"
+else
+  PIN="missing"
+fi
 
-echo "start_model_server: python=$PY model=$MODEL port=$PORT host=$HOST" >&2
+echo "start_model_server: python=$PY model=$MODEL port=$PORT host=$HOST pin=$PIN" >&2
 [ -z "${CODEC_LAUNCHER_DRY_RUN:-}" ] || exit 0   # tests: print the choice, start nothing
+if [ "$PIN" = "on" ]; then
+  exec "$PY" "$PIN_SCRIPT" --model "$MODEL" --port "$PORT" --host "$HOST"
+fi
 exec "$PY" -m mlx_vlm.server --model "$MODEL" --port "$PORT" --host "$HOST"
