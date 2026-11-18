@@ -298,6 +298,31 @@ def _own_lock() -> bool:
     return True
 
 
+async def run_loop(status: dict) -> None:
+    """codec-dashboard's background task: tick() in a worker thread, never on the event
+    loop (P-016). `status` is the dashboard's _bg_status entry for the guard."""
+    import asyncio
+    from datetime import datetime
+    status["running"] = True
+    log.info("[MODEL GUARD] Background service started")
+    try:
+        await asyncio.sleep(FIRST_TICK_DELAY_S)
+        while True:
+            delay = DEFAULT_INTERVAL_S
+            try:
+                result = await asyncio.to_thread(tick)
+                delay = result.get("interval_s") or delay
+                status["last_tick"] = datetime.now().isoformat()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                status["errors"] = status.get("errors", 0) + 1
+                log.error(f"[MODEL GUARD] Error: {type(e).__name__}")
+            await asyncio.sleep(delay)
+    finally:
+        status["running"] = False
+
+
 # ── The tick ─────────────────────────────────────────────────────────────────────────
 
 def tick(now: "float | None" = None) -> dict:

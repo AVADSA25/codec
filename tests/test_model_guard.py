@@ -285,3 +285,26 @@ def test_status_reads_the_state_file(rig):
     rig.tick(31)
     st = guard.status()
     assert st["footprint_gb"] == 31.0 and st["line"] == "alert" and "restarts" not in st
+
+
+def test_the_dashboard_loop_runs_tick_in_a_worker_thread(monkeypatch):
+    import asyncio
+    import threading
+    on_loop_thread = []
+    monkeypatch.setattr(guard, "FIRST_TICK_DELAY_S", 0)
+    monkeypatch.setattr(guard, "tick", lambda: on_loop_thread.append(
+        threading.current_thread() is threading.main_thread()) or {"interval_s": 0.01})
+    status = {"running": False, "last_tick": None, "errors": 0}
+
+    async def main():
+        task = asyncio.create_task(guard.run_loop(status))
+        while len(on_loop_thread) < 2:
+            await asyncio.sleep(0.01)
+        assert status["running"]
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    asyncio.run(main())
+    assert on_loop_thread[:2] == [False, False]
+    assert status["last_tick"] and not status["running"]
