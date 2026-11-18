@@ -53,6 +53,43 @@ sys.path.insert(0, str(_WORKTREE_REPO))
 # this variable when the module is imported.
 os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
 
+# The suite never reaches the live CODEC servers on this Mac (docs/MODEL-MEMORY-GUARD-DESIGN.md,
+# option A). On 17 Nov 2026 test runs sent `""`, `local-qwen` and a 7B id to the live model
+# server on :8083; each one made it unload the 35B and load another model, and memory reached
+# 88 GB. Connections to these loopback ports are refused before they leave the process. Tests
+# that check a running server skip; `CODEC_TESTS_LIVE=1 pytest ...` lets them through by hand.
+# Subprocesses a test starts are not covered.
+import socket as _socket
+
+LIVE_PORTS = frozenset({8083, 8084, 8085, 8086, 8090, 8091})  # model, whisper, kokoro, docs, dashboard, MCP
+_LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost", "0.0.0.0", "::"})
+
+
+def _live_target(address):
+    if not isinstance(address, tuple) or len(address) < 2:
+        return False
+    host, port = address[0], address[1]
+    return port in LIVE_PORTS and (str(host) in _LOOPBACK or str(host).startswith("127."))
+
+
+if os.environ.get("CODEC_TESTS_LIVE") != "1":
+    _real_connect = _socket.socket.connect
+    _real_connect_ex = _socket.socket.connect_ex
+
+    def _guarded_connect(self, address):
+        if _live_target(address):
+            raise ConnectionRefusedError(
+                f"tests may not reach the live CODEC server on port {address[1]} (set CODEC_TESTS_LIVE=1)")
+        return _real_connect(self, address)
+
+    def _guarded_connect_ex(self, address):
+        if _live_target(address):
+            return 61  # ECONNREFUSED on macOS
+        return _real_connect_ex(self, address)
+
+    _socket.socket.connect = _guarded_connect
+    _socket.socket.connect_ex = _guarded_connect_ex
+
 # The owner's skills folder (~/.codec/skills) is read by every skill registry
 # and written by /api/skill/approve. Point it at an empty temp folder before
 # anything imports codec_config, so the suite neither loads nor writes the
