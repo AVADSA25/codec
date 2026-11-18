@@ -82,3 +82,35 @@ def test_no_bytecode_is_written_before_the_first_python_run():
     text = SCRIPT.read_text()
     assert text.index("export PYTHONDONTWRITEBYTECODE=1") < text.index("read -r MODEL PORT")
     assert "\n  python3 - <<'PY'" not in text
+
+
+def test_the_server_starts_through_the_model_pin_by_default(tmp_path):
+    """docs/MODEL-MEMORY-GUARD-DESIGN.md option B: mlx_vlm runs behind the pin wrapper."""
+    _python_wrapper(tmp_path / "venv" / "bin" / "python")
+    out = _run(SCRIPT, {"PATH": _stub_path(tmp_path), "CODEC_CONFIG": str(_config(tmp_path)),
+                        "CODEC_MODEL_VENV": str(tmp_path / "venv")})
+    assert "pin=on" in out
+    text = SCRIPT.read_text()
+    assert 'PIN_SCRIPT="$HERE/mlx_pinned_server.py"' in text
+    assert 'exec "$PY" "$PIN_SCRIPT" --model "$MODEL"' in text
+    assert (SCRIPT.parent / "mlx_pinned_server.py").is_file()
+
+
+def test_model_pin_false_in_config_starts_mlx_vlm_unpinned(tmp_path):
+    _python_wrapper(tmp_path / "venv" / "bin" / "python")
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"llm_model": MODEL, "model_pin": False}))
+    out = _run(SCRIPT, {"PATH": _stub_path(tmp_path), "CODEC_CONFIG": str(cfg),
+                        "CODEC_MODEL_VENV": str(tmp_path / "venv")})
+    assert "pin=off" in out
+    assert f"model={MODEL} port=8083" in out
+
+
+def test_an_app_without_the_pin_file_still_starts_unpinned(tmp_path):
+    resources = tmp_path / "App.app" / "Contents" / "Resources"
+    script = resources / "app" / "scripts" / "start_model_server.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy(SCRIPT, script)
+    _python_wrapper(resources / "python" / "bin" / "python3")
+    out = _run(script, {"PATH": _stub_path(tmp_path), "CODEC_CONFIG": str(_config(tmp_path))})
+    assert "pin=missing" in out
