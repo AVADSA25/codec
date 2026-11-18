@@ -19,7 +19,8 @@ from fastapi.responses import JSONResponse
 
 import codec_models
 from codec_audit import log_event
-from routes._shared import CONFIG_PATH, _audit_event, get_db
+from routes._shared import _audit_event, get_db
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -46,7 +47,7 @@ async def vision_analyze(request: Request):
     try:
         config = {}
         try:
-            with open(CONFIG_PATH) as f:
+            with open(config_path()) as f:
                 config = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")

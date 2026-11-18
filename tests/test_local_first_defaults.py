@@ -24,6 +24,7 @@ import types
 from pathlib import Path
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 _LOADED: dict = {}
@@ -152,7 +153,7 @@ def _post_chat(web, monkeypatch, tmp_path, body):
     chat = web.chat
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1"}))
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(chat, "_try_skill", lambda text, temporary=False, search=True: (None, None))
     monkeypatch.setattr(chat, "_build_chat_system_prompt", lambda *a, **k: "SYSTEM")
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda *a, **k: None)

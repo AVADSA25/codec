@@ -17,7 +17,7 @@ try:
 except ImportError:
     SKILLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
     is_dangerous_skill_code = None
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 
 def run(task, app="", ctx=""):
@@ -51,8 +51,8 @@ def run(task, app="", ctx=""):
 
     # Load LLM config
     cfg = {}
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH) as f:
+    if os.path.exists(config_path()):
+        with open(config_path()) as f:
             cfg = json.load(f)
 
     base_url = cfg.get("llm_base_url", "http://localhost:8083/v1")

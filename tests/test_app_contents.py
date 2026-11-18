@@ -74,7 +74,7 @@ def _fake_app(root: Path) -> Path:
     (code / "skills").mkdir(parents=True)
     shutil.copytree(REPO / "codec_cookbook", code / "codec_cookbook",
                     ignore=shutil.ignore_patterns("__pycache__"))
-    for f in ("codec_compare.py", "codec_jsonstore.py"):
+    for f in ("codec_compare.py", "codec_jsonstore.py", "codec_config_path.py"):
         shutil.copy(REPO / f, code / f)
     shutil.copy(REPO / "skills" / "cookbook_scan.py", code / "skills" / "cookbook_scan.py")
     helper = code / "codec_auth" / "codec_auth"

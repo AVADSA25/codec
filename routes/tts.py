@@ -26,7 +26,8 @@ from fastapi.responses import JSONResponse, Response
 
 import codec_models
 import codec_tts
-from routes._shared import CONFIG_PATH, get_db
+from routes._shared import get_db
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -108,7 +109,7 @@ _LANGS = {"a": "American English", "b": "British English", "e": "Spanish", "f": 
 
 def _tts_config() -> dict:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         log.warning(f"Config read failed; proceeding without overrides: {e}")

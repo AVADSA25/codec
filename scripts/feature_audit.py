@@ -26,7 +26,6 @@ except Exception:
     _IPC_TOKEN = ""
 INTERNAL = {"x-internal-token": _IPC_TOKEN}
 DB_PATH = os.path.expanduser("~/.codec/memory.db")
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 BACKUP_DIR = os.path.expanduser("~/.codec/backups")
 

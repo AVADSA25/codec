@@ -59,7 +59,7 @@ def _key_labels():
 # avoid hammering the file in the tight wake loop) so the dashboard toggle
 # turns always-on mode on/off instantly. Falls back to the import-time
 # WAKE_WORD value on any read error.
-_CONFIG_JSON = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _wake_flag_cache = {"ts": 0.0, "val": None}
 
 
@@ -69,7 +69,7 @@ def _wake_enabled_live():
         return _wake_flag_cache["val"]
     val = WAKE_WORD
     try:
-        with open(_CONFIG_JSON) as f:
+        with open(config_path()) as f:
             val = bool(json.load(f).get("wake_word_enabled", WAKE_WORD))
     except Exception:
         pass  # keep the import-time default on any read/parse error

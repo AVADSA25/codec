@@ -23,6 +23,7 @@ from datetime import datetime
 # Audit emits route through the unified envelope (schema:1) per
 # docs/PHASE1-STEP1-DESIGN.md. log_event is now a real adapter, not a no-op.
 from codec_audit import log_event, _cmd_hash, _truncate, _PREVIEW_MAX, _correlation_id_var, _new_correlation_id
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 log = logging.getLogger("codec_session")
 
@@ -47,7 +48,7 @@ _APPROVAL_CMD_MAX = 300       # command characters shown in the phone question; 
 def _tts_speed() -> float:
     """Kokoro speech speed from config:tts_speed (1.0 = server default)."""
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             return float(json.load(f).get("tts_speed", 1.0))
     except Exception:
         return 1.0

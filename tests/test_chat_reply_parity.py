@@ -49,7 +49,7 @@ def env(tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1", "llm_model": "test-model"}))
-    monkeypatch.setattr(chat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setenv("STEP_BUDGET_ENABLED", "true")
     monkeypatch.setenv("PREMISE_CHECK_ENABLED", "true")
     monkeypatch.setattr(codec_models, "ensure_llm_available", lambda *a, **k: None)

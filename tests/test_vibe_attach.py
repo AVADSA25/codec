@@ -435,8 +435,8 @@ def test_r14_secret_looking_files_are_never_stored_listed_or_read(tmp_path, scri
     pid = attach(d)
     vp.write_file(pid, "index.html", "<h1>x</h1>\n")
     vp.apply_blocks(pid, [{"path": "src/app.js", "content": "let b;\n"}], "AI")
-    cps = vp._load_checkpoints(vp.record_dir(pid))
-    assert len(cps) == 3 and all(c["files"] and not any(vp.looks_secret(p) for p in c["files"]) for c in cps)
+    maps = [vp._files(vp.record_dir(pid), c) for c in vp._load_checkpoints(vp.record_dir(pid))]
+    assert len(maps) == 3 and all(m and not any(vp.looks_secret(p) for p in m) for m in maps)
     blobs = [p.read_bytes() for p in (vp.record_dir(pid) / ".vibe" / "objects").iterdir()]
     assert not any(b"SECRET-CANARY" in b for b in blobs)
     assert not any(vp.looks_secret(f["path"]) for f in vp.list_files(pid))

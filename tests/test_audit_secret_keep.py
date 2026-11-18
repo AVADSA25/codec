@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -311,11 +312,11 @@ _RACER = textwrap.dedent('''
     kc.is_keychain_available = lambda: False
     kc._FALLBACK_KEY_PATH = tmp / "secret.key"
     kc._FALLBACK_STORE_PATH = tmp / "secrets.enc.json"
-    real_set = kc._fallback_set
+    real_set = kc._fallback_set_in_lock   # the writer the audit path calls
     def slow_set(key, value):
         time.sleep(0.4)   # widen the read-then-write window
         return real_set(key, value)
-    kc._fallback_set = slow_set
+    kc._fallback_set_in_lock = slow_set
     while not (tmp / "go").exists():
         time.sleep(0.005)
     s = kc.get_audit_hmac_secret()
@@ -423,7 +424,7 @@ def test_api_status_shows_audit_write_failures(fake_kc, monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import codec_audit
     import routes.health as health
-    monkeypatch.setattr(health, "CONFIG_PATH", str(tmp_path / "no-config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "no-config.json"))
     monkeypatch.setattr(codec_audit, "_write_failures", 7)
 
     app = FastAPI()

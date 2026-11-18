@@ -32,7 +32,7 @@ log = logging.getLogger("scheduler")
 
 SCHEDULE_PATH = os.path.expanduser("~/.codec/schedules.json")
 RUNS_LOG = os.path.expanduser("~/.codec/schedule_runs.log")
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 VOICE_SESSION_PATH = os.path.expanduser("~/.codec/voice_session.json")
 DASHBOARD_URL = "http://127.0.0.1:8090"
 
@@ -634,7 +634,7 @@ def last_output(sched_id: str):
 
 def _config() -> dict:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}

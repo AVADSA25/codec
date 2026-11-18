@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 SECRET = "lives at 12 Example Street"
@@ -34,7 +35,7 @@ def mem(tmp_path, monkeypatch):
     monkeypatch.setattr(cmu, "IDENTITY_PATH", str(tmp_path / "memory" / "identity.txt"))
     monkeypatch.setattr(sr, "RULES_PATH", tmp_path / "standing_rules.json")
     monkeypatch.setattr(codec_scheduler, "SCHEDULE_PATH", str(tmp_path / "schedules.json"))
-    monkeypatch.setattr(mp, "CONFIG_PATH", str(tmp_path / ".codec" / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / ".codec" / "config.json"))
     audits = []
     monkeypatch.setattr(mp, "_audit", lambda action, **extra: audits.append((action, extra)))
     app = FastAPI()

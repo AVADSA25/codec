@@ -33,7 +33,6 @@ import pytest
 _REPO_FROM_TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = _REPO_FROM_TESTS
 SKILLS_DIR = os.path.join(REPO, "skills")  # Single source of truth — repo is runtime
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 
 sys.path.insert(0, REPO)
@@ -934,10 +933,19 @@ class TestConfigAndSafety:
         assert not is_draft("what time is it")
 
     def test_key_resolution(self):
+        import types
+        import codec_config
         from codec_config import KEY_TOGGLE, KEY_VOICE, KEY_TEXT
-        assert KEY_TOGGLE is not None
-        assert KEY_VOICE is not None
-        assert KEY_TEXT is not None
+        # The defaults (F13, F18, F16) resolve on any machine, given a keyboard module.
+        fake = types.SimpleNamespace(Key=types.SimpleNamespace(f13="t", f18="v", f16="x"))
+        assert codec_config.resolve_hotkeys({}, kb=fake) == ("t", "v", "x")
+        if codec_config.keyboard is None:
+            # Headless (pynput cannot load, as on Linux CI): three Nones by design.
+            assert (KEY_TOGGLE, KEY_VOICE, KEY_TEXT) == (None, None, None)
+        else:
+            assert KEY_TOGGLE is not None
+            assert KEY_VOICE is not None
+            assert KEY_TEXT is not None
 
 
 # ============================================================================

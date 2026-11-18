@@ -65,7 +65,7 @@ class TestC2Heartbeat:
     def test_module_uses_config_path(self):
         from pathlib import Path
         text = (Path(__file__).resolve().parent.parent / "routes" / "heartbeat.py").read_text()
-        assert "CONFIG_PATH" in text
+        assert "config_path()" in text
 
 
 # ── C3: cortex ─────────────────────────────────────────────────────────────

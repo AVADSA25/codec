@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 SHELL = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
@@ -41,7 +42,7 @@ def tts(tmp_path, monkeypatch):
     custom = tmp_path / "custom"
     custom.mkdir()
     (custom / "k9-test.safetensors").write_bytes(b"x")
-    monkeypatch.setattr(rt, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(rt, "CUSTOM_VOICE_DIR", str(custom))
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
     calls, reply = [], {"r": _Reply()}

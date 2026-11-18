@@ -60,7 +60,7 @@ SCENE_PRESETS = {
     "codec":    {"on": True, "hue": 5000,  "sat": 254, "bri": 254},
 }
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 REQUEST_TIMEOUT = 5  # seconds
 
 
@@ -70,10 +70,10 @@ REQUEST_TIMEOUT = 5  # seconds
 
 def _load_config():
     """Return (bridge_ip, username) or (None, None) if not configured."""
-    if not os.path.exists(CONFIG_PATH):
+    if not os.path.exists(config_path()):
         return None, None
     try:
-        with open(CONFIG_PATH, "r") as f:
+        with open(config_path(), "r") as f:
             cfg = json.load(f)
         ip = cfg.get("hue_bridge_ip")
         user = cfg.get("hue_bridge_username")

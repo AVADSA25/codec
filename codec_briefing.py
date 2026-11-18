@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 import codec_jsonstore
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 log = logging.getLogger("codec_briefing")
 
@@ -136,7 +137,7 @@ def make_script(briefing: str) -> str:
     """A 45-60 second spoken version of the briefing (110-150 words)."""
     import codec_llm
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             config = json.load(f)
     except (OSError, ValueError):
         config = {}  # a fresh install: the defaults below
@@ -243,7 +244,7 @@ def _should_stop(audit_path: str, audit_offset: int) -> Optional[str]:
 
 def _tts(text: str) -> Optional[bytes]:
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             config = json.load(f)
     except (OSError, ValueError):
         config = {}

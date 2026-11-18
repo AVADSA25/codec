@@ -27,7 +27,7 @@ def sent(monkeypatch, tmp_path):
     out = {"telegram": [], "macos": []}
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"alerts": {"telegram": {"chat_id": "42"}}}))
-    monkeypatch.setattr(codec_alerts, "CONFIG_PATH", str(cfg_path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     monkeypatch.setattr(codec_alerts, "ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setattr(codec_alerts, "ALERTS_SENT_PATH", str(tmp_path / "alerts_sent.json"))
     monkeypatch.setattr(codec_alerts, "_send_telegram",

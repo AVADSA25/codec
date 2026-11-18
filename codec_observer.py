@@ -158,14 +158,14 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     ],
 }
 
-_CODEC_CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 
 def _load_config() -> Dict[str, Any]:
     """Read ~/.codec/config.json:observer.{...}; merge over _DEFAULT_CONFIG."""
     cfg = dict(_DEFAULT_CONFIG)
     try:
-        with open(_CODEC_CONFIG_PATH) as f:
+        with open(config_path()) as f:
             user = json.load(f).get("observer", {})
         if isinstance(user, dict):
             cfg.update(user)

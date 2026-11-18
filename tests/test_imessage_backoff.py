@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import codec_config
 import codec_imessage as im
 
 REPO = Path(__file__).resolve().parent.parent
@@ -56,9 +57,10 @@ def bridge(tmp_path, monkeypatch, caplog):
     b.notifs.write_text("[]")
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"imessage": {"allowed_senders": [HANDLE]}}))
-    for name, path in (("MESSAGES_DB", b.db), ("CONFIG_PATH", cfg), ("STATE_FILE", tmp_path / "imessage_state.json"),
+    for name, path in (("MESSAGES_DB", b.db), ("STATE_FILE", tmp_path / "imessage_state.json"),
                        ("HEALTH_FILE", tmp_path / "imessage_health.json")):
         monkeypatch.setattr(im, name, str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(shared, "NOTIFICATIONS_PATH", str(b.notifs))
     monkeypatch.setattr(im, "sqlite3", b.fake)
     monkeypatch.setattr(im, "_db_health", im.DbReadHealth(clock=lambda: b.clock.t))

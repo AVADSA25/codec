@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import codec_config
 import routes.config as rc
 
 REPO = Path(__file__).resolve().parent.parent
@@ -32,7 +33,7 @@ def cfg_path(tmp_path, monkeypatch):
         "shift_report": {"daily_at_hour": 17, "auto_save_path": None},
         "telegram": {"chat_id": "42"},
     }))
-    monkeypatch.setattr(rc, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     return path
 
 
@@ -157,7 +158,7 @@ def test_raw_put_validates_and_refuses_non_objects(client, cfg_path):
 def test_settings_can_turn_the_observer_off_and_the_env_still_wins(tmp_path, monkeypatch):
     import codec_observer
     path = tmp_path / "config.json"
-    monkeypatch.setattr(codec_observer, "_CODEC_CONFIG_PATH", path)
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(path))
     monkeypatch.delenv("OBSERVER_ENABLED", raising=False)
     assert codec_observer._enabled() is True, "no file: on"
     path.write_text(json.dumps({"observer": {"enabled": False}}))

@@ -211,18 +211,36 @@ def _keychain_delete(key: str) -> bool:
 # casual file-read disclosure. NOT crypto-grade against a determined
 # attacker with shell access (XOR stream + per-secret nonce is reversible
 # if the key file leaks). The real defense is Keychain on production.
+#
+# One lock for every write (docs/HEADLESS-SECRET-LOCK-DESIGN.md): creating
+# secret.key and every load-change-save of secrets.enc.json run inside
+# codec_jsonstore.file_lock(_FALLBACK_STORE_PATH), the same lock the audit
+# secret path takes (P-081). The lock is not re-entrant, so code that already
+# holds it calls the `_in_lock` helpers. Reads take no lock: every save is an
+# atomic replace, and a read never creates the key.
 
 
-def _fallback_key() -> bytes:
-    """Read / generate the 32-byte random fallback key. 0600 perms."""
+def _fallback_key_in_lock() -> bytes:
+    """Read the 32-byte fallback key, creating it (0600) if it is missing.
+    The caller holds the store's file lock, so the check and the create
+    cannot interleave with another process."""
     if not _FALLBACK_KEY_PATH.exists():
         _FALLBACK_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        # Use atomic write so concurrent daemons don't race on creation.
         tmp = _FALLBACK_KEY_PATH.with_suffix(".key.tmp")
         tmp.write_bytes(secrets.token_bytes(32))
         os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
         os.replace(tmp, _FALLBACK_KEY_PATH)
     return _FALLBACK_KEY_PATH.read_bytes()
+
+
+def _fallback_key() -> bytes:
+    """Read / generate the 32-byte random fallback key. 0600 perms. A missing
+    key is created under the store's file lock and checked again after the
+    lock is taken, so processes starting together end with one key."""
+    if _FALLBACK_KEY_PATH.exists():
+        return _FALLBACK_KEY_PATH.read_bytes()
+    with codec_jsonstore.file_lock(_FALLBACK_STORE_PATH):
+        return _fallback_key_in_lock()
 
 
 def _stream(key: bytes, nonce: bytes, length: int) -> bytes:
@@ -253,9 +271,11 @@ def _fallback_save(store: dict) -> None:
     os.replace(tmp, _FALLBACK_STORE_PATH)
 
 
-def _fallback_set(key: str, value: str) -> bool:
+def _fallback_set_in_lock(key: str, value: str) -> bool:
+    """Store one secret. The caller holds the store's file lock (the audit
+    secret path does). Silent: never emits an audit line."""
     try:
-        kbytes = _fallback_key()
+        kbytes = _fallback_key_in_lock()
         nonce = secrets.token_bytes(16)
         cipher = bytes(a ^ b for a, b in zip(value.encode("utf-8"),
                                               _stream(kbytes, nonce, len(value.encode("utf-8")))))
@@ -267,13 +287,23 @@ def _fallback_set(key: str, value: str) -> bool:
         return False
 
 
+def _fallback_set(key: str, value: str) -> bool:
+    try:
+        with codec_jsonstore.file_lock(_FALLBACK_STORE_PATH):
+            return _fallback_set_in_lock(key, value)
+    except Exception:
+        return False
+
+
 def _fallback_get(key: str) -> Optional[str]:
     try:
         store = _fallback_load()
         entry = store.get(key)
         if not entry:
             return None
-        kbytes = _fallback_key()
+        # Read only: no key file means nothing stored can be decoded, and a
+        # read must not take the lock (the audit path already holds it).
+        kbytes = _FALLBACK_KEY_PATH.read_bytes()
         nonce = bytes.fromhex(entry["n"])
         cipher = bytes.fromhex(entry["c"])
         plain = bytes(a ^ b for a, b in zip(cipher, _stream(kbytes, nonce, len(cipher))))
@@ -284,9 +314,10 @@ def _fallback_get(key: str) -> Optional[str]:
 
 def _fallback_delete(key: str) -> bool:
     try:
-        store = _fallback_load()
-        store.pop(key, None)
-        _fallback_save(store)
+        with codec_jsonstore.file_lock(_FALLBACK_STORE_PATH):
+            store = _fallback_load()
+            store.pop(key, None)
+            _fallback_save(store)
         return True
     except Exception:
         return False
@@ -629,8 +660,9 @@ def _audit_secret_create() -> Optional[str]:
                               "timeout" if rc is None else f"exit {rc}",
                               int(_AUDIT_HMAC_DOWN_TTL))
         return None
-    # Caller holds the fallback store's file lock.
-    if _fallback_set(key, new_hex):
+    # Caller holds the fallback store's file lock, which is not re-entrant:
+    # use the inner writer that does not take it.
+    if _fallback_set_in_lock(key, new_hex):
         _audit_kc_log.info("audit_hmac_secret bootstrapped (last8=%s, method=fallback)",
                            new_hex[-8:])
         return new_hex

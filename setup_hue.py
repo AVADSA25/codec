@@ -24,13 +24,12 @@ Flags:
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 DEVICETYPE = "codec#mac-studio"
 DISCOVERY_URL = "https://discovery.meethue.com/"
 
@@ -141,17 +140,18 @@ def verify(ip: str, user: str) -> int:
 
 
 def write_config(ip: str, user: str) -> None:
+    path = Path(config_path())
     cfg = {}
-    if CONFIG_PATH.exists():
+    if path.exists():
         try:
-            cfg = json.loads(CONFIG_PATH.read_text())
+            cfg = json.loads(path.read_text())
         except Exception:
             pass
     cfg["hue_bridge_ip"] = ip
     cfg["hue_bridge_username"] = user
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
-    print(f"  ✓ Wrote hue_bridge_ip + hue_bridge_username to {CONFIG_PATH}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cfg, indent=2))
+    print(f"  ✓ Wrote hue_bridge_ip + hue_bridge_username to {path}")
 
 
 # ─── main ──────────────────────────────────────────────────────────────────────

@@ -16,7 +16,6 @@ This avoids spinning up the LLM-call ReAct loop entirely.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -26,6 +25,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+import codec_config
 import codec_audit
 import codec_agents
 import codec_ask_user
@@ -47,7 +47,7 @@ def temp_askuser_paths(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
     monkeypatch.setattr(codec_ask_user, "PENDING_QUESTIONS_PATH", pq)
     monkeypatch.setattr(codec_ask_user, "NOTIFICATIONS_PATH", nf)
-    monkeypatch.setattr(codec_ask_user, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     codec_ask_user._WAITERS.clear()
     codec_ask_user._REJECTION_COUNT.clear()
     return pq, nf, cfg
@@ -321,9 +321,7 @@ def test_separate_agents_have_independent_ring_buffers(
 
 def test_load_stuck_config_defaults_when_no_file(monkeypatch, tmp_path):
     """Missing config.json → returns (5, 3, "ask_user")."""
-    monkeypatch.setattr(os.path, "expanduser",
-                        lambda p: str(tmp_path / "missing_config.json")
-                        if "config" in p else os.path.expanduser(p))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "missing_config.json"))
     # Re-call with a path that doesn't exist.
     window, threshold, action = codec_agents._load_stuck_config()
     assert window == 5
@@ -341,9 +339,7 @@ def test_load_stuck_config_user_overrides(monkeypatch, tmp_path):
             "escalation_action": "warn_only",
         }
     }))
-    monkeypatch.setattr(os.path, "expanduser",
-                        lambda p: str(cfg_path) if p.endswith("config.json")
-                        else os.path.expanduser(p))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     window, threshold, action = codec_agents._load_stuck_config()
     assert window == 10
     assert threshold == 4
@@ -356,9 +352,7 @@ def test_load_stuck_config_invalid_action_falls_back(monkeypatch, tmp_path):
     cfg_path.write_text(json.dumps({
         "stuck": {"escalation_action": "panic"}
     }))
-    monkeypatch.setattr(os.path, "expanduser",
-                        lambda p: str(cfg_path) if p.endswith("config.json")
-                        else os.path.expanduser(p))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg_path))
     _, _, action = codec_agents._load_stuck_config()
     assert action == "ask_user"
 

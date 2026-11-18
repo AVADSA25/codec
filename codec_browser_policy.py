@@ -16,18 +16,17 @@ a denied host is refused too). Every refusal writes one browser_url_blocked
 audit line with the reason and the skill, never the URL.
 """
 import json
-import os
 from urllib.parse import urlparse
 
 import codec_ssrf
 
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 _SCHEMES = ("http", "https")
 
 
 def _policy():
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             p = json.load(f).get("browser_policy") or {}
         return p if isinstance(p, dict) else {}
     except Exception:

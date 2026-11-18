@@ -292,7 +292,7 @@ def test_deletion_paths_match_the_code():
         os.path.basename(_const("routes/qchat.py", "QCHAT_DB")): "`qchat.db`",
         os.path.basename(_const("routes/vibe.py", "VIBE_DB")): "`vibe.db`",
         os.path.basename(_const("codec_google_auth.py", "TOKEN_PATH")): "`google_token.json`",
-        os.path.basename(_const("codec_config.py", "CONFIG_PATH")): "`config.json`",
+        os.path.basename(_const("codec_config_path.py", "DEFAULT_CONFIG_PATH")): "`config.json`",
     }
     for code_name, shown in paths.items():
         assert shown == f"`{code_name}`" and shown in t, f"deletion steps miss {code_name}"

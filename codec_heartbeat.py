@@ -24,10 +24,10 @@ try:
     _repo = os.path.dirname(os.path.abspath(__file__))
     if _repo not in _sys.path:
         _sys.path.insert(0, _repo)
-    from codec_config import DB_PATH, CONFIG_PATH
+    from codec_config import DB_PATH
 except ImportError:
     DB_PATH = os.path.expanduser("~/.codec/memory.db")
-    CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 def check_pending_tasks():
     """Check memory for tasks that were saved for later"""
@@ -589,7 +589,7 @@ def check_alerts():
       - disk_usage: Disk space warning when usage exceeds threshold_pct
     """
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
     except Exception:
         return
@@ -935,7 +935,7 @@ def memory_check(procs=None, now_ts=None) -> dict:
     from codec_alerts import alert_once, alert_resolved
     now_ts = time.time() if now_ts is None else now_ts
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         cfg = cfg if isinstance(cfg, dict) else {}
     except Exception:

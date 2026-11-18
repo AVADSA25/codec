@@ -100,7 +100,7 @@ def test_totp_step_reads_the_session_from_the_cookie(monkeypatch, tmp_path):
     secret = pyotp.random_base32()
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"totp_secret": secret}))
-    monkeypatch.setattr(auth, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(shared, "_is_totp_enabled", lambda: True)
     client = TestClient(app)
     token = _value(_cookies(_login(client))["codec_session"])

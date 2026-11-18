@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import codec_config
 
 REPO = Path(__file__).resolve().parent.parent
 TUE_8 = datetime(2026, 9, 29, 8, 0)
@@ -39,7 +40,7 @@ def br(tmp_path, monkeypatch):
     import codec_today
     monkeypatch.setattr(cs, "SCHEDULE_PATH", str(tmp_path / "schedules.json"))
     monkeypatch.setattr(cs, "RUNS_LOG", str(tmp_path / "runs.log"))
-    monkeypatch.setattr(cs, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(codec_today, "TODAY_PATH", tmp_path / "today.json")
     monkeypatch.setattr(cb, "STATE_PATH", str(tmp_path / "briefing_state.json"))
     monkeypatch.setattr(cb, "VOICE_SESSION_PATH", str(tmp_path / "voice_session.json"))

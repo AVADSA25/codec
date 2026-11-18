@@ -34,6 +34,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from codec_config import QWEN_BASE_URL, QWEN_MODEL
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 _EXTRACT_PROMPT = """You are extracting atomic, durable facts from text for a personal knowledge base.
 
@@ -111,7 +112,7 @@ def _saving_on() -> bool:
     """Settings > Memory > "Save facts from text" (config memory.fact_extract, default on).
     Off stops every path: chat, voice, MCP, and auto_memorize, which runs through here."""
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             mem = json.load(f).get("memory")
         return not (isinstance(mem, dict) and mem.get("fact_extract") is False)
     except (OSError, ValueError, AttributeError):

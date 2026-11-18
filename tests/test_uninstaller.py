@@ -148,7 +148,7 @@ def _user_data_names() -> list:
         path_const("codec_config.py", "_NEW_DB"),                 # memory.db
         path_const("skills/clipboard.py", "DB"),                  # clipboard.db
         path_const("codec_google_auth.py", "TOKEN_PATH"),         # google_token.json
-        path_const("codec_config.py", "CONFIG_PATH"),             # config.json
+        path_const("codec_config_path.py", "DEFAULT_CONFIG_PATH"),  # config.json
     ]
     for rel, pattern in (("codec_notes.py", r'Path\.home\(\) / "\.codec" / "(notes)"'),
                          ("codec_agent_plan.py", r'_AGENTS_DIR = _CODEC_DIR / "(agents)"'),

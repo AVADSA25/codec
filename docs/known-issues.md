@@ -24,15 +24,16 @@ Fixed (owner decision S-08, 17 Nov 2026): the chat's pre-LLM match (`_try_skill`
 | **status** | **FIXED** (2026-11-17, S-08). Before: deferred, because the chat rule is deliberate for questions such as "what was I doing?" (observer_recall) and the wake word has its own consent gate; the owner decided both on card S-08. |
 | **revisit when** | A long question that ends with its trigger ("..., what was I doing?") now goes to the model; revisit if the owner reports one he wanted run. |
 
-## Tests still read the owner's live config.json (found 2026-11-12, overlay and licence isolation)
+## FIXED (2026-11-17): Tests still read the owner's live config.json (found 2026-11-12, overlay and licence isolation)
+
+Fixed: every module opens config.json through `codec_config_path.config_path()` (that is, `codec_config.CONFIG_PATH`, which honours `CODEC_CONFIG_PATH`), `tests/conftest.py` points that variable at a missing temp file, the P-009 guard also refuses reads of the live `config.json`, and `tests/test_dashboard_host.py` no longer reloads `codec_config` (docs/TEST-CONFIG-ISOLATION-DESIGN.md).
 
 | field | value |
 |---|---|
 | **where** | About 58 runtime modules build their own `~/.codec/config.json` path (`codec_config.CONFIG_PATH`, `codec_voice._CONFIG_PATH`, `codec_observer._CODEC_CONFIG_PATH`, `codec_watchdog.CONFIG_PATH`, `routes/usage.py`, `routes/memory_page.py`, skills such as `weather` and `timer`, ...). `tests/test_dashboard_host.py` also reloads `codec_config`, which reads the file again and puts `codec_config.DB_PATH` back on the live `memory.db` for the tests after it; in a worktree run that reload loads `~/codec-repo`'s `codec_config.py` (skills put the main checkout first on `sys.path`). |
 | **what's wrong** | On the Studio a test that does not patch the path sees the owner's settings (his models, `edition: paid`, `skills_off`, ports), so results can differ from CI, which has no `~/.codec`. Writes are refused since 12 Nov 2026 (`config.json*` is in the P-009 guard), and the licence check reads a temp folder (`CODEC_LICENSE_DIR`), so nothing is changed and no key is read through the licence path; other reads go on. |
 | **plan** | 1. `codec_config.CONFIG_PATH` honours a `CODEC_CONFIG_PATH` variable (tests only, like `CODEC_LICENSE_DIR`). 2. Every module that builds its own path reads `codec_config.CONFIG_PATH` at call time instead, a mechanical change per module with its tests' patches moved to the one name. 3. conftest sets the variable to a missing temp file before any import, so the suite reads `{}` as on CI; tests that need settings write their own file under tmp_path. 4. The guard then also refuses read opens of the live `config.json`, so a new module with its own path fails the suite. Steps 1-3 touch about 58 runtime files: a design doc and its own PR. |
-| **status** | deferred-not-fixed |
-| **revisit when** | The next P-009 change, or when a test passes on CI and fails on the Studio because of a live setting. |
+| **status** | fixed 2026-11-17 |
 
 ## FIXED (2026-11-12): Tests that run a skill write to the owner's live overlay file (found 2026-11-12, voice skill match fix)
 
@@ -68,7 +69,9 @@ Checked 2026-11-11: every test listed below passes on main, on the Studio and on
 | **status** | deferred-not-fixed: the fix needs a test helper that reads FastAPI's route contexts (private API) and touches security-regression tests, so it gets its own PR. |
 | **revisit when** | Before merging the D-33 CI PR (the required `smoke` check stays red until then). |
 
-## Headless secret store: other keys are written without the lock (found 2026-11-03, P-081 review)
+## FIXED (2026-11-17, docs/HEADLESS-SECRET-LOCK-DESIGN.md): Headless secret store: other keys are written without the lock (found 2026-11-03, P-081 review)
+
+Fixed 2026-11-17: every fallback write and the key's first creation run under the store's file lock; the audit path calls the unlocked `_in_lock` writer (tests/test_headless_secret_lock.py).
 
 | field | value |
 |---|---|

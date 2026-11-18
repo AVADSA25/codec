@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
+import codec_config
 
 
 def test_heartbeat_import():
@@ -88,7 +89,7 @@ def test_mail_alert_line_logs_the_count_not_the_preview(tmp_path, monkeypatch, c
     import codec_heartbeat
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"heartbeat_alerts": [{"type": "email_check", "name": "Mail"}]}))
-    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(codec_config, "CONFIG_PATH", str(cfg))
     monkeypatch.setattr(codec_alerts, "ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setattr(codec_dispatch, "run_feature",
                         lambda name, task, source: "Found 2 emails:\n* Alice: SECRET-SUBJECT-3\n")

@@ -32,6 +32,7 @@ from typing import Optional
 import requests
 
 import codec_models
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 log = logging.getLogger("codec.tts")
 
@@ -55,7 +56,7 @@ class Spoken:
 
 def load_config() -> dict:
     try:
-        with open(os.path.expanduser("~/.codec/config.json")) as f:
+        with open(config_path()) as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):

@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
+
 log = logging.getLogger("codec_agent_messaging")
 
 # ── Storage paths (overridable for tests) ─────────────────────────────────────
@@ -423,7 +425,7 @@ def _dispatch_to_channel(channel: str, agent_id: str,
 
 def _channel_config(key: str) -> str:
     """Read ~/.codec/config.json:notifications.<key>. Empty string if unset."""
-    cfg_path = _CODEC_DIR / "config.json"
+    cfg_path = Path(config_path())
     if not cfg_path.exists():
         return ""
     try:

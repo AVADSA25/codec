@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 import codec_hotkeys
-from routes._shared import CONFIG_PATH
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 
@@ -204,7 +204,7 @@ def _validate_block(block: str, values) -> list:
 
 def _read_config() -> dict:
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         return cfg if isinstance(cfg, dict) else {}
     except Exception:
@@ -224,7 +224,7 @@ def _save(change):
     or (None, the JSONResponse to answer) when nothing was saved."""
     import codec_config
     try:
-        return codec_config.update_config(change, path=CONFIG_PATH), None
+        return codec_config.update_config(change, path=config_path()), None
     except _NotSaved as stop:
         return None, stop.response
     except codec_config.ConfigUnreadable as e:
@@ -267,7 +267,7 @@ async def get_config():
     """Return full editable config for Settings UI (sensitive fields masked)."""
     config = {}
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             config = json.load(f)
     except Exception:
         pass

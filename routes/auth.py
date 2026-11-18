@@ -18,13 +18,14 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from routes._shared import (
-    DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE,
+    DASHBOARD_DIR, _NO_CACHE,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
     AUTH_TOUCHID_REMOTE,
     _auth_sessions, _auth_lock, _e2e_keys,
     _is_auth_compiled, _is_totp_enabled, _verify_biometric_session, _is_remote_request,
     _save_sessions, _save_e2e_keys, _audit_event, _pin_attempts,
 )
+from codec_config_path import config_path  # where config.json is (CODEC_CONFIG_PATH in tests)
 
 router = APIRouter()
 
@@ -111,7 +112,7 @@ def _upgrade_pin_hash(pin: str) -> None:
                 raise ValueError("config unreadable")
             cfg["auth_pin_hash"] = new_hash
             return cfg
-        read_modify_write(CONFIG_PATH, _mutate)
+        read_modify_write(config_path(), _mutate)
         AUTH_PIN_HASH = new_hash
         log_event("auth_pin_rehashed", "codec-auth", "PIN hash upgraded to argon2id")
     except Exception as e:
@@ -363,7 +364,7 @@ async def totp_confirm(request: Request):
             def _enroll(cfg_data):  # P-054: locked, refuses an unreadable file
                 cfg_data["totp_secret"] = secret
                 cfg_data.pop("totp_disabled", None)
-            codec_config.update_config(_enroll, path=CONFIG_PATH)
+            codec_config.update_config(_enroll, path=config_path())
         except Exception as e:
             return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
         # Enrollment complete — clear the one-time pending secret.
@@ -390,7 +391,7 @@ async def totp_verify(request: Request):
         return JSONResponse({"error": "Missing code or session. Log in again."}, status_code=400)
     totp_secret = ""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             totp_secret = json.load(f).get("totp_secret", "")
     except Exception:
         pass
@@ -434,7 +435,7 @@ async def totp_disable(request: Request):
         return JSONResponse({"error": "Enter your authenticator code to disable 2FA"}, status_code=400)
     totp_secret = ""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             totp_secret = json.load(f).get("totp_secret", "")
     except Exception:
         pass
@@ -448,7 +449,7 @@ async def totp_disable(request: Request):
 
         def _disable(cfg_data):  # P-054: locked, refuses an unreadable file
             cfg_data["totp_disabled"] = True
-        codec_config.update_config(_disable, path=CONFIG_PATH)
+        codec_config.update_config(_disable, path=config_path())
     except Exception as e:
         return JSONResponse({"error": f"Failed to update config: {e}"}, status_code=500)
     with _auth_lock:
@@ -471,7 +472,7 @@ async def totp_enable(request: Request):
     if not code:
         return JSONResponse({"error": "Enter your authenticator code"}, status_code=400)
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
     except Exception:
         cfg = {}
@@ -483,7 +484,7 @@ async def totp_enable(request: Request):
         return JSONResponse({"error": "Invalid code"}, status_code=400)
     import codec_config
     try:  # P-054: locked, refuses an unreadable file
-        codec_config.update_config(lambda c: c.pop("totp_disabled", None), path=CONFIG_PATH)
+        codec_config.update_config(lambda c: c.pop("totp_disabled", None), path=config_path())
     except codec_config.ConfigUnreadable as e:
         return JSONResponse({"error": str(e)}, status_code=409)
     return {"enabled": True}
@@ -510,7 +511,7 @@ async def auth_status(request: Request):
     valid = _verify_biometric_session(request)
     totp_secret_exists = False
     try:
-        with open(CONFIG_PATH) as f:
+        with open(config_path()) as f:
             cfg = json.load(f)
         totp_secret_exists = bool(cfg.get("totp_secret"))
     except Exception:
