@@ -460,9 +460,11 @@ def _dispatch_inner(task):
     # Check skills — canonical dispatch (A-4). check_skill returns the best
     # match with all fall-through candidates; run_skill tries them in order
     # (wrapped in run_with_hooks) and returns the first non-None result.
+    # S-08 (docs/CHAT-WAKE-SKILL-MATCH-DESIGN.md): a trigger met only in the middle
+    # of a long sentence is a statement and goes to the model, as on the voice call.
     skill_result = None
     if len(task) < 500:
-        skill = check_skill(task)
+        skill = check_skill(task, commands_only=True)
         if skill:
             with time_limited("wake"):  # P-087: a hung skill cannot hold the wake word
                 result = run_skill(skill, task, app, consent=_wake_consent)

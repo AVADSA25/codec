@@ -160,15 +160,37 @@ def load_skills():
     registry.scan()
 
 
-def check_skill(task):
+def _command_matches(task):
+    """The skills whose triggers read as a command in `task`, by the voice call's
+    rule (codec_voice_filters.command_parts, docs/VOICE-SKILL-MATCH-DESIGN.md):
+    anywhere in a sentence of at most LONG_MESSAGE_WORDS words, or opening a
+    longer one after its lead-ins. In sentence order, each sentence's matches
+    sorted as match_all_triggers sorts them, no name twice."""
+    from codec_chat_pipeline import LONG_MESSAGE_WORDS
+    from codec_voice_filters import command_parts
+    names = []
+    for part, at_start in command_parts(task, LONG_MESSAGE_WORDS):
+        for name in registry.match_all_triggers(part, at_start=at_start):
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def check_skill(task, commands_only=False):
     """Return a skill-like dict for the matching skill, or None.
 
     The dict has 'name' and a lazy 'run' key that triggers the actual
     module import on first call.  Stores all matching skill names so
     run_skill can fall through to the next match if a skill returns None.
+
+    commands_only=True (the chat's pre-LLM match and the wake word, S-08,
+    docs/CHAT-WAKE-SKILL-MATCH-DESIGN.md): a trigger met only in the middle of
+    a long sentence is a statement, not a command, and does not match
+    (_command_matches). The default is the old whole-text match.
     """
+    found = _command_matches(task) if commands_only else registry.match_all_triggers(task)
     # P3.6: a skill switched off on the Skills page never matches.
-    matches = [m for m in registry.match_all_triggers(task) if not _skill_off(m)]
+    matches = [m for m in found if not _skill_off(m)]
     if not matches:
         return None
     name = matches[0]

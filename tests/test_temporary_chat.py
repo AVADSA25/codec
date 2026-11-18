@@ -27,7 +27,7 @@ def ran(monkeypatch):
     calls = []
     monkeypatch.setattr(codec_consent, "chat_consent_ok", lambda name, text: True)
     monkeypatch.setattr(codec_dispatch, "run_skill", lambda skill, task, app="": calls.append(skill["name"]) or "done")
-    monkeypatch.setattr(codec_dispatch, "check_skill", lambda text: {"name": text.split()[0]})
+    monkeypatch.setattr(codec_dispatch, "check_skill", lambda text, **kw: {"name": text.split()[0]})
     monkeypatch.setattr(chat, "CHAT_SKILL_ALLOWLIST", set(chat.CHAT_SKILL_ALLOWLIST) | set(chat.TEMPORARY_NO_MEMORY_SKILLS) | {"weather"})
     return calls
 
