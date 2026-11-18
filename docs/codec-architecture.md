@@ -372,6 +372,15 @@ One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_he
 
 No audit event for health beats (P-017, docs/HEALTH-BEATS-DESIGN.md): codec-imessage, codec-telegram and codec-autopilot write `~/.codec/health/<name>.json` once a round through `codec_health.beat` (0600; ts, ok, error count, exception class name, cadence, stopped); the observer's beat is its newest `observation_tick` audit line. `codec_heartbeat.check_health_beats` alerts (`alert_once` keys `silent:<name>`, `failing:<name>`) when a beat is older than 3x its cadence (at least 15 min) or 20 rounds in a row failed.
 
+### Model server memory guard (18 Nov 2026, docs/MODEL-MEMORY-GUARD-DESIGN.md)
+`codec_model_guard.tick` runs once a minute in codec-dashboard and reads the model server's footprint; state in `~/.codec/model_guard.json` (0600, figures only), shown as `model_guard` in `GET /api/status`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `model_memory_high` | `codec-model-guard` | warning | `footprint_gb`, `model_gb`, `ram_gb`, `swap_pct`, `ratio`, `line` (`alert`\|`restart`\|`urgent`); once per higher line until the footprint is back under the alert line |
+| `model_guard_restart` | `codec-model-guard` | info (warning when failed) | `result` (`ok`\|`failed`), `supervisor` (`pm2`\|`launchd`), `before_gb`, `after_gb`, `seconds`, `waited_s` |
+| `model_guard_held` | `codec-model-guard` | warning | `reason` (`voice_call`\|`vibe_run`\|`starting`\|`budget`\|`restart_off`\|`restart_failed`\|`cloud_active`), `footprint_gb`; once per hold |
+
 No audit event for the heartbeat guard or the memory check (P-083, docs/LOOP-OWNER-DESIGN.md): a heartbeat skipped because another one holds `~/.codec/heartbeat.lock` or started under 15 min ago logs one line; `codec_heartbeat.memory_check` writes swap, free percentage and the model server's footprint to `~/.codec/memory_check.json` (0600) and alerts (`alert_once` key `mem_pressure`) after two ticks in a row with swap above 80% or the footprint above 1.5x the model (`config.json:memory_alert`).
 
 ### Bridge events (2026-10, iMessage and Telegram)

@@ -98,6 +98,10 @@ os.environ.setdefault("CODEC_USER_SKILLS_DIR", tempfile.mkdtemp(prefix="codec-te
 os.environ.setdefault("CODEC_NOTES_DIR", tempfile.mkdtemp(prefix="codec-test-notes-"))
 # P-017: the bridges' main() loops write a health beat a round (codec_health); keep them off ~/.codec/health.
 os.environ.setdefault("CODEC_HEALTH_DIR", tempfile.mkdtemp(prefix="codec-test-health-"))
+# The model server memory guard never runs in the suite (docs/MODEL-MEMORY-GUARD-DESIGN.md):
+# its state and lock go to a temp folder; tests/test_model_guard.py turns it on per test.
+os.environ["MODEL_GUARD_ENABLED"] = "false"
+os.environ.setdefault("CODEC_MODEL_GUARD_DIR", tempfile.mkdtemp(prefix="codec-test-model-guard-"))
 # R-03: a licence key read from config.json moves to the Keychain and the field is blanked.
 # Some tests (/version, licence checks) read the owner's live config.json; with the move on, one would
 # copy the live key into the test Keychain and blank the live file. Off for the suite;

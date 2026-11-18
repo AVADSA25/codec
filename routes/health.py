@@ -116,6 +116,7 @@ async def status():
         "alive": alive,
         "audit_write_failures": _audit_write_failures(),
         "memory": _memory_figure(),
+        "model_guard": _model_guard_figure(),
         "config": {
             "llm_provider": config.get("llm_provider", "unknown"),
             "llm_model": config.get("llm_model", "unknown"),
@@ -138,6 +139,16 @@ def _memory_figure():
         return codec_heartbeat.memory_status()
     except Exception:
         return {"level": "unknown", "checked_at": None}
+
+
+def _model_guard_figure():
+    """The model server memory guard's last reading (figures only,
+    docs/MODEL-MEMORY-GUARD-DESIGN.md); {} before its first tick."""
+    try:
+        import codec_model_guard
+        return codec_model_guard.status()
+    except Exception:
+        return {}
 
 
 def _audit_write_failures():
