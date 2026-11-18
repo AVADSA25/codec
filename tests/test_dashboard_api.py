@@ -36,6 +36,20 @@ def _skip_if_no_auth(auth_headers):
         pytest.skip("No dashboard token configured — auth-required test skipped")
 
 
+TEST_TOKEN = "test-dashboard-token"
+
+
+@pytest.fixture
+def token_auth(monkeypatch):
+    """Turn token auth on for one test with a token of its own.
+
+    The suite never reads the owner's config.json (docs/TEST-CONFIG-ISOLATION-DESIGN.md),
+    so these tests set their own token instead of skipping. AuthMiddleware reads
+    codec_config.get_dashboard_token() on every request."""
+    monkeypatch.setattr("codec_config.get_dashboard_token", lambda: TEST_TOKEN)
+    return {"Authorization": f"Bearer {TEST_TOKEN}"}
+
+
 # ── Public endpoints ───────────────────────────────────────────────────
 
 class TestPublicEndpoints:
@@ -54,15 +68,13 @@ class TestPublicEndpoints:
         r = client.get("/")
         assert r.status_code == 200
 
-    def test_docs_accessible(self, client, auth_headers):
+    def test_docs_accessible(self, client, token_auth):
         # Not public since 2026-09-27 (see tests/test_auth_hardening.py).
-        _skip_if_no_auth(auth_headers)
-        r = client.get("/docs", headers=auth_headers)
+        r = client.get("/docs", headers=token_auth)
         assert r.status_code == 200
 
-    def test_openapi_json(self, client, auth_headers):
-        _skip_if_no_auth(auth_headers)
-        r = client.get("/openapi.json", headers=auth_headers)
+    def test_openapi_json(self, client, token_auth):
+        r = client.get("/openapi.json", headers=token_auth)
         assert r.status_code == 200
         data = r.json()
         assert "paths" in data
@@ -75,50 +87,29 @@ class TestPublicEndpoints:
 # ── Auth-required endpoints ────────────────────────────────────────────
 
 
-def _auth_is_configured() -> bool:
-    """True iff DASHBOARD_TOKEN or AUTH_ENABLED is set — i.e. the
-    AuthMiddleware will actually enforce auth on these endpoints. On a
-    fresh CI runner with no ~/.codec/config.json and no Keychain entry,
-    neither is set and the middleware lets requests through unchallenged
-    (correct production behavior: out-of-the-box CODEC is loopback-only
-    so unauthenticated access from 127.0.0.1 is fine — D-7 closure).
-    The 'requires auth' assertions only mean anything when auth IS set."""
-    try:
-        from codec_config import DASHBOARD_TOKEN, AUTH_ENABLED
-        return bool(DASHBOARD_TOKEN or AUTH_ENABLED)
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(
-    not _auth_is_configured(),
-    reason=(
-        "Neither DASHBOARD_TOKEN nor AUTH_ENABLED is set in this "
-        "environment — AuthMiddleware does not enforce auth, so the "
-        "'401/403 without auth' assertion would compare apples to "
-        "oranges. Configure either to exercise these tests."
-    ),
-)
+# With no token and no PIN login, CODEC serves this Mac without a login (D-7),
+# so these tests turn token auth on themselves (token_auth) and send no header.
+@pytest.mark.usefixtures("token_auth")
 class TestAuthRequired:
     def test_history_requires_auth(self, client):
         r = client.get("/api/history")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401  # token layer, not the remote-host refusal
 
     def test_conversations_requires_auth(self, client):
         r = client.get("/api/conversations")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401  # token layer, not the remote-host refusal
 
     def test_audit_requires_auth(self, client):
         r = client.get("/api/audit")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401  # token layer, not the remote-host refusal
 
     def test_skills_requires_auth(self, client):
         r = client.get("/api/skills")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401  # token layer, not the remote-host refusal
 
     def test_config_requires_auth(self, client):
         r = client.get("/api/config")
-        assert r.status_code in (401, 403)
+        assert r.status_code == 401  # token layer, not the remote-host refusal
 
 
 # ── Authenticated endpoint responses ──────────────────────────────────
