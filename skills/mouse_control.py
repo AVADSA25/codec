@@ -227,9 +227,11 @@ def _click_and_verify(x, y, target, kind="left"):
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
-# Mouse control uses the UI-TARS model, served by the unified mlx_vlm server
-# on :8083 (same endpoint as Qwen 3.6 — one multi-model server hosts Qwen,
-# Qwen-VL, and UI-TARS-1.5-7B together).
+# Mouse control uses the UI-TARS model on its own server, which codec_ui_tars
+# starts on first use and which stops itself when idle
+# (docs/UI-TARS-SERVER-DESIGN.md). The main model server on :8083 holds one model
+# and answers 409 to UI-TARS. VISION_URL is only the fallback when codec_ui_tars
+# cannot be imported.
 import codec_models  # model ids by role (P-057)
 try:
     from codec_config import cfg
@@ -322,8 +324,20 @@ def _downscale_screenshot(image_b64, max_width=1920):
         return image_b64, 1.0
 
 
-def _ask_vision(image_b64, prompt):
-    """Send image + prompt to Qwen Vision, return response text."""
+def _vision_url():
+    """(chat completions URL, None) for this task, or (None, a message for the owner)."""
+    try:
+        import codec_ui_tars
+    except ImportError:
+        return VISION_URL, None
+    base, refusal = codec_ui_tars.endpoint()
+    if refusal:
+        return None, refusal
+    return base.rstrip("/") + "/chat/completions", None
+
+
+def _ask_vision(image_b64, prompt, url=None):
+    """Send image + prompt to UI-TARS, return response text."""
     import requests
     try:
         # Downscale for faster inference
@@ -342,7 +356,7 @@ def _ask_vision(image_b64, prompt):
             "max_tokens": 300,
             "temperature": 0.1,
         }
-        r = requests.post(VISION_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        r = requests.post(url or VISION_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
         if r.status_code == 200:
             text = r.json()["choices"][0]["message"]["content"].strip()
             text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
@@ -454,13 +468,13 @@ def _crop_region(image_b64, cx, cy, crop_w=_FINE_CROP_W, crop_h=_FINE_CROP_H):
         return None, 0, 0, 0, 0
 
 
-def _refine_coordinate(full_res_b64, description, cx, cy):
+def _refine_coordinate(full_res_b64, description, cx, cy, url=None):
     """Second pass: crop a 1:1 patch around coarse (cx,cy), re-ask the model,
     map in-crop coords back to absolute. Returns refined (x,y) or None."""
     crop_b64, ox, oy, cw, ch = _crop_region(full_res_b64, cx, cy)
     if not crop_b64:
         return None
-    response, scale = _ask_vision(crop_b64, f"Click on {description}")
+    response, scale = _ask_vision(crop_b64, f"Click on {description}", url)
     if not response:
         return None
     local = _parse_coordinates(response, scale)  # scale==1.0 on a <max_width crop
@@ -480,7 +494,7 @@ def _refine_coordinate(full_res_b64, description, cx, cy):
     return None
 
 
-def _find_element(description, retries=2):
+def _find_element(description, retries=2, url=None):
     """Screenshot screen, ask vision to locate element, return (x, y) or (None, error).
 
     Retries with a refined prompt if the first attempt returns edge coordinates
@@ -504,9 +518,9 @@ def _find_element(description, retries=2):
             # Retry with slightly different phrasing
             prompt = f"Find and click the element labeled '{description}'"
 
-        response, scale = _ask_vision(image_b64, prompt)
+        response, scale = _ask_vision(image_b64, prompt, url)
         if not response:
-            return None, "Vision model did not respond. Is it running at localhost:8083?"
+            return None, "UI-TARS did not answer, so I could not find it on screen."
 
         log.info(f"Vision response for '{description}' (attempt {attempt+1}): {response[:200]} (scale={scale:.2f})")
 
@@ -536,7 +550,7 @@ def _find_element(description, retries=2):
         # (scale>1.0) does the final coord carry back-projection error — refine
         # it with a 1:1 full-res crop. Best-effort: any failure keeps coarse.
         if scale > 1.0:
-            refined = _refine_coordinate(image_b64, description, x, y)
+            refined = _refine_coordinate(image_b64, description, x, y, url)
             if refined:
                 log.info(f"Refined '{description}': coarse ({x},{y}) -> fine {refined}")
                 return refined, None
@@ -545,7 +559,7 @@ def _find_element(description, retries=2):
     return None, f"Couldn't locate '{description}' after {retries} attempts."
 
 
-def _describe_screen():
+def _describe_screen(url=None):
     """Ask vision to list all interactive elements on screen."""
     image_b64 = _take_screenshot()
     if not image_b64:
@@ -559,8 +573,8 @@ def _describe_screen():
         "List the most prominent elements first. Maximum 12 elements. Be brief."
     )
 
-    response, _ = _ask_vision(image_b64, prompt)
-    return response or "Vision model did not respond."
+    response, _ = _ask_vision(image_b64, prompt, url)
+    return response or "UI-TARS did not answer."
 
 
 def _extract_target(task_lower):
@@ -784,7 +798,10 @@ def run(task, app="", ctx=""):
         "find on screen", "what can i click", "show elements",
         "what's on screen", "what is on screen", "what do you see",
     ]):
-        desc = _describe_screen()
+        url, refusal = _vision_url()
+        if refusal:
+            return refusal
+        desc = _describe_screen(url)
         return f"Here's what I see on screen:\n{desc}"
 
     # ── Move to specific coordinates ──
@@ -806,7 +823,10 @@ def run(task, app="", ctx=""):
         return "What should I click? Describe what you see on screen — a button, link, icon, or text."
 
     # ── Find element via vision ──
-    coords, error = _find_element(target)
+    url, refusal = _vision_url()
+    if refusal:
+        return refusal
+    coords, error = _find_element(target, url=url)
     if error:
         return error
 

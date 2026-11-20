@@ -45,6 +45,7 @@ SLOW_SKILL_TIMEOUTS = {
     "AI News Digest": 180,  # about a dozen feeds and searches in a row
     "prompt_feeder": 720,   # up to 12 prompts, 30 s each, in the browser
     "cookbook_serve": 150,  # pm2 start up to 30 s, then a 90 s health check while the model loads
+    "mouse_control": 180,   # the first click waits up to 120 s for the UI-TARS server to load
     "model_switch": None,   # server restart and model load, each bounded in codec_models
     "ask_user": None,       # waits for the owner's answer (ask_user.timeout_seconds)
     "stuck": None,          # asks the owner through ask_user

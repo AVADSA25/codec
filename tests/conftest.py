@@ -61,7 +61,7 @@ os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
 # Subprocesses a test starts are not covered.
 import socket as _socket
 
-LIVE_PORTS = frozenset({8083, 8084, 8085, 8086, 8090, 8091})  # model, whisper, kokoro, docs, dashboard, MCP
+LIVE_PORTS = frozenset({8083, 8084, 8085, 8086, 8087, 8090, 8091})  # model, whisper, kokoro, docs, UI-TARS, dashboard, MCP
 _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost", "0.0.0.0", "::"})
 
 
