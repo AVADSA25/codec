@@ -277,6 +277,45 @@ def test_mouse_control_sends_to_the_url_codec_ui_tars_gives(mouse, monkeypatch):
     assert posted == [(url, mouse.VISION_MODEL)]
 
 
+def _asked(mouse, monkeypatch, replies):
+    """Run _find_element on a fake screen; return the prompts UI-TARS was sent."""
+    prompts = []
+
+    def ask(image_b64, prompt, url=None):
+        prompts.append(prompt)
+        return replies.pop(0), 1.0
+
+    monkeypatch.setattr(mouse, "_ask_vision", ask)
+    monkeypatch.setattr(mouse, "_take_screenshot", lambda *a, **k: "aGk=")
+    monkeypatch.setattr(mouse, "_get_screen_size", lambda: (1920, 1080))
+    return prompts
+
+
+def test_mouse_control_asks_with_the_ui_tars_grounding_prompt(mouse, monkeypatch):
+    prompts = _asked(mouse, monkeypatch, ["<|box_start|>(1086,685)<|box_end|>"])
+    assert mouse._find_element("Send button") == ((1086, 685), None)
+    assert prompts == ["Output only the coordinate of one point in your response. "
+                       "What element matches the following task: Click on Send button"]
+
+
+def test_mouse_control_retry_also_uses_the_grounding_prompt(mouse, monkeypatch):
+    prompts = _asked(mouse, monkeypatch, ["<html><body>no point here</body></html>",
+                                          "<|box_start|>(40,12)<|box_end|>"])
+    assert mouse._find_element("Apple menu") == ((40, 12), None)
+    assert len(prompts) == 2
+    assert all(p.startswith("Output only the coordinate of one point") for p in prompts)
+    assert prompts[1].endswith("Click on the element labeled 'Apple menu'")
+
+
+def test_mouse_control_refine_pass_uses_the_grounding_prompt(mouse, monkeypatch):
+    prompts = []
+    monkeypatch.setattr(mouse, "_crop_region", lambda *a, **k: ("aGk=", 100, 200, 700, 500))
+    monkeypatch.setattr(mouse, "_ask_vision", lambda b64, p, url=None: prompts.append(p) or ("(10,20)", 1.0))
+    monkeypatch.setattr(mouse, "_get_screen_size", lambda: (3840, 2160))
+    assert mouse._refine_coordinate("aGk=", "Send button", 400, 450) == (110, 220)
+    assert prompts == [mouse._ground_prompt("Click on Send button")]
+
+
 def test_mouse_control_waits_long_enough_for_the_load():
     assert codec_dispatch.skill_timeout("mouse_control") == 180
 
