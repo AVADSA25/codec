@@ -383,6 +383,14 @@ No audit event for health beats (P-017, docs/HEALTH-BEATS-DESIGN.md): codec-imes
 
 No audit event for the heartbeat guard or the memory check (P-083, docs/LOOP-OWNER-DESIGN.md): a heartbeat skipped because another one holds `~/.codec/heartbeat.lock` or started under 15 min ago logs one line; `codec_heartbeat.memory_check` writes swap, free percentage and the model server's footprint to `~/.codec/memory_check.json` (0600) and alerts (`alert_once` key `mem_pressure`) after two ticks in a row with swap above 80% or the footprint above 1.5x the model (`config.json:memory_alert`).
 
+### UI-TARS server on demand (20 Nov 2026, docs/UI-TARS-SERVER-DESIGN.md)
+`codec_ui_tars.endpoint` starts UI-TARS's own server on 127.0.0.1:8087 when mouse control needs it; `scripts/ui_tars_server.py` stops it after `ui_tars.idle_seconds` without a request. State in `~/.codec/ui_tars_server.json` (0600: pid, port, model, start time), log in `~/.codec/logs/ui_tars_server.log` (0600). The stop is written only to that log.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `ui_tars_server_started` | `codec-ui-tars` | info | `model`, `port`, `load_s` |
+| `ui_tars_server_refused` | `codec-ui-tars` | warning | `reason` (`not_installed`\|`image_job`\|`low_memory`\|`port_taken`\|`load_failed`) |
+
 ### Bridge events (2026-10, iMessage and Telegram)
 `codec_imessage.audit` and `codec_telegram.audit` emit through `codec_audit.log_event` (JSON, HMAC, redaction). Before 7 Oct 2026 they appended plain-text lines with the first 100 characters of each message, which `verify_audit_log()` counted as broken. Never the message text.
 

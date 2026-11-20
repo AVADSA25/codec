@@ -46,7 +46,7 @@ PERMISSIONS_NOTE = ("These permissions are those of the process that ran this ch
 
 # Ports CODEC's own services use (the model, speech and voice ports also come from config.json).
 CODEC_PORTS = {8090: "dashboard", 8091: "MCP server", 8083: "model server", 8084: "speech to text",
-               8085: "voice (TTS)"}
+               8085: "voice (TTS)", 8087: "UI-TARS (on demand)"}
 VIBE_PORTS = range(5300, 5400)
 # PM2 apps that run an installed package from the checkout's folder, not the checkout's code, so a pull
 # does not change what they run (the model process, model_pm2_process in config.json, is the other one).

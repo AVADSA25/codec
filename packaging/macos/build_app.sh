@@ -167,6 +167,8 @@ cp "$REPO/scripts/start_model_server.sh" "$CONTENTS/Resources/app/scripts/"
 chmod +x "$CONTENTS/Resources/app/scripts/start_model_server.sh"
 # The model pin it starts the server through (docs/MODEL-MEMORY-GUARD-DESIGN.md).
 cp "$REPO/scripts/mlx_pinned_server.py" "$CONTENTS/Resources/app/scripts/"
+# The UI-TARS server mouse control starts on demand (docs/UI-TARS-SERVER-DESIGN.md).
+cp "$REPO/scripts/ui_tars_server.py" "$CONTENTS/Resources/app/scripts/"
 # runtime assets the app needs
 for f in requirements.txt ecosystem.config.js codec_dashboard.html VERSION; do
     [ -f "$REPO/$f" ] && cp "$REPO/$f" "$CONTENTS/Resources/app/$f"
