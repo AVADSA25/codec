@@ -336,6 +336,16 @@ def _vision_url():
     return base.rstrip("/") + "/chat/completions", None
 
 
+# UI-TARS-1.5's grounding prompt: it answers with one point, <|box_start|>(x,y)<|box_end|>.
+# A bare "Click on X" made it write HTML for a plain drawn page (live check, 20 Nov 2026).
+_GROUND_PROMPT = ("Output only the coordinate of one point in your response. "
+                  "What element matches the following task: {}")
+
+
+def _ground_prompt(task):
+    return _GROUND_PROMPT.format(task)
+
+
 def _ask_vision(image_b64, prompt, url=None):
     """Send image + prompt to UI-TARS, return response text."""
     import requests
@@ -474,7 +484,7 @@ def _refine_coordinate(full_res_b64, description, cx, cy, url=None):
     crop_b64, ox, oy, cw, ch = _crop_region(full_res_b64, cx, cy)
     if not crop_b64:
         return None
-    response, scale = _ask_vision(crop_b64, f"Click on {description}", url)
+    response, scale = _ask_vision(crop_b64, _ground_prompt(f"Click on {description}"), url)
     if not response:
         return None
     local = _parse_coordinates(response, scale)  # scale==1.0 on a <max_width crop
@@ -512,11 +522,10 @@ def _find_element(description, retries=2, url=None):
 
     for attempt in range(retries):
         if attempt == 0:
-            # UI-TARS works best with simple action-oriented prompts
-            prompt = f"Click on {description}"
+            prompt = _ground_prompt(f"Click on {description}")
         else:
             # Retry with slightly different phrasing
-            prompt = f"Find and click the element labeled '{description}'"
+            prompt = _ground_prompt(f"Click on the element labeled '{description}'")
 
         response, scale = _ask_vision(image_b64, prompt, url)
         if not response:
