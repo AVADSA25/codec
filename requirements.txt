@@ -76,7 +76,7 @@ pyperclip>=1.11.0; sys_platform == "darwin"
 # reauth_google.py). Imported lazily, so a missing package showed only when a buyer
 # first asked for a calendar or a doc.
 google-api-python-client>=2.202.0
-google-auth>=2.40.0
+google-auth>=2.62.2
 google-auth-oauthlib>=1.5.0
 
 # macOS-only helpers imported at runtime: request_mic.py (microphone permission),
