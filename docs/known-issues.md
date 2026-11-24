@@ -4,6 +4,34 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
+## Model server: every restart fails with "Unable to load kernel" after a logout (found 2026-11-17)
+
+| field | value |
+|---|---|
+| **where** | PM2 app `qwen3.6` (`scripts/start_model_server.sh`, MLX on Metal) under the PM2 God Daemon |
+| **what's wrong** | On 17 Nov 2026 the screen session froze and WindowServer restarted (logouts around 17:30-17:49). From 17:55 every start of `qwen3.6` failed with `[metal::Device] Unable to load kernel arangeint32`, about every 16 seconds: 43 restarts by 18:06, then PM2 stopped at its restart cap around 18:10. The heartbeat's own restart at 18:06 failed the same way. The server stayed down until 18 Nov 11:37, and chat ran on the cloud fallback meanwhile. Likely cause, not proven: a process started by the PM2 daemon of the old login session cannot reach `MTLCompilerService` after WindowServer died, so no restart under that daemon gets the GPU. |
+| **what fixed it** | `pm2 update` from a shell in the new login session, with the boot LaunchAgent's environment (`env -i`, the plist's `PATH`, `PM2_HOME`), which starts a new God Daemon. A Mac restart also works. Both restart every PM2 app, protected services included, so they need the owner's word. |
+| **status** | Deferred: the fix is known and the cause is rare. The memory guard (docs/MODEL-MEMORY-GUARD-DESIGN.md) never loops on a restart that does not come back. |
+| **revisit when** | It happens again. Then make the heartbeat recognise the error line in the `qwen3.6` log and alert once with the fix, instead of leaving PM2 to loop. |
+
+## Mouse control cannot see a menu bar or Dock that hides itself (found 2026-11-20)
+
+| field | value |
+|---|---|
+| **where** | `skills/mouse_control.py` (UI-TARS reads a screenshot) |
+| **what's wrong** | On a Mac set to hide the menu bar (`_HIHideMenuBar = 1`) and the Dock (`autohide = 1`), the screenshot shows neither. Mouse control then cannot find or click a menu bar item or a Dock icon unless it is showing at that moment. |
+| **status** | A limit, not a bug. Not changed: the setting is the owner's. |
+| **revisit when** | The owner asks mouse control to use the menu bar or the Dock. One option: move the pointer to that screen edge to show it, then take the screenshot. |
+
+## Model server answers 409 while another program has picked a different model (found 2026-11-23)
+
+| field | value |
+|---|---|
+| **where** | `scripts/mlx_pinned_server.py` (the pin) on the shared local model server, port 8083 |
+| **what happens** | The server holds one model and refuses a request that names another (HTTP 409). On 21 Nov 2026 another project on the same Mac picked the small `mlx-community/Qwen3-4B-4bit` in CODEC's model menu to free memory for image jobs, and switched back 10 hours later. During that time a client of that project that sends the 35B model id got 51 refusals; its log pattern was `GET /v1/models`, then a burst of refused chat calls. No CODEC audit line matches them: CODEC's own callers read the active model from config.json. |
+| **status** | By design. Before the pin, each such request reloaded the 35B in place, next to the image job. |
+| **revisit when** | A CODEC caller gets a 409 (then that caller sends a fixed model id: fix the caller), or the owner wants outside clients to get a clearer message. |
+
 ## Vibe run card: a reply in tool-call tags shows its raw tags while it streams (found 2026-11-12, P-073)
 
 | field | value |

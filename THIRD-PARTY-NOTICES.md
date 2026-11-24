@@ -1,6 +1,6 @@
 # Third-party notices
 
-Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `987d0ac3277f549a`), so it lists exactly those and no others.
+Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `b0eeb46874a6ca48`), so it lists exactly those and no others.
 
 ## Libraries under the LGPL
 
