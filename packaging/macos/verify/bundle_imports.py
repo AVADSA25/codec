@@ -49,6 +49,14 @@ IMPORT_TO_DIST = {
     "cv2": "opencv-python",
 }
 
+# Imports inside a try/except whose fallback the app does not ship, so they are
+# required anyway, with the extra packages they need. The keyring token store in
+# skills/mcp_connect.py falls back to the disk store, which is not in the lock
+# (optional_imports.json), and it raises ImportError without py-key-value-aio[keyring].
+GUARDED_BUT_REQUIRED = {
+    "key_value.aio.stores.keyring": ["keyring"],
+}
+
 # Scripts the README tells the owner to run by hand; they ship in the bundle too.
 HELPER_SCRIPTS = ["request_mic.py", "setup_hue.py"]
 
@@ -185,8 +193,12 @@ def required_modules(services_file=None):
         top = mod.split(".")[0]
         if top in optional or mod in optional:
             continue
-        if rec["guarded_only"]:
+        if rec["guarded_only"] and mod not in GUARDED_BUT_REQUIRED:
             continue
+        for dist in GUARDED_BUT_REQUIRED.get(mod, []):
+            if dist not in lock:
+                problems.append(f"{mod} (from {sorted(rec['files'])[0]}) needs {dist}, which is "
+                                f"not in the buyer lock: add the extra to requirements.txt")
         if dist_for(mod) not in lock:
             problems.append(f"{mod} (from {sorted(rec['files'])[0]}) is not in the buyer lock: "
                             f"add {dist_for(mod)} to requirements.txt, or list {top} in "

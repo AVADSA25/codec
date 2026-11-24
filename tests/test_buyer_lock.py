@@ -92,6 +92,22 @@ def test_the_checker_fails_when_the_lock_lacks_a_package(tmp_path, monkeypatch):
     assert any("fastapi" in p for p in problems), "a thin lock must be reported"
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="reads ecosystem.config.js with node")
+def test_the_checker_requires_the_keyring_extra(tmp_path, monkeypatch):
+    # The keyring token store sits in a try/except, but its disk fallback is not shipped,
+    # so the store is required, and a lock without keyring is reported.
+    mod = _load_checker()
+    modules, problems = mod.required_modules()
+    assert not problems, problems
+    assert "key_value.aio.stores.keyring" in modules
+    thin = tmp_path / "lock.txt"
+    thin.write_text("".join(line + "\n" for line in LOCK.read_text().splitlines()
+                            if not line.startswith("keyring==")))
+    monkeypatch.setattr(mod, "LOCK", str(thin))
+    _modules, problems = mod.required_modules()
+    assert any("needs keyring" in p for p in problems), problems
+
+
 def test_optional_imports_each_have_a_reason():
     data = json.loads((REPO / "packaging/macos/optional_imports.json").read_text())
     data.pop("_comment")
