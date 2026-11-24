@@ -15,7 +15,7 @@ py-key-value-aio[keyring]>=0.4.6
 # TOTP 2FA auth (routes/auth.py: /api/auth/totp/* + skills/qr_generator.py).
 # Previously undeclared runtime deps — the TOTP setup/confirm/verify endpoints
 # import these lazily; without them the 2FA flow 500s in production.
-pyotp>=2.10.0
+pyotp>=2.12.1
 qrcode[pil]>=8.2
 
 # Security floors for transitive / runtime deps (Fix #6, re-audit dependency
@@ -44,7 +44,7 @@ argon2-cffi>=25.1.0
 # "Optional: STT" comment below, so a bundled interpreter never got them and the
 # packaged app died with ModuleNotFoundError: No module named 'fastapi' — while
 # the build machine looked fine, because the dev environment had them already.
-fastapi>=0.161.1
+fastapi>=0.162.5
 uvicorn>=0.54.0
 
 # The local model server. A buyer's Mac has no venv of ours, so the bundled
@@ -76,7 +76,7 @@ pyperclip>=1.11.0; sys_platform == "darwin"
 # reauth_google.py). Imported lazily, so a missing package showed only when a buyer
 # first asked for a calendar or a doc.
 google-api-python-client>=2.202.0
-google-auth>=2.40.0
+google-auth>=2.62.2
 google-auth-oauthlib>=1.5.0
 
 # macOS-only helpers imported at runtime: request_mic.py (microphone permission),
@@ -87,4 +87,4 @@ pyobjc-framework-AVFoundation>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-CoreMedia>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-Quartz>=12.2.2; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=12.2.2; sys_platform == "darwin"
-zeroconf>=0.150.0
+zeroconf>=0.152.1
