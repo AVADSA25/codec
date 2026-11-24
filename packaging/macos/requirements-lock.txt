@@ -37,7 +37,7 @@
 #     (codec_webcam.py).
 #
 # Who uses it:
-#   - CI (.github/workflows/ci.yml): the macos-14 job installs this file as above and runs
+#   - CI (.github/workflows/ci.yml): the macos-15 job installs this file as above and runs
 #     the test suite; the ubuntu job takes its versions as constraints
 #     (tools/lock_to_constraints.py --neutral), so CI tests the versions in this file.
 #   - packaging/macos/bundle_python.sh installs the app's Python from it (pip with
