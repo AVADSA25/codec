@@ -405,6 +405,18 @@ def check_services_and_alert(procs=None, now_ts: Optional[float] = None):
                 failures[name] = 0
                 alert_resolved(f"down:{name}", f"CODEC: {name} is no longer checked while chat uses the cloud model.")
 
+    # A service taken off the watch list (an extra_services entry removed) is never probed
+    # again, so its open alert and counters stayed for good (SENTORA, 29 Oct to 25 Nov 2026):
+    # forget them and close its alert with one message.
+    for name in [n for n in failures if n not in all_services]:
+        failures.pop(name)
+    for key in [k for k in state if k.startswith("down_since_") and k[len("down_since_"):] not in all_services]:
+        del state[key]
+    for key in open_problems():
+        kind, _, name = key.partition(":")
+        if kind == "down" and name not in all_services:
+            alert_resolved(key, f"CODEC: {name} is no longer checked.")
+
     # Dedupe probes by resolved URL — LLM and Vision usually share one
     # qwen process on :8083; probing it twice double-counted every blip.
     _probe_cache: dict = {}

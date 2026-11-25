@@ -93,6 +93,30 @@ def test_local_model_is_not_probed_while_chat_uses_a_cloud_model(sent, monkeypat
     assert probed and not any(":8083" in u or "localhost:/" in u for u in probed)
 
 
+def test_a_service_taken_off_the_watch_list_closes_its_alert(sent, monkeypatch):
+    monkeypatch.setattr(codec_alerts, "_SERVICES", {"Dashboard": "http://localhost:{dashboard_port}/api/health"})
+    monkeypatch.setattr(codec_alerts, "_check_service", lambda url, timeout=5: "9100" not in url)
+    monkeypatch.setattr(codec_alerts, "_is_listening", lambda url, timeout=2: False)
+    monkeypatch.setattr(codec_alerts.subprocess, "check_output",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no pm2 in tests")))
+    watched = {"alerts": {"telegram": {"chat_id": "42"},
+                          "extra_services": {"Old app (9100)": "http://127.0.0.1:9100/"}}}
+    sent["cfg_path"].write_text(json.dumps(watched))
+    for _ in range(2):
+        codec_alerts.check_services_and_alert()
+    assert codec_alerts.open_problems() == ["down:Old app (9100)"]
+    del watched["alerts"]["extra_services"]
+    sent["cfg_path"].write_text(json.dumps(watched))
+    codec_alerts.check_services_and_alert()
+    assert codec_alerts.open_problems() == []
+    state = json.loads(Path(codec_alerts.ALERT_STATE_PATH).read_text())
+    assert "Old app (9100)" not in state["consecutive_failures"]
+    assert not any("Old app" in k for k in state)
+    assert any("Old app (9100) is no longer checked" in m for *_, m in sent["telegram"])
+    codec_alerts.check_services_and_alert()
+    assert sum("no longer checked" in m for *_, m in sent["telegram"]) == 1
+
+
 def _proc(name, status):
     return {"name": name, "pm2_env": {"status": status, "autorestart": True, "restart_time": 0}}
 
