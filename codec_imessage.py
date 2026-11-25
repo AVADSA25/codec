@@ -1179,7 +1179,8 @@ def main():
     if allowed:
         log.info(f"Allowed senders: {', '.join(allowed)}")
     else:
-        log.info("All senders allowed (configure imessage.allowed_senders to restrict)")
+        log.info("No senders allowed: every message is ignored until "
+                 "imessage.allowed_senders lists a handle (fail-closed, C2)")
 
     audit("service_start")
     log.info("Triggers: 'Hey CODEC' or '/codec' — all other messages ignored")
