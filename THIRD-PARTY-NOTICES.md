@@ -1,13 +1,13 @@
 # Third-party notices
 
-Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `b0eeb46874a6ca48`), so it lists exactly those and no others.
+Sovereign AI Workstation (CODEC) contains and uses the open-source software listed here. Each project keeps its own copyright and licence. The full licence texts are in the last section. This file is made by `tools/gen_third_party_notices.py` from the packages the app installs (`packaging/macos/requirements-lock.txt`, lock sha256 `6bb34d5bc5d493e7`), so it lists exactly those and no others.
 
 ## Libraries under the LGPL
 
 These libraries are under the GNU Lesser General Public License. Each one is a separate, replaceable file inside the app, not linked into a single program: you can replace it with your own build of the same library and the app still starts. The source code of each library is at the address in the package table.
 
 - **pynput 1.8.2** (LGPL-3.0): Contents/Resources/python/lib/python3.12/site-packages/pynput/ (Python source files).
-- **zeroconf 0.151.5** (LGPL-2.1-or-later): Contents/Resources/python/lib/python3.12/site-packages/zeroconf/ (Python files and compiled modules built from the project's Cython source).
+- **zeroconf 0.152.1** (LGPL-2.1-or-later): Contents/Resources/python/lib/python3.12/site-packages/zeroconf/ (Python files and compiled modules built from the project's Cython source).
 - **libsndfile** inside **soundfile 0.14.0** (LGPL-2.1): Contents/Resources/python/lib/python3.12/site-packages/_soundfile_data/libsndfile_arm64.dylib (libsndfile, LGPL-2.1, with its own text in `_soundfile_data/COPYING`; the Python wrapper `soundfile` is BSD-3-Clause). That one file also contains libmpg123 (LGPL-2.1), libmp3lame (LGPL-2+), libFLAC, libogg, libopus and libvorbis (BSD-3-Clause); their copyrights and source addresses are in the soundfile licence notes below.
 - **libquadmath** and the GCC runtime libraries inside **scipy 1.18.1** (LGPL-2.1-or-later for libquadmath; GPL-3.0-or-later with the GCC Runtime Library Exception 3.1 for libgfortran and libgcc): Contents/Resources/python/lib/python3.12/site-packages/scipy/.dylibs/ (separate files; the scipy licence text below names them and the exception).
 
@@ -52,7 +52,7 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | docstring_parser | 0.18.0 | MIT | T026 | https://github.com/rr-/docstring_parser |
 | email-validator | 2.3.0 | Unlicense | T027 | https://github.com/JoshData/python-email-validator |
 | exceptiongroup | 1.3.1 | MIT | T028 | https://github.com/agronholm/exceptiongroup |
-| fastapi | 0.162.0 | MIT | T029 | https://github.com/fastapi/fastapi |
+| fastapi | 0.162.5 | MIT | T029 | https://github.com/fastapi/fastapi |
 | fastmcp | 4.1.8 | Apache-2.0 | T024 | https://github.com/PrefectHQ/fastmcp |
 | fastmcp-slim | 4.1.8 | Apache-2.0 | T024* | https://github.com/PrefectHQ/fastmcp |
 | filelock | 4.2.4 | MIT | T030 | https://github.com/tox-dev/py-filelock |
@@ -60,7 +60,7 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | fsspec | 2026.7.0 | BSD-3-Clause | T031 | https://github.com/fsspec/filesystem_spec |
 | google-api-core | 2.43.2 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python |
 | google-api-python-client | 2.202.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-api-python-client/ |
-| google-auth | 2.62.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth |
+| google-auth | 2.62.2 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth |
 | google-auth-httplib2 | 0.4.4 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth-httplib2 |
 | google-auth-oauthlib | 1.5.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/google-auth-oauthlib |
 | googleapis-common-protos | 1.76.0 | Apache-2.0 | T024 | https://github.com/googleapis/google-cloud-python/tree/main/packages/googleapis-common-protos |
@@ -133,7 +133,7 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | pyobjc-framework-CoreMedia | 12.2.2 | MIT | T106* | https://github.com/ronaldoussoren/pyobjc |
 | pyobjc-framework-CoreText | 12.2.2 | MIT | T106 | https://github.com/ronaldoussoren/pyobjc |
 | pyobjc-framework-Quartz | 12.2.2 | MIT | T106 | https://github.com/ronaldoussoren/pyobjc |
-| PyOTP | 2.10.0 | MIT | T107 | https://github.com/pyauth/pyotp |
+| PyOTP | 2.12.1 | MIT | T107 | https://github.com/pyauth/pyotp |
 | pyparsing | 3.3.3 | MIT | T108 | https://github.com/pyparsing/pyparsing.git |
 | pyperclip | 1.11.0 | BSD | T109 | https://github.com/asweigart/pyperclip |
 | python-dateutil | 3.0.0 | BSD-3-Clause OR Apache-2.0 | T110 | https://github.com/dateutil/dateutil |
@@ -175,7 +175,7 @@ The LGPL-3.0 text of pynput refers to the GNU GPL-3.0 for its terms; that text i
 | websockets | 17.3 | BSD-3-Clause | T147 | https://github.com/python-websockets/websockets |
 | xxhash | 4.0.2 | BSD-2-Clause | T148 | https://github.com/ifduyue/python-xxhash |
 | yarl | 1.25.1 | Apache-2.0 | T024, T093 | https://github.com/aio-libs/yarl |
-| zeroconf | 0.151.5 | LGPL-2.1-or-later | T149 | https://github.com/python-zeroconf/python-zeroconf |
+| zeroconf | 0.152.1 | LGPL-2.1-or-later | T149 | https://github.com/python-zeroconf/python-zeroconf |
 
 Notes on single packages (`*` marks a text taken from a related project or the standard text, because the wheel ships no licence file; the copyright line in it is then not the package's own):
 
@@ -11225,7 +11225,7 @@ Copyright 2003-2025 - Ronald Oussoren
 Used by: PyOTP (file: LICENSE)
 
 ~~~~~~~~
-Copyright (C) 2011-2021 Mark Percival <m@mdp.im>,
+Copyright (C) 2011-2026 Mark Percival <m@mdp.im>,
 Nathan Reynolds <email@nreynolds.co.uk>, Andrey Kislyuk <kislyuk@gmail.com>,
 and PyOTP contributors
 
