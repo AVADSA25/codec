@@ -1,6 +1,8 @@
 # Changelog
 
-## v3.7.0 (2026-11-01)
+## v4.0.0 (2026-11-26)
+Version 3.7.0 was prepared but never shipped as an app; its changes ship here as 4.0.0, together with everything merged up to 26 Nov 2026 (#505 to #639; full list in the GitHub history).
+
 Vibe projects and a coding agent, Notes, a cloned voice, a security pass over the power skills, and a macOS app that installs only what it lists and runs on macOS 14 or later.
 
 ### Added
